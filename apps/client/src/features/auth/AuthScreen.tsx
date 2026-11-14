@@ -11,7 +11,7 @@ export function AuthScreen({ onDone, initialCode }: { onDone: () => void; initia
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    if (native) void getRelayBase().then(setRelay);
+    if (native) void getRelayBase().then((u) => setRelay((cur) => cur || u));
     else void getAuthConfig().then((c) => setGoogle(!!c.firebase && c.google_login !== false));
   }, [native]);
 

@@ -113,7 +113,9 @@ export function createRelay(config: RelayConfig, deps: RelayDeps = {}): Relay {
   });
 
   // CORS for native WebViews (capacitor://localhost, https://localhost) on the auth endpoints.
-  const corsPaths = ['/pair', '/auth/google', '/auth/logout'];
+  // Only exact origins from `config.corsOrigins` are echoed back (never `*`), so allowing
+  // credentials is safe.
+  const corsPaths = ['/pair', '/auth/google', '/auth/logout', '/auth/config'];
   app.use('*', async (c, next) => {
     const reqOrigin = c.req.header('origin');
     const p = new URL(c.req.url).pathname;
@@ -122,8 +124,9 @@ export function createRelay(config: RelayConfig, deps: RelayDeps = {}): Relay {
       if (!allowed) return c.body(null, 403);
       return c.body(null, 204, {
         'Access-Control-Allow-Origin': reqOrigin!,
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Max-Age': '600',
         Vary: 'Origin',
       });
@@ -131,6 +134,7 @@ export function createRelay(config: RelayConfig, deps: RelayDeps = {}): Relay {
     await next();
     if (allowed) {
       c.res.headers.set('Access-Control-Allow-Origin', reqOrigin!);
+      c.res.headers.set('Access-Control-Allow-Credentials', 'true');
       c.res.headers.append('Vary', 'Origin');
     }
   });

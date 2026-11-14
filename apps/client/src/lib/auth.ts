@@ -21,12 +21,30 @@ export class AuthError extends Error {
   }
 }
 
-/** Relay base URL: same origin on Web; configured URL on native (non-secret, stored in IndexedDB). */
+/**
+ * Relay base URL: same origin on Web; on native, the user-configured URL (non-secret, stored in
+ * IndexedDB) or, when unset, the build-time `VITE_RELAY_URL` default.
+ */
 export async function getRelayBase(): Promise<string> {
   if (!isNative()) return window.location.origin;
-  const stored = await kvGet<string | null>('relay_url', null);
+  let stored: string | null = null;
+  try {
+    stored = await kvGet<string | null>('relay_url', null);
+  } catch {
+    /* storage unavailable: fall back to the build-time default */
+  }
   const env = (import.meta.env.VITE_RELAY_URL as string | undefined) ?? '';
-  return (stored || env || '').replace(/\/+$/, '');
+  return (stored?.trim() || env.trim() || '').replace(/\/+$/, '');
+}
+
+/**
+ * Fetch credentials mode. Web relies on the same-origin HttpOnly session cookie. Native shells
+ * (capacitor://localhost, https://localhost) keep the device token in the platform secure store,
+ * never in cookies, and a cross-origin `include` request is rejected by the WebView unless the
+ * server opts in, so native requests omit credentials.
+ */
+export function fetchCredentials(): RequestCredentials {
+  return isNative() ? 'omit' : 'include';
 }
 
 export async function setRelayBase(url: string): Promise<void> {
@@ -55,7 +73,7 @@ async function postJson(path: string, body: unknown): Promise<{ status: number; 
   const res = await fetch(base + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
+    credentials: fetchCredentials(),
     body: JSON.stringify(body),
   });
   let data: Record<string, unknown> = {};
@@ -95,7 +113,7 @@ export interface AuthConfig {
 export async function getAuthConfig(): Promise<AuthConfig> {
   try {
     const base = await getRelayBase();
-    const res = await fetch(base + '/auth/config', { credentials: 'include' });
+    const res = await fetch(base + '/auth/config', { credentials: fetchCredentials() });
     if (!res.ok) return { firebase: null, google_login: false };
     return (await res.json()) as AuthConfig;
   } catch {

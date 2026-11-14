@@ -241,6 +241,34 @@ describe('logout, health, static, headers', () => {
     expect(bad.status).toBe(403);
   });
 
+  it('native origin gets credentialed CORS on /pair and /auth/config', async () => {
+    h = await startRelay(makeConfig());
+    const origin = 'capacitor://localhost';
+    for (const [path, method] of [
+      ['/pair', 'POST'],
+      ['/auth/config', 'GET'],
+    ] as const) {
+      const pre = await fetch(`${h.base}${path}`, { method: 'OPTIONS', headers: { Origin: origin, 'Access-Control-Request-Method': method } });
+      expect(pre.status).toBe(204);
+      expect(pre.headers.get('access-control-allow-origin')).toBe(origin);
+      expect(pre.headers.get('access-control-allow-credentials')).toBe('true');
+      expect(pre.headers.get('access-control-allow-methods')).toBe('GET, POST, OPTIONS');
+    }
+    const cfg = await fetch(`${h.base}/auth/config`, { headers: { Origin: origin } });
+    expect(cfg.status).toBe(200);
+    expect(cfg.headers.get('access-control-allow-origin')).toBe(origin);
+    expect(cfg.headers.get('access-control-allow-credentials')).toBe('true');
+    const pr = await post('/pair', { code: '000000' }, { Origin: origin });
+    expect(pr.headers.get('access-control-allow-origin')).toBe(origin);
+    expect(pr.headers.get('access-control-allow-credentials')).toBe('true');
+    // Unlisted origins never get CORS headers.
+    const evil = await fetch(`${h.base}/auth/config`, { headers: { Origin: 'https://evil.example' } });
+    expect(evil.headers.get('access-control-allow-origin')).toBeNull();
+    expect(evil.headers.get('access-control-allow-credentials')).toBeNull();
+    const evilPre = await fetch(`${h.base}/auth/config`, { method: 'OPTIONS', headers: { Origin: 'https://evil.example', 'Access-Control-Request-Method': 'GET' } });
+    expect(evilPre.status).toBe(403);
+  });
+
   it('cookie auth works over WS for same-origin requests only', async () => {
     h = await startRelay(makeConfig(), { idTokenVerifier: fakeVerifier });
     const r = await post('/auth/google', { id_token: 'tok-owner' });

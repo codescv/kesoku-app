@@ -1,6 +1,6 @@
 {
   "name": "@kesoku/relay",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Kesoku Cloud Run relay: stateless auth + in-memory two-leg WebSocket bridge + static PWA + signed media URLs.",
