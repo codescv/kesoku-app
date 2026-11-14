@@ -395,3 +395,19 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(18p
 @media (prefers-reduced-motion: reduce) {
   .k-rec-dot { animation: none; }
 }
+
+/* QR scanner modal on AuthScreen */
+.k-qr-scan-btn { background: linear-gradient(135deg, var(--primary-strong), var(--accent)); border-color: transparent; color: #fff; box-shadow: var(--shadow); }
+.k-modal-backdrop { position: fixed; inset: 0; z-index: 95; background: rgba(10, 12, 18, 0.72); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding: calc(18px + var(--safe-t)) 16px calc(18px + var(--safe-b)); }
+.k-qr-modal { width: 100%; max-width: 400px; padding: 18px; border-radius: 24px; background: var(--card); border: 1.5px solid var(--line); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 10px; }
+.k-qr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 17px; }
+.k-qr-stage { position: relative; width: 100%; aspect-ratio: 1 / 1; max-height: 320px; border-radius: 18px; overflow: hidden; background: #0c0e12; border: 1.5px solid var(--line-strong); display: flex; align-items: center; justify-content: center; }
+.k-qr-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.k-qr-reticle { position: absolute; width: 68%; height: 68%; border-radius: 18px; box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.38); pointer-events: none; }
+.k-qr-corner { position: absolute; width: 24px; height: 24px; border-color: #60a5fa; border-style: solid; border-width: 0; }
+.k-qr-corner.tl { top: 0; left: 0; border-top-width: 4px; border-left-width: 4px; border-top-left-radius: 12px; }
+.k-qr-corner.tr { top: 0; right: 0; border-top-width: 4px; border-right-width: 4px; border-top-right-radius: 12px; }
+.k-qr-corner.bl { bottom: 0; left: 0; border-bottom-width: 4px; border-left-width: 4px; border-bottom-left-radius: 12px; }
+.k-qr-corner.br { bottom: 0; right: 0; border-bottom-width: 4px; border-right-width: 4px; border-bottom-right-radius: 12px; }
+.k-qr-overlay-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; text-align: center; color: #f3f4f6; font-weight: 700; font-size: 14px; background: rgba(12, 14, 18, 0.78); }
+.k-qr-actions { display: flex; gap: 8px; margin-top: 4px; }

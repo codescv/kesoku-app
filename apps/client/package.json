@@ -1,6 +1,6 @@
 {
   "name": "@kesoku/client",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "type": "module",
   "description": "Kesoku client: React 19 + Vite 6 Web PWA, packaged with Capacitor 8 for Android and iOS.",
@@ -28,6 +28,7 @@
     "@kesoku/ui": "workspace:*",
     "dexie": "^4.2.0",
     "firebase": "^12.19.0",
+    "jsqr": "^1.4.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zustand": "^5.0.8"
