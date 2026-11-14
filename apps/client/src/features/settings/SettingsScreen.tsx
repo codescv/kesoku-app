@@ -295,6 +295,9 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
           <button type="button" className="k-link-row" onClick={() => actions.setUi({ screen: 'studio' })}>
             🎭 角色与形象工坊 ›
           </button>
+          <button type="button" className="k-link-row" onClick={() => actions.setUi({ screen: 'files' })}>
+            📁 Agent 目录 (band) ›
+          </button>
           <div className="k-kv is-disabled">
             <span>平台</span>
             <b>{PLATFORM_LABEL[platform]}</b>

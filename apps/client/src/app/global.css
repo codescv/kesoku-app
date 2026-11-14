@@ -148,9 +148,11 @@ h1, h2, h3, strong, b { font-weight: 800; }
 .k-details summary { font-weight: 800; cursor: pointer; min-height: 32px; display: flex; align-items: center; }
 .k-media { display: block; border-radius: 18px; overflow: hidden; border: 1.5px solid var(--line); background: var(--subcard); max-width: 420px; }
 .k-media-img { padding: 0; }
-.k-media-img img { display: block; width: 100%; height: auto; }
+.k-media-img:not(.is-sticker) { width: 100%; max-width: 420px; min-height: 120px; }
+.k-media-img.is-loaded:not(.is-sticker) { min-height: 0; }
+.k-media-img img { display: block; width: 100%; height: auto; min-height: 48px; }
 .k-media-pending, .k-media-failed, .k-media-tap { padding: 14px 16px; font-weight: 800; color: var(--ink-2); text-align: left; }
-.k-media-failed { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-border); }
+.k-media-failed { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--danger); background: var(--danger-soft); border-color: var(--danger-border); }
 /* Chibi stickers / GIFs: small inline, never a full-width card. */
 .k-media.is-sticker { max-width: 128px; max-height: 128px; width: auto; height: auto; border: none; background: transparent; padding: 0; box-shadow: none; border-radius: 8px; }
 .k-media.is-sticker img { max-width: 128px; max-height: 128px; width: auto; height: auto; object-fit: contain; border-radius: 8px; }
@@ -411,3 +413,28 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(18p
 .k-qr-corner.br { bottom: 0; right: 0; border-bottom-width: 4px; border-right-width: 4px; border-bottom-right-radius: 12px; }
 .k-qr-overlay-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; text-align: center; color: #f3f4f6; font-weight: 700; font-size: 14px; background: rgba(12, 14, 18, 0.78); }
 .k-qr-actions { display: flex; gap: 8px; margin-top: 4px; }
+
+/* Agent workspace file browser */
+.k-fb-crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 8px 12px; border-radius: 14px; background: var(--card); border: 1.5px solid var(--line); font-family: var(--font-mono); font-size: 13.5px; }
+.k-fb-crumb-item { display: inline-flex; align-items: center; gap: 4px; }
+.k-fb-sep { color: var(--ink-2); opacity: 0.6; }
+.k-fb-crumb { border: 0; background: none; padding: 3px 6px; border-radius: 8px; font-weight: 800; color: var(--primary-strong); }
+.k-fb-crumb.is-current { color: var(--ink); background: var(--subcard); }
+.k-fb-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.k-fb-search { flex: 1; min-height: 38px; padding: 0 12px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--subcard); font-weight: 600; font-size: 14px; }
+.k-fb-rows { display: flex; flex-direction: column; gap: 4px; }
+.k-fb-row { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--subcard); text-align: left; width: 100%; }
+.k-fb-row:hover { border-color: var(--primary-border); background: var(--primary-soft); }
+.k-fb-icon { font-size: 18px; flex-shrink: 0; }
+.k-fb-name { flex: 1; min-width: 0; font-family: var(--font-mono); font-weight: 700; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-fb-meta { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+.k-fb-viewer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.k-fb-viewer-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.k-fb-viewer-meta b { font-family: var(--font-mono); font-size: 16px; word-break: break-all; }
+.k-fb-viewer-meta small { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); }
+.k-fb-viewer-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.k-fb-pre { margin: 0; padding: 12px; border-radius: 12px; background: var(--subcard); border: 1px solid var(--line); overflow-x: auto; font: 500 13px/1.55 var(--font-mono); white-space: pre-wrap; word-break: break-word; max-height: 68vh; overflow-y: auto; }
+.k-fb-md { padding: 6px 2px; }
+.k-fb-media { display: flex; justify-content: center; padding: 12px 0; }
+.k-fb-img-btn { border: 0; background: none; padding: 0; max-width: 100%; }
+.k-fb-img-btn img { max-width: 100%; max-height: 68vh; border-radius: 14px; border: 1.5px solid var(--line); display: block; }

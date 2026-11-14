@@ -140,6 +140,8 @@ export const ClientToEngine = {
   'media.refresh': z.object({ object: z.string().max(200) }),
   'media.hydrate': z.object({ session_id: sid.optional(), message_id: z.string().optional(), ref: z.string().max(400) }),
   'lexical.explain': z.object({ session_id: sid, text: z.string().max(2000), token: z.string().max(100) }),
+  'workspace.list': z.object({ rel_path: z.string().max(400).default('') }),
+  'workspace.read': z.object({ rel_path: z.string().min(1).max(400) }),
   'device.list': empty,
   'device.revoke': z.object({ device_id: z.string() }),
 } as const;
@@ -199,7 +201,7 @@ export const EngineToClient = {
       kind: z.string(),
       object: z.string().optional(),
       ref: z.string().optional(),
-      url: z.string(),
+      url: z.string().optional(),
       mime: z.string().optional(),
       bytes: z.number().optional(),
       duration_ms: z.number().optional(),
@@ -293,6 +295,36 @@ export const EngineToClient = {
   'media.ticket.ok': z.object({ object: z.string(), put_url: z.string(), expires_at: z.number(), max_bytes: z.number().int(), headers: z.record(z.string()).optional() }).passthrough(),
   'media.refresh.ok': z.object({ object: z.string(), url: z.string(), expires_at: z.number() }).passthrough(),
   'lexical.explain.result': z.object({ text: z.string().optional(), token: LexTokenSchema }).passthrough(),
+  'workspace.list.result': z
+    .object({
+      rel_path: z.string().default(''),
+      awd_name: z.string().default('band'),
+      entries: z.array(
+        z
+          .object({
+            name: z.string(),
+            rel_path: z.string(),
+            kind: z.enum(['dir', 'file']),
+            size: z.number().int().nonnegative(),
+            updated_at: z.number(),
+          })
+          .passthrough(),
+      ),
+    })
+    .passthrough(),
+  'workspace.read.result': z
+    .object({
+      rel_path: z.string(),
+      name: z.string(),
+      kind: z.enum(['text', 'media', 'binary']),
+      size: z.number().int().nonnegative(),
+      updated_at: z.number(),
+      mime: z.string(),
+      content: z.string().optional(),
+      truncated: z.boolean().optional(),
+      ref: z.string().optional(),
+    })
+    .passthrough(),
   'device.list.result': z.object({ devices: z.array(DeviceSchema) }).passthrough(),
   'device.revoke.result': ok,
 

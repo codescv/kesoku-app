@@ -14,6 +14,7 @@ import {
   errorCode,
   fmtBytes,
   roleAvatarRef,
+  roleSourceAvatarRef,
   sameDraft,
   sortRoles,
   utf8Bytes,
@@ -89,7 +90,11 @@ export function RolesPanel({
   const summary = isNew ? null : roles.find((r) => r.role_id === sel) ?? null;
   const detail = sel && !isNew ? details[sel] : undefined;
   const existingAvatarUrl = useAvatarUrl(summary ? roleAvatarRef(summary) : null, summary?.avatar_rev);
-  const hasExistingSource = Boolean(existingAvatarUrl || summary?.avatar_ref || summary?.has_source_image);
+  const existingSourceUrl = useAvatarUrl(
+    summary && (summary.has_source_image || summary.avatar_ref || summary.avatar_rev) ? roleSourceAvatarRef(summary) : null,
+    summary?.avatar_rev,
+  );
+  const hasExistingSource = Boolean(existingSourceUrl || existingAvatarUrl || summary?.avatar_ref || summary?.has_source_image);
 
   useEffect(() => {
     if (!sel || isNew || details[sel] || loadErr[sel]) return;
@@ -521,7 +526,7 @@ export function RolesPanel({
           target={{ type: 'role', id: summary.role_id, name: summary.display_name }}
           source={sources[genKey] ?? null}
           onSource={(s) => setSource(genKey, s)}
-          existingAvatarUrl={existingAvatarUrl}
+          existingAvatarUrl={existingSourceUrl || existingAvatarUrl}
           hasExistingSource={hasExistingSource}
           onClose={() => setGenOpen(false)}
           onApplied={(rev) => actions.setPersonas([{ ...summary, avatar_ai: true, avatar_rev: rev ?? summary.avatar_rev + 1 }])}

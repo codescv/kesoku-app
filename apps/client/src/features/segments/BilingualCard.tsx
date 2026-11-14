@@ -78,6 +78,68 @@ export function findToken(unit: WordUnit, plain: string, tokens?: LexToken[]): L
   return tokenSpans(plain, tokens).find((s) => s.start <= unit.start && unit.start < s.end)?.token;
 }
 
+const LEX_CACHE_MAX = 512;
+const lexCache = new Map<string, LexToken>();
+const lexInflight = new Map<string, Promise<LexToken | null>>();
+
+function lexCacheKey(text: string, token: string): string {
+  return `${text.trim()}\u0000${token.trim()}`;
+}
+
+export function getCachedLex(text: string, token: string): LexToken | undefined {
+  const key = lexCacheKey(text, token);
+  const hit = lexCache.get(key);
+  if (hit) {
+    lexCache.delete(key);
+    lexCache.set(key, hit);
+  }
+  return hit;
+}
+
+export function setCachedLex(text: string, token: string, value: LexToken): void {
+  const keys = [lexCacheKey(text, token)];
+  if (value.surface && value.surface.trim() && value.surface.trim() !== token.trim()) {
+    keys.push(lexCacheKey(text, value.surface));
+  }
+  for (const key of keys) {
+    if (lexCache.has(key)) lexCache.delete(key);
+    lexCache.set(key, value);
+    while (lexCache.size > LEX_CACHE_MAX) {
+      const oldest = lexCache.keys().next().value;
+      if (oldest === undefined) break;
+      lexCache.delete(oldest);
+    }
+  }
+}
+
+export async function explainLexCached(
+  text: string,
+  token: string,
+  fetcher: (text: string, token: string) => Promise<LexToken | null>,
+): Promise<LexToken | null> {
+  const cached = getCachedLex(text, token);
+  if (cached) return cached;
+  const key = lexCacheKey(text, token);
+  const pending = lexInflight.get(key);
+  if (pending) return pending;
+  const p = (async () => {
+    try {
+      const res = await fetcher(text, token);
+      if (res) setCachedLex(text, token, res);
+      return res;
+    } finally {
+      lexInflight.delete(key);
+    }
+  })();
+  lexInflight.set(key, p);
+  return p;
+}
+
+export function clearLexCacheForTest(): void {
+  lexCache.clear();
+  lexInflight.clear();
+}
+
 export interface BilingualCardProps {
   seg: BilingualSegment;
   resolveVoice: () => Promise<string | null>;
@@ -174,7 +236,7 @@ export function BilingualCard({ seg, resolveVoice, explain, onWord, compact, inl
     }
     setActive(i);
     const u = units[i];
-    const t = findToken(u, plain, seg.tokens);
+    const t = findToken(u, plain, seg.tokens) ?? getCachedLex(plain, u.base);
     if (t) {
       setLex(t);
       onWord?.(t, plain);
@@ -183,7 +245,7 @@ export function BilingualCard({ seg, resolveVoice, explain, onWord, compact, inl
     setLoading(true);
     setLex({ surface: u.base, reading: u.rt });
     try {
-      const r = await explain(plain, u.base);
+      const r = await explainLexCached(plain, u.base, explain);
       if (r) {
         setLex(r);
         onWord?.(r, plain);

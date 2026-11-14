@@ -4,6 +4,8 @@ import { Avatar, modeMeta } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { kvSet } from '../../lib/db';
+import { useAvatarUrl } from '../persona/avatar';
+import { roleAvatarRef } from '../persona/model';
 
 const CHANNEL_LABEL: Record<string, string> = { discord: 'Discord', discord_asuka: 'Discord', wechat: '微信' };
 
@@ -120,6 +122,9 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
     [sessions, allChannels, roleFilter],
   );
   const pending = Object.values(proposals).filter((p) => (p.status ?? 'pending') === 'pending').length;
+  const activeRole = (current ? sessions[current]?.role : undefined) ?? 'asuka';
+  const activePersona = personas.find((p) => p.role_id === activeRole) ?? personas[0];
+  const activeAvatarSrc = useAvatarUrl(activePersona ? roleAvatarRef(activePersona) : null, activePersona?.avatar_rev);
   const roles = [
     { id: null as string | null, label: '全部' },
     ...(personas.length ? personas : [{ role_id: 'asuka', display_name: '飞鸟' }, { role_id: 'coder', display_name: 'Coder' }, { role_id: 'default', display_name: 'Default' }]).map((p) => ({
@@ -211,7 +216,10 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
           🧠 记忆库{pending > 0 && <span className="k-badge-dot" aria-label={`${pending} 条待确认`}>{pending}</span>}
         </button>
         <button type="button" className="k-foot-btn" onClick={() => (actions.setUi({ screen: 'studio', drawerOpen: false }), go())}>
-          <Avatar name="飞鸟" size={22} /> 🎭 角色与形象工坊
+          <Avatar src={activeAvatarSrc} name={activePersona?.display_name ?? '飞鸟'} size={22} ai={activePersona?.avatar_ai} /> 🎭 角色与形象工坊
+        </button>
+        <button type="button" className="k-foot-btn" onClick={() => (actions.setUi({ screen: 'files', drawerOpen: false }), go())}>
+          📁 Agent 目录 (band)
         </button>
         <button type="button" className="k-foot-btn" onClick={() => (actions.setUi({ screen: 'settings', drawerOpen: false }), go())}>
           ⚙ 设置

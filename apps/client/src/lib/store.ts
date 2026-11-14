@@ -42,7 +42,7 @@ export interface Settings {
   translatorModel: string;
 }
 
-export type Screen = 'chat' | 'settings' | 'memory' | 'studio';
+export type Screen = 'chat' | 'settings' | 'memory' | 'studio' | 'files';
 
 export interface Toast {
   id: number;
@@ -324,7 +324,9 @@ export const actions = {
         }
         case 'media.ready': {
           const p = payload as EngineToClientPayload<'media.ready'>;
-          const entry: MediaEntry = { status: 'ready', url: p.url, object: p.object, mime: p.mime, kind: p.kind, expires_at: p.expires_at, duration_ms: p.duration_ms };
+          const nowSec = Date.now() / 1000;
+          const freshUrl = p.url && (!p.expires_at || p.expires_at < 1_000_000_000 || p.expires_at - 30 > nowSec) ? p.url : undefined;
+          const entry: MediaEntry = { status: 'ready', url: freshUrl, object: p.object, mime: p.mime, kind: p.kind, expires_at: p.expires_at, duration_ms: p.duration_ms };
           const media = { ...s.media };
           if (p.placeholder_id) media[p.placeholder_id] = entry;
           if (p.object) media[`obj:${p.object}`] = entry;
@@ -416,7 +418,30 @@ export const actions = {
       const map = new Map((replace ? [] : s.personas).map((r) => [r.role_id, r]));
       for (const r of roles) map.set(r.role_id, { ...map.get(r.role_id), ...r });
       for (const d of deleted) map.delete(d);
-      return { personas: [...map.values()] };
+      const updatedNames = new Map<string, string>();
+      for (const r of roles) {
+        if (r.display_name) updatedNames.set(r.role_id, r.display_name);
+      }
+      let itemsPatch: Record<string, ChatItem[]> | undefined;
+      if (updatedNames.size > 0) {
+        for (const [sid, list] of Object.entries(s.items)) {
+          const sessionRole = s.sessions[sid]?.role ?? 'asuka';
+          let changed = false;
+          const nextList = list.map((it) => {
+            if (it.kind !== 'assistant') return it;
+            const rid = it.sender?.role_id ?? sessionRole;
+            const newName = updatedNames.get(rid);
+            if (!newName || it.sender?.display_name === newName) return it;
+            changed = true;
+            return { ...it, sender: { ...(it.sender ?? { name: rid }), role_id: rid, display_name: newName } };
+          });
+          if (changed) {
+            if (!itemsPatch) itemsPatch = { ...s.items };
+            itemsPatch[sid] = nextList;
+          }
+        }
+      }
+      return { personas: [...map.values()], ...(itemsPatch ? { items: itemsPatch } : {}) };
     });
   },
   setProfile(p: UserProfile) {

@@ -18,6 +18,7 @@ import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { LexCard } from '../features/segments/BilingualCard';
 import { GalgameStage, ModePanel, PeekSheet } from '../features/modes';
 import { PersonaStudio } from '../features/persona';
+import { FileBrowser } from '../features/files/FileBrowser';
 
 const EMPTY: Record<string, unknown> = {};
 const CHANNEL: Record<string, string> = { discord: 'Discord', discord_asuka: 'Discord', wechat: '微信' };
@@ -163,6 +164,7 @@ export function Shell() {
 
   const center = (() => {
     if (ui.screen === 'settings') return <SettingsScreen onClose={() => actions.setUi({ screen: 'chat' })} />;
+    if (ui.screen === 'files') return <FileBrowser onClose={() => actions.setUi({ screen: 'chat' })} />;
     if (ui.screen === 'memory')
       return (
         <div className="k-screen">

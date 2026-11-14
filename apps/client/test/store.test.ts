@@ -69,11 +69,23 @@ describe('store reducers', () => {
     expect(useStore.getState().proposals.p1.status).toBe('applied');
   });
 
-  it('media.ready indexes by placeholder and object', () => {
+  it('media.ready indexes by placeholder and object and strips expired epoch URLs', () => {
     actions.applySessionEvent(S, 'media.ready', { placeholder_id: 'ph', kind: 'file', object: 'media/aaaaaaaa/x.png', url: 'https://u', expires_at: 10 });
     const m = useStore.getState().media;
     expect(m.ph.url).toBe('https://u');
     expect(m['obj:media/aaaaaaaa/x.png'].url).toBe('https://u');
+
+    actions.applySessionEvent(S, 'media.ready', { placeholder_id: 'ph_exp', kind: 'file', object: 'media/aaaaaaaa/exp.png', url: 'https://expired', expires_at: 1_700_000_000 });
+    expect(useStore.getState().media.ph_exp.url).toBeUndefined();
+  });
+
+  it('setPersonas updates assistant message sender.display_name in place when a role is renamed', () => {
+    useStore.setState({
+      sessions: { [S]: { session_id: S, title: 'T', role: 'asuka', chatbot_id: 'app', updated_at: 1 } },
+      items: { [S]: [{ key: 'a1', kind: 'assistant', message_id: 'a1', ts: 1, sender: { name: 'asuka', role_id: 'asuka', display_name: '斋藤飞鸟' } }] },
+    });
+    actions.setPersonas([{ role_id: 'asuka', display_name: '飞鸟酱', tagline: '', builtin: true, avatar_rev: 1 }]);
+    expect(useStore.getState().items[S][0].sender?.display_name).toBe('飞鸟酱');
   });
 
   it('session.snapshot restores items, state, previews from active_turn', () => {

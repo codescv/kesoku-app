@@ -4,6 +4,8 @@ import { Avatar, Capsule, Sheet, modeMeta } from '@kesoku/ui';
 import { kesoku } from '../lib/client';
 import { actions, useStore } from '../lib/store';
 import { PolicySegmented } from '../features/memory/PolicySegmented';
+import { useAvatarUrl } from '../features/persona/avatar';
+import { roleAvatarRef } from '../features/persona/model';
 
 const LEVEL_LABEL: Record<ThinkingLevel, string> = { minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High' };
 
@@ -66,6 +68,11 @@ export function ModelCapsule({ sessionId }: { sessionId: string | null }) {
   );
 }
 
+function RoleOptionAvatar({ role }: { role: { role_id: string; display_name: string; avatar_ref?: string | null; avatar_rev?: number; avatar_ai?: boolean } }) {
+  const src = useAvatarUrl(roleAvatarRef(role), role.avatar_rev);
+  return <Avatar src={src} name={role.display_name} size={36} ai={role.avatar_ai} />;
+}
+
 export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId: string | null; modeId: ModeId; nestedTitle?: string }) {
   const [open, setOpen] = useState(false);
   const personas = useStore((s) => s.personas);
@@ -74,6 +81,7 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
   const effectiveMode = (pending && pending.sessionId === sessionId ? pending.modeId : modeId) as ModeId;
   const role = session?.role ?? 'asuka';
   const persona = personas.find((p) => p.role_id === role);
+  const avatarSrc = useAvatarUrl(persona ? roleAvatarRef(persona) : null, persona?.avatar_rev);
   const name = persona?.display_name ?? (role === 'asuka' ? '飞鸟 Asuka' : role);
   const meta = modeMeta(effectiveMode);
   const roles = personas.length
@@ -86,7 +94,7 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
   return (
     <>
       <Capsule className="k-role-capsule" onClick={() => setOpen(true)} label="角色与模式">
-        <Avatar name={name} size={30} ai={persona?.avatar_ai} />
+        <Avatar src={avatarSrc} name={name} size={30} ai={persona?.avatar_ai} />
         <span className="k-role-label">
           {name.split(' ')[0]}
           {effectiveMode !== 'chat' || sessionId ? <span className="k-role-sep"> · </span> : null}
@@ -112,7 +120,7 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
                   setOpen(false);
                 }}
               >
-                <Avatar name={r.display_name} size={36} />
+                <RoleOptionAvatar role={r} />
                 <span>
                   <b>{r.display_name}</b>
                   {r.tagline && <small>{r.tagline}</small>}
@@ -123,6 +131,9 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
           </div>
           <button type="button" className="k-link-row" onClick={() => (setOpen(false), actions.setUi({ screen: 'studio' }))}>
             🎭 管理角色与形象 ›
+          </button>
+          <button type="button" className="k-link-row" onClick={() => (setOpen(false), actions.setUi({ screen: 'files' }))}>
+            📁 Agent 目录 (band) ›
           </button>
         </section>
         <section className="k-rm-section">

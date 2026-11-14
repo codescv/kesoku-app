@@ -490,7 +490,7 @@ export const kesoku = {
         ...(ctx.messageId ? { message_id: ctx.messageId } : {}),
       }, { timeoutMs: 60_000 });
       actions.setMedia(key, { status: 'ready', url: r.url, object: r.object, expires_at: r.expires_at, mime: r.mime, duration_ms: r.duration_ms });
-      return r.url;
+      return r.url ?? null;
     }
     return ref.url ?? null;
   },

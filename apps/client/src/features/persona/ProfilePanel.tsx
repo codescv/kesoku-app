@@ -5,7 +5,7 @@ import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { useAvatarUrl } from './avatar';
 import { AvatarSheet, type AvatarSource } from './AvatarSheet';
-import { errorCode, fmtBytes, policyDeviations, userAvatarRef, utf8Bytes } from './model';
+import { errorCode, fmtBytes, policyDeviations, userAvatarRef, userSourceAvatarRef, utf8Bytes } from './model';
 import { CropSheet, Counter, FieldError, PickImageButton, Switch, makePreviewUrl } from './parts';
 
 interface ProfileDraft {
@@ -80,7 +80,11 @@ export function ProfilePanel({
   }, [profile, loadFailed]);
 
   const avatarSrc = useAvatarUrl(userAvatarRef(profile), profile?.avatar_rev);
-  const hasExistingSource = Boolean(avatarSrc || profile?.avatar_ref || profile?.has_source_image);
+  const sourceSrc = useAvatarUrl(
+    profile && (profile.has_source_image || profile.avatar_ref || profile.avatar_rev) ? userSourceAvatarRef(profile) : null,
+    profile?.avatar_rev,
+  );
+  const hasExistingSource = Boolean(sourceSrc || avatarSrc || profile?.avatar_ref || profile?.has_source_image);
 
   if (!profile) {
     return (
@@ -261,7 +265,7 @@ export function ProfilePanel({
           target={{ type: 'user', id: USER_KEY, name, characterDir: dir }}
           source={sources[USER_KEY] ?? null}
           onSource={(s) => setSource(USER_KEY, s)}
-          existingAvatarUrl={avatarSrc}
+          existingAvatarUrl={sourceSrc || avatarSrc}
           hasExistingSource={hasExistingSource}
           onClose={() => setGenOpen(false)}
           onApplied={(rev) => {

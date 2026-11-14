@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CardSegment, DetailsSegment, FileSegment, LexToken, QuestionSegment, Segment } from '@kesoku/protocol';
 import { Skeleton, VoicePill } from '@kesoku/ui';
 import { BilingualCard } from './BilingualCard';
 import { Markdown, renderInline } from './Markdown';
 import { GenericCardSafe, getCard } from '../cards';
 import type { CardContext } from '../cards/types';
-import { useStore } from '../../lib/store';
+import { actions, useStore } from '../../lib/store';
 import { overlays } from '../session/overlays';
 
 export interface SegmentEnv {
@@ -81,56 +81,142 @@ function DetailsBlock({ seg }: { seg: DetailsSegment }) {
   );
 }
 
-/** Images: placeholder/object load when rendered; history `ref`-only media loads on tap unless `autoHydrate` is set for the active turn. */
+function isFreshEntryUrl(entry: { url?: string; expires_at?: number } | undefined): string | null {
+  if (!entry?.url) return null;
+  if (entry.expires_at && entry.expires_at > 1_000_000_000 && entry.expires_at - 30 <= Date.now() / 1000) return null;
+  return entry.url;
+}
+
+/** Images: placeholder/object load when rendered; history `ref`-only media loads on tap or when scrolled into view. */
 export function MediaImage({ seg, ctx, className, autoHydrate }: { seg: FileSegment; ctx: CardContext; className?: string; autoHydrate?: boolean }) {
   const sticker = isStickerMedia(seg);
   const refKey = seg.ref ? 'ref:' + seg.ref : undefined;
-  const entry = useStore((s) => (seg.placeholder_id ? s.media[seg.placeholder_id] : undefined) ?? (refKey ? s.media[refKey] : undefined));
-  const [url, setUrl] = useState<string | null>(seg.url ?? entry?.url ?? null);
+  const objKey = seg.object ? 'obj:' + seg.object : undefined;
+  const entry = useStore(
+    (s) =>
+      (seg.placeholder_id ? s.media[seg.placeholder_id] : undefined) ??
+      (objKey ? s.media[objKey] : undefined) ??
+      (refKey ? s.media[refKey] : undefined),
+  );
+  const freshEntryUrl = isFreshEntryUrl(entry);
+  const [url, setUrl] = useState<string | null>(seg.url ?? freshEntryUrl ?? null);
   const [state, setState] = useState<'idle' | 'loading' | 'failed'>('idle');
-  const lazyOnly = !autoHydrate && !seg.placeholder_id && !seg.object && !seg.url && !entry?.url && !!seg.ref;
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [inView, setInView] = useState(Boolean(autoHydrate));
+  const tapBtnRef = useRef<HTMLButtonElement | null>(null);
+  const retryCountRef = useRef(0);
+  const lazyOnly = !inView && !autoHydrate && !seg.placeholder_id && !seg.object && !seg.url && !freshEntryUrl && !!seg.ref;
+
   useEffect(() => {
-    if (entry?.url && !url) {
-      setUrl(entry.url);
+    if (inView || autoHydrate || !tapBtnRef.current || typeof IntersectionObserver === 'undefined') return;
+    const el = tapBtnRef.current;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setInView(true);
+          obs.disconnect();
+        }
+      },
+      { rootMargin: '320px' },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [inView, autoHydrate]);
+
+  useEffect(() => {
+    if (freshEntryUrl && !url) {
+      setUrl(freshEntryUrl);
       setState('idle');
       return;
     }
     if (lazyOnly || url) return;
     if (entry?.status === 'failed') return setState('failed');
-    if (seg.placeholder_id && entry?.status !== 'ready' && !seg.object) return;
+    if (seg.placeholder_id && entry?.status !== 'ready' && !seg.object && !seg.ref) return;
     let alive = true;
     setState('loading');
-    ctx.resolveMedia({ placeholder_id: seg.placeholder_id, object: seg.object, ref: seg.ref }).then(
+    ctx.resolveMedia({ placeholder_id: seg.placeholder_id, object: seg.object ?? entry?.object, ref: seg.ref }).then(
       (u) => alive && (u ? (setUrl(u), setState('idle')) : setState('failed')),
       () => alive && setState('failed'),
     );
     return () => {
       alive = false;
     };
-  }, [entry?.status, entry?.url, seg.placeholder_id, seg.object, seg.ref, lazyOnly, url, ctx]);
+  }, [entry?.status, entry?.object, freshEntryUrl, seg.placeholder_id, seg.object, seg.ref, lazyOnly, url, ctx]);
 
-  if (entry?.status === 'failed' || state === 'failed') return <div className="k-media k-media-failed">⚠️ 附件生成失败{entry?.reason ? ` · ${entry.reason}` : ''}</div>;
+  function retryLoad() {
+    const curMedia = useStore.getState().media;
+    for (const k of [seg.placeholder_id, objKey, refKey, entry?.object ? 'obj:' + entry.object : undefined]) {
+      if (k && curMedia[k]?.url) {
+        actions.setMedia(k, { ...curMedia[k], url: undefined });
+      }
+    }
+    setImgLoaded(false);
+    setUrl(null);
+    setState('loading');
+    ctx.resolveMedia({ placeholder_id: seg.placeholder_id, object: seg.object ?? entry?.object, ref: seg.ref }).then(
+      (u) => (u ? (setUrl(u), setState('idle')) : setState('failed')),
+      () => setState('failed'),
+    );
+  }
+
+  if (entry?.status === 'failed' || state === 'failed') {
+    const canRetry = Boolean(seg.ref || seg.object || entry?.object || seg.placeholder_id);
+    return (
+      <div className="k-media k-media-failed">
+        <span>⚠️ 附件生成失败{entry?.reason ? ` · ${entry.reason}` : ''}</span>
+        {canRetry && (
+          <button
+            type="button"
+            className="k-btn k-btn-sm k-btn-ghost"
+            style={{ marginLeft: 8 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              retryCountRef.current = 0;
+              retryLoad();
+            }}
+          >
+            重试
+          </button>
+        )}
+      </div>
+    );
+  }
   if (url)
     return (
       <button
         type="button"
-        className={['k-media', 'k-media-img', sticker && 'is-sticker', className].filter(Boolean).join(' ')}
+        className={['k-media', 'k-media-img', sticker && 'is-sticker', imgLoaded ? 'is-loaded' : 'is-loading', className].filter(Boolean).join(' ')}
         onClick={(e) => {
           e.stopPropagation();
           overlays.image(url);
         }}
         aria-label={sticker ? '查看表情' : '查看大图'}
       >
-        <img src={url} alt={seg.name ?? (sticker ? '表情' : '图片')} loading="lazy" />
+        <img
+          src={url}
+          alt={seg.name ?? (sticker ? '表情' : '图片')}
+          onLoad={() => setImgLoaded(true)}
+          onError={() => {
+            if (retryCountRef.current < 1 && (seg.ref || seg.object || entry?.object || seg.placeholder_id)) {
+              retryCountRef.current += 1;
+              retryLoad();
+            } else {
+              setUrl(null);
+              setState('failed');
+            }
+          }}
+        />
       </button>
     );
   if (lazyOnly)
     return (
       <button
+        ref={tapBtnRef}
         type="button"
         className={['k-media', 'k-media-tap', sticker && 'is-sticker', className].filter(Boolean).join(' ')}
         onClick={(e) => {
           e.stopPropagation();
+          setInView(true);
           setState('loading');
           ctx.resolveMedia({ ref: seg.ref }).then((u) => (u ? setUrl(u) : setState('failed')), () => setState('failed'));
         }}

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { BilingualSegment, Segment } from '@kesoku/protocol';
-import { BilingualCard, findToken, toWordUnits, tokenSpans } from '../src/features/segments/BilingualCard';
+import { BilingualCard, clearLexCacheForTest, findToken, toWordUnits, tokenSpans } from '../src/features/segments/BilingualCard';
 import { Markdown, parseBlocks } from '../src/features/segments/Markdown';
 import { SegmentList, isStickerMedia, type SegmentEnv } from '../src/features/segments/SegmentRenderer';
 import type { CardContext } from '../src/features/cards/types';
@@ -113,12 +113,24 @@ describe('<BilingualCard>', () => {
     expect(onWord).toHaveBeenCalled();
   });
 
-  it('falls back to lexical.explain when tokens are missing', async () => {
-    const explain = vi.fn(async () => ({ surface: '天気', reading: 'てんき', gloss_zh: '天气' }));
-    render(<BilingualCard seg={{ type: 'bilingual', ja_plain: '天気', ja: '天気(てんき)', zh: '天气' }} resolveVoice={vi.fn()} explain={explain} />);
-    const word = screen.getAllByRole('button').find((b) => b.classList.contains('k-word'))!;
-    await act(async () => fireEvent.click(word));
-    expect(explain).toHaveBeenCalledWith('天気', '天気');
+  it('falls back to lexical.explain when tokens are missing and caches results across word switches', async () => {
+    clearLexCacheForTest();
+    const explain = vi.fn(async (_txt: string, tok: string) => ({ surface: tok, reading: tok, gloss_zh: `${tok}-释义` }));
+    render(<BilingualCard seg={{ type: 'bilingual', ja_plain: '天気はいい', ja: '天気(てんき)はいい', zh: '天气真好' }} resolveVoice={vi.fn()} explain={explain} />);
+    const words = screen.getAllByRole('button').filter((b) => b.classList.contains('k-word'));
+    await act(async () => fireEvent.click(words[0]));
+    expect(explain).toHaveBeenCalledTimes(1);
+    expect(explain).toHaveBeenCalledWith('天気はいい', '天気');
+    expect(screen.getByText('天気-释义')).toBeTruthy();
+
+    await act(async () => fireEvent.click(words[1]));
+    expect(explain).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('はいい-释义')).toBeTruthy();
+
+    // Switching back to the first word uses the cache without calling explain again
+    await act(async () => fireEvent.click(words[0]));
+    expect(explain).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('天気-释义')).toBeTruthy();
   });
 
   it('renders no voice pill when there is no voice', () => {

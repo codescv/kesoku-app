@@ -10,6 +10,7 @@ const m = vi.hoisted(() => ({
 vi.mock('../../src/lib/client', () => ({ kesoku: m }));
 
 import { PersonaStudio } from '../../src/features/persona';
+import { FileBrowser } from '../../src/features/files/FileBrowser';
 import { __avatarCache } from '../../src/features/persona/avatar';
 import { actions, initialState, useStore } from '../../src/lib/store';
 
@@ -45,6 +46,28 @@ function defaultRpc(type: string, payload: Record<string, unknown>) {
       return Promise.resolve({ ok: true, profile: { ...PROFILE, ...payload } });
     case 'user_profile.get':
       return Promise.resolve(PROFILE);
+    case 'workspace.list':
+      return Promise.resolve({
+        rel_path: payload.rel_path || '',
+        awd_name: 'band',
+        entries:
+          payload.rel_path === 'roles'
+            ? [{ name: 'asuka.md', rel_path: 'roles/asuka.md', kind: 'file', size: 42, updated_at: 100 }]
+            : [
+                { name: 'roles', rel_path: 'roles', kind: 'dir', size: 0, updated_at: 100 },
+                { name: 'README.md', rel_path: 'README.md', kind: 'file', size: 128, updated_at: 100 },
+              ],
+      });
+    case 'workspace.read':
+      return Promise.resolve({
+        rel_path: payload.rel_path,
+        name: String(payload.rel_path).split('/').pop(),
+        kind: 'text',
+        size: 128,
+        updated_at: 100,
+        mime: 'text/markdown',
+        content: '# Band Agent Workspace\n\nHello from band!',
+      });
     default:
       return Promise.reject(Object.assign(new Error('unexpected'), { code: 'BAD_REQUEST' }));
   }
@@ -253,10 +276,10 @@ describe('PersonaStudio · Screen 16 avatar restyle', () => {
     fireEvent.click(screen.getByRole('button', { name: '候选 #2' }));
     expect(screen.getByText('✓ 已选中')).toBeTruthy();
     expect(apply.disabled).toBe(false);
-    expect(screen.getByRole('switch', { name: '同步为场景生图锁脸参考图' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('switch', { name: '同步为场景生图锁脸参考图' }).getAttribute('aria-checked')).toBe('false');
     fireEvent.click(apply);
     await waitFor(() => expect(calls('avatar.apply')).toHaveLength(1));
-    expect(calls('avatar.apply')[0]![1]).toEqual({ job_id: 'job1', index: 1, target_type: 'role', target_id: 'asuka', register_reference: true });
+    expect(calls('avatar.apply')[0]![1]).toEqual({ job_id: 'job1', index: 1, target_type: 'role', target_id: 'asuka', register_reference: false });
     await waitFor(() => expect(document.querySelector('.ps-gen')).toBeNull());
     const asuka = useStore.getState().personas.find((r) => r.role_id === 'asuka')!;
     expect(asuka.avatar_rev).toBe(3);
@@ -284,7 +307,7 @@ describe('PersonaStudio · Screen 16 avatar restyle', () => {
     fireEvent.click(screen.getByRole('switch', { name: '同步为场景生图锁脸参考图' }));
     fireEvent.click(screen.getByRole('button', { name: '✨ 应用为角色头像' }));
     await waitFor(() => expect(calls('avatar.apply')).toHaveLength(1));
-    expect(calls('avatar.apply')[0]![1]).toEqual({ job_id: 'job1', index: 3, target_type: 'role', target_id: 'asuka', register_reference: false });
+    expect(calls('avatar.apply')[0]![1]).toEqual({ job_id: 'job1', index: 3, target_type: 'role', target_id: 'asuka', register_reference: true });
   });
 });
 
@@ -384,5 +407,25 @@ describe('PersonaStudio · Screen 17 my profile', () => {
     expect(calls('avatar.generate')[0]![1]).toMatchObject({ target_type: 'user', style_preset: 'anime_clean', count: 4 });
     expect(screen.getByRole('button', { name: '✨ 应用为我的头像' })).toBeTruthy();
     expect(screen.getByText(/characters\/me_dir\/characters\.json/)).toBeTruthy();
+  });
+});
+
+describe('FileBrowser · Agent workspace directory viewer', () => {
+  it('lists directories and files, navigates into subdirectories, and previews Markdown files', async () => {
+    const onClose = vi.fn();
+    render(<FileBrowser onClose={onClose} />);
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy());
+    expect(screen.getByText('roles')).toBeTruthy();
+
+    fireEvent.click(screen.getByText('README.md'));
+    await waitFor(() => expect(screen.getByTestId('fb-viewer')).toBeTruthy());
+    expect(screen.getByText('Band Agent Workspace')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '源码' }));
+    expect(screen.getByText(/# Band Agent Workspace/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+    fireEvent.click(screen.getByText('roles'));
+    await waitFor(() => expect(screen.getByText('asuka.md')).toBeTruthy());
   });
 });

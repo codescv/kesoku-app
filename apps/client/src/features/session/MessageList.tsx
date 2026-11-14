@@ -8,8 +8,22 @@ import { SegmentList, type SegmentEnv } from '../segments/SegmentRenderer';
 import { Markdown } from '../segments/Markdown';
 import { StreamingPreview, ThinkingPill } from '../stream/StreamingPreview';
 import { ProposalCard } from '../proposals/ProposalCard';
+import { useAvatarUrl } from '../persona/avatar';
+import { roleAvatarRef } from '../persona/model';
 import { makeCardContext } from './cardContext';
 import { useIsDesktop } from '../../app/useMedia';
+
+function AssistantHeader({ roleId, fallbackName }: { roleId: string; fallbackName: string }) {
+  const persona = useStore((s) => s.personas.find((p) => p.role_id === roleId));
+  const src = useAvatarUrl(persona ? roleAvatarRef(persona) : null, persona?.avatar_rev);
+  const displayName = persona?.display_name || fallbackName;
+  return (
+    <div className="k-assistant-head">
+      <Avatar src={src} name={displayName} size={28} ai={persona?.avatar_ai} />
+      <span className="k-assistant-name">{displayName}</span>
+    </div>
+  );
+}
 
 const EMPTY_ITEMS: ChatItem[] = [];
 
@@ -198,15 +212,13 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
             onWord,
             readOnly,
             inlineLex: !desktop,
-            preloadVoice: idx >= items.length - 3,
+            preloadVoice: idx >= items.length - 12,
           };
           const evs = (item.turn_id && turnEvents[item.turn_id]) || EMPTY_EVENTS;
+          const rowRoleId = item.sender?.role_id || session?.role || 'asuka';
           return (
             <div key={item.key} className="k-row k-row-assistant">
-              <div className="k-assistant-head">
-                <Avatar name={item.sender?.display_name ?? name} size={28} />
-                <span className="k-assistant-name">{item.sender?.display_name ?? name}</span>
-              </div>
+              <AssistantHeader roleId={rowRoleId} fallbackName={item.sender?.display_name ?? name} />
               <ThinkingPill events={evs} running={false} />
               {item.segments?.length ? <SegmentList segments={item.segments} env={env} /> : item.text ? <Markdown text={item.text} /> : null}
               {byMessage.m.get(item.key)?.map((p) => <ProposalCard key={p.proposal_id} proposal={p} />) ?? null}
@@ -218,10 +230,7 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
         ))}
         {preview && (preview.text || preview.thought || (turnEvents[preview.turn_id]?.length ?? 0) > 0) && (
           <div className="k-row k-row-assistant is-streaming">
-            <div className="k-assistant-head">
-              <Avatar name={name} size={28} />
-              <span className="k-assistant-name">{name}</span>
-            </div>
+            <AssistantHeader roleId={session?.role || 'asuka'} fallbackName={name} />
             <ThinkingPill events={turnEvents[preview.turn_id] ?? EMPTY_EVENTS} running={!preview.interrupted} startedAt={preview.startedAt} thought={preview.thought} />
             <StreamingPreview preview={preview} />
           </div>

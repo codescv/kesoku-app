@@ -167,10 +167,16 @@ export function policyDeviations(
 }
 
 /** Media ref for a role avatar (null → letter avatar, no request). */
-export function roleAvatarRef(r: Pick<PersonaSummary, 'role_id' | 'avatar_ref' | 'avatar_rev'>): string | null {
+export function roleAvatarRef(r: { role_id: string; avatar_ref?: string | null; avatar_rev?: number }): string | null {
   if (r.avatar_ref) return r.avatar_ref;
   if (r.avatar_ref === null && !r.avatar_rev) return null;
   return `roles/${r.role_id}/avatar.webp`;
+}
+
+/** Media ref for a role's original character reference photo (before AI avatar deformation). */
+export function roleSourceAvatarRef(r: { role_id: string; avatar_ref?: string | null; avatar_rev?: number }): string | null {
+  if (r.avatar_ref === null && !r.avatar_rev) return null;
+  return `roles/${r.role_id}/source.webp`;
 }
 
 export function userAvatarRef(p: { avatar_ref?: string | null; avatar_rev?: number } | null): string | null {
@@ -178,6 +184,12 @@ export function userAvatarRef(p: { avatar_ref?: string | null; avatar_rev?: numb
   if (p.avatar_ref) return p.avatar_ref;
   if (p.avatar_ref === null && !p.avatar_rev) return null;
   return 'user/avatar.webp';
+}
+
+export function userSourceAvatarRef(p: { avatar_ref?: string | null; avatar_rev?: number } | null): string | null {
+  if (!p) return null;
+  if (p.avatar_ref === null && !p.avatar_rev) return null;
+  return 'user/source.webp';
 }
 
 export function errorCode(e: unknown): string {

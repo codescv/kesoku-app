@@ -125,7 +125,7 @@ export function AvatarSheet({
   const [batches, setBatches] = useState<Batch[]>([]);
   const [view, setView] = useState(0);
   const [pick, setPick] = useState<{ job_id: string; index: number } | null>(null);
-  const [registerRef, setRegisterRef] = useState(true);
+  const [registerRef, setRegisterRef] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const batch = batches[view] ?? null;

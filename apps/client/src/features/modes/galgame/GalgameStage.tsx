@@ -7,7 +7,7 @@ import { kesoku } from '../../../lib/client';
 import { useStore } from '../../../lib/store';
 import type { CardContext, MediaRef } from '../../cards/types';
 import { toMediaRef, useImageUrl } from '../../cards/util';
-import { LexCard, findToken, toWordUnits } from '../../segments/BilingualCard';
+import { LexCard, explainLexCached, findToken, getCachedLex, toWordUnits } from '../../segments/BilingualCard';
 import { Markdown, renderInline } from '../../segments/Markdown';
 import { StickerThumb, isStickerMedia, useVoiceStatus } from '../../segments/SegmentRenderer';
 import { parseStreaming } from '../../stream/streamParser';
@@ -113,12 +113,12 @@ function nonGeneric(n: unknown): string | undefined {
   return t && !GENERIC_NAMES.has(t.toLowerCase()) ? t : undefined;
 }
 
-/** Speaker: segment speaker → sender display name → persona name → non-generic sender name → 斋藤飞鸟. */
+/** Speaker: segment speaker → live persona name → sender display name → non-generic sender name → 斋藤飞鸟. */
 export function resolveSpeaker(segSpeaker: unknown, item: ChatItem | undefined, personaName?: string): string {
   return (
     nonGeneric(segSpeaker) ||
-    nonGeneric(item?.sender?.display_name) ||
     nonGeneric(personaName) ||
+    nonGeneric(item?.sender?.display_name) ||
     nonGeneric(item?.sender?.name) ||
     DEFAULT_PERSONA
   );
@@ -285,7 +285,7 @@ function Speech({
     setActive(i);
     onOpenLex?.();
     const u = units[i];
-    const bundled = findToken(u, plain, seg.tokens);
+    const bundled = findToken(u, plain, seg.tokens) ?? getCachedLex(plain, u.base);
     if (bundled) {
       setLex(bundled);
       return;
@@ -293,14 +293,17 @@ function Speech({
     setLoading(true);
     setLex({ surface: u.base, reading: u.rt });
     try {
-      const r = await kesoku.rpc<EngineToClientPayload<'lexical.explain.result'> & { explanation_markdown?: string }>(
-        'lexical.explain',
-        { session_id: ctx.sessionId, text: plain, token: u.base },
-        { timeoutMs: 30_000 },
-      );
-      const rawTok = (r as { token?: unknown }).token;
-      if (rawTok && typeof rawTok === 'object') setLex(rawTok as LexToken);
-      else setLex({ surface: u.base, reading: u.rt, note: typeof r.explanation_markdown === 'string' ? r.explanation_markdown : String(rawTok ?? '') });
+      const explained = await explainLexCached(plain, u.base, async (txt, tok) => {
+        const r = await kesoku.rpc<EngineToClientPayload<'lexical.explain.result'> & { explanation_markdown?: string }>(
+          'lexical.explain',
+          { session_id: ctx.sessionId, text: txt, token: tok },
+          { timeoutMs: 30_000 },
+        );
+        const rawTok = (r as { token?: unknown }).token;
+        if (rawTok && typeof rawTok === 'object') return rawTok as LexToken;
+        return { surface: u.base, reading: u.rt, note: typeof r.explanation_markdown === 'string' ? r.explanation_markdown : String(rawTok ?? '') };
+      });
+      if (explained) setLex(explained);
     } catch {
       /* keep surface/reading fallback */
     } finally {
