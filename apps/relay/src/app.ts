@@ -136,6 +136,7 @@ export function createRelay(config: RelayConfig, deps: RelayDeps = {}): Relay {
   });
 
   app.get('/healthz', (c) => c.text('ok', 200, { 'Cache-Control': 'no-store' }));
+  app.get('/health', (c) => c.text('ok', 200, { 'Cache-Control': 'no-store' }));
   app.get('/engine/status', (c) => c.json(bridge.engineStatus(), 200, { 'Cache-Control': 'no-store' }));
 
   // Public Firebase web config for the client's Google popup (not secret).
