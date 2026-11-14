@@ -36,7 +36,6 @@ beforeEach(async () => {
   h.platform.value = 'ios';
   h.store.clear();
   await db.kv.clear();
-  vi.stubEnv('VITE_RELAY_URL', RELAY + '/');
   fetchMock = vi.fn(async (url: string) => {
     if (url.endsWith('/auth/config')) return jsonResponse({ firebase: null, google_login: false });
     return jsonResponse({ device_id: 'dev-1', device_token: 'tok-1' });
@@ -49,17 +48,34 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('native auth fetch', () => {
-  it('falls back to VITE_RELAY_URL when no relay URL is stored', async () => {
-    expect(await getRelayBase()).toBe(RELAY);
+describe('native relay base (no build-time default)', () => {
+  it('is empty on native until the user configures a relay', async () => {
+    expect(await getRelayBase()).toBe('');
   });
 
-  it('prefers the stored relay URL over the build-time default', async () => {
-    await setRelayBase('https://other.example.org/some/path');
+  it('ignores any VITE_RELAY_URL in the environment', async () => {
+    vi.stubEnv('VITE_RELAY_URL', 'https://baked.example.net');
+    expect(await getRelayBase()).toBe('');
+  });
+
+  it('setRelayBase stores the bare origin, getRelayBase returns it', async () => {
+    await setRelayBase('https://other.example.org/some/path/');
     expect(await getRelayBase()).toBe('https://other.example.org');
   });
 
-  it('omits credentials on native for POST /pair and uses VITE_RELAY_URL', async () => {
+  it('setRelayBase rejects non-https relays except localhost', async () => {
+    await expect(setRelayBase('http://relay.example.com')).rejects.toMatchObject({ code: 'BAD_URL' });
+    await setRelayBase('http://127.0.0.1:8787/x');
+    expect(await getRelayBase()).toBe('http://127.0.0.1:8787');
+  });
+});
+
+describe('native auth fetch', () => {
+  beforeEach(async () => {
+    await setRelayBase(RELAY + '/');
+  });
+
+  it('omits credentials on native for POST /pair and uses the stored relay', async () => {
     expect(fetchCredentials()).toBe('omit');
     await pair('123456');
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -78,9 +94,10 @@ describe('native auth fetch', () => {
     expect(init.credentials).toBe('omit');
   });
 
-  it('keeps cookie credentials on Web (same origin)', async () => {
+  it('keeps cookie credentials on Web (same origin, stored relay ignored)', async () => {
     h.platform.value = 'web';
     expect(fetchCredentials()).toBe('include');
+    expect(await getRelayBase()).toBe(window.location.origin);
     await getAuthConfig();
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`${window.location.origin}/auth/config`);

@@ -58,12 +58,39 @@ describe('parseDeepLink', () => {
 
   it.each([
     ['kesoku://pair?code=483920', '483920'],
-    ['kesoku://pair/?code=483920&relay=https%3A%2F%2Fr.example', '483920'],
     ['kesoku://pair?code=483%20920', '483920'],
     ['kesoku://pair?code=483-920', '483920'],
     ['/pair?code=000123', '000123'],
   ])('%s -> pair %s', (url, code) => {
     expect(parseDeepLink(url)).toEqual({ kind: 'pair', code });
+  });
+
+  it.each([
+    ['kesoku://pair?code=483920&relay=https://relay.example.com', 'https://relay.example.com'],
+    ['kesoku://pair?code=483920&relay=https%3A%2F%2Frelay.example.com', 'https://relay.example.com'],
+    ['kesoku://pair/?code=483920&relay=https%3A%2F%2Fr.example%2Fsome%2Fpath%2F', 'https://r.example'],
+    ['kesoku://pair?relay=https%3A%2F%2Frelay.example.com%3A8443%2F&code=483%20920', 'https://relay.example.com:8443'],
+    ['kesoku://pair?code=483920&relay=http%3A%2F%2F127.0.0.1%3A8787', 'http://127.0.0.1:8787'],
+    ['kesoku://pair?code=483920&relay=http%3A%2F%2Flocalhost%3A8787%2F', 'http://localhost:8787'],
+  ])('%s -> pair with relay %s', (url, relay) => {
+    expect(parseDeepLink(url)).toEqual({ kind: 'pair', code: '483920', relay });
+  });
+
+  it.each([
+    'kesoku://pair?code=483920&relay=http%3A%2F%2Frelay.example.com',
+    'kesoku://pair?code=483920&relay=javascript%3Aalert(1)',
+    'kesoku://pair?code=483920&relay=not%20a%20url',
+    'kesoku://pair?code=483920&relay=ftp%3A%2F%2Frelay.example.com',
+    'kesoku://pair?code=483920&relay=https%3A%2F%2Fuser%3Apw%40relay.example.com',
+    'kesoku://pair?code=483920&relay=',
+  ])('%s -> pair code kept, invalid relay dropped', (url) => {
+    const link = parseDeepLink(url);
+    expect(link).toEqual({ kind: 'pair', code: '483920' });
+    expect(link && 'relay' in link).toBe(false);
+  });
+
+  it('a relay never rescues an invalid code', () => {
+    expect(parseDeepLink('kesoku://pair?code=12345&relay=https%3A%2F%2Frelay.example.com')).toBeNull();
   });
 
   it.each([

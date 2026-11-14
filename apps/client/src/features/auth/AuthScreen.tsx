@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
+import { parseDeepLink } from '../../native/deeplinks';
 import { isNative } from '../../native/platform';
 import { AuthError, getAuthConfig, getRelayBase, googleLogin, pair, preloadGoogleAuth, setRelayBase, type AuthConfig } from '../../lib/auth';
 
-export function AuthScreen({ onDone, initialCode }: { onDone: () => void; initialCode?: string }) {
+export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () => void; initialCode?: string; initialRelay?: string }) {
   const native = isNative();
   const [code, setCode] = useState(initialCode ?? '');
-  const [relay, setRelay] = useState('');
+  const [relay, setRelay] = useState(initialRelay ?? '');
   const [google, setGoogle] = useState(false);
   const [authCfg, setAuthCfg] = useState<AuthConfig | null>(null);
   // Web: hold rendering until /auth/config answers so the pairing form never flashes.
@@ -34,6 +35,17 @@ export function AuthScreen({ onDone, initialCode }: { onDone: () => void; initia
       alive = false;
     };
   }, [native]);
+
+  /** A pasted `kesoku://pair?code=...&relay=...` link fills both fields at once. Returns true if handled. */
+  function applyPairLink(text: string): boolean {
+    if (!/^\s*kesoku:/i.test(text)) return false;
+    const link = parseDeepLink(text);
+    if (!link || link.kind !== 'pair') return false;
+    setCode(link.code);
+    if (link.relay) setRelay(link.relay);
+    setErr(null);
+    return true;
+  }
 
   async function submitPair(e: React.FormEvent) {
     e.preventDefault();
@@ -98,7 +110,17 @@ export function AuthScreen({ onDone, initialCode }: { onDone: () => void; initia
               {native && (
                 <label className="k-field">
                   <span>中继地址</span>
-                  <input type="url" inputMode="url" required placeholder="https://kesoku-relay-xxxx.a.run.app" value={relay} onChange={(e) => setRelay(e.target.value)} autoComplete="url" />
+                  <input
+                    type="url"
+                    inputMode="url"
+                    required
+                    placeholder="https://relay.example.com"
+                    value={relay}
+                    onChange={(e) => {
+                      if (!applyPairLink(e.target.value)) setRelay(e.target.value);
+                    }}
+                    autoComplete="url"
+                  />
                 </label>
               )}
               <label className="k-field">
@@ -108,10 +130,11 @@ export function AuthScreen({ onDone, initialCode }: { onDone: () => void; initia
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   pattern="[0-9 ]{6,7}"
-                  maxLength={7}
                   placeholder="483 920"
                   value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/[^\d ]/g, ''))}
+                  onChange={(e) => {
+                    if (!applyPairLink(e.target.value)) setCode(e.target.value.replace(/[^\d ]/g, '').slice(0, 7));
+                  }}
                   aria-describedby="k-pair-hint"
                 />
               </label>

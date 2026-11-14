@@ -22,8 +22,9 @@ export class AuthError extends Error {
 }
 
 /**
- * Relay base URL: same origin on Web; on native, the user-configured URL (non-secret, stored in
- * IndexedDB) or, when unset, the build-time `VITE_RELAY_URL` default.
+ * Relay base URL: same origin on Web; on native, ONLY the user-configured URL (non-secret, stored in
+ * IndexedDB, set via the pairing form or a `kesoku://pair?code=...&relay=...` link). There is
+ * deliberately no build-time default, so no build can ever bake a server URL into the bundle.
  */
 export async function getRelayBase(): Promise<string> {
   if (!isNative()) return window.location.origin;
@@ -31,10 +32,9 @@ export async function getRelayBase(): Promise<string> {
   try {
     stored = await kvGet<string | null>('relay_url', null);
   } catch {
-    /* storage unavailable: fall back to the build-time default */
+    /* storage unavailable: no relay configured */
   }
-  const env = (import.meta.env.VITE_RELAY_URL as string | undefined) ?? '';
-  return (stored?.trim() || env.trim() || '').replace(/\/+$/, '');
+  return (stored || '').trim().replace(/\/+$/, '');
 }
 
 /**

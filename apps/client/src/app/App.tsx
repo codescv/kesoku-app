@@ -36,6 +36,7 @@ export function App() {
   useTheme();
   const auth = useStore((s) => s.auth);
   const [pairCode, setPairCode] = useState<string | undefined>();
+  const [pairRelay, setPairRelay] = useState<string | undefined>();
   const [booted, setBooted] = useState(false);
 
   useEffect(() => {
@@ -76,12 +77,13 @@ export function App() {
     [],
   );
 
-  // Deep links: kesoku://mode/* and kesoku://pair?code=
+  // Deep links: kesoku://mode/* and kesoku://pair?code=...&relay=...
   useEffect(
     () =>
       onDeepLink((link) => {
         if (link.kind === 'pair') {
           setPairCode(link.code);
+          if (link.relay) setPairRelay(link.relay);
           if (useStore.getState().auth !== 'ok') useStore.setState({ auth: 'needed' });
         } else if (link.kind === 'mode') {
           useStore.setState({ currentSessionId: null });
@@ -111,7 +113,9 @@ export function App() {
   if (auth === 'needed')
     return (
       <AuthScreen
+        key={`${pairCode ?? ''}|${pairRelay ?? ''}`}
         initialCode={pairCode}
+        initialRelay={pairRelay}
         onDone={() => {
           useStore.setState({ auth: 'ok' });
           void getAuthInfo().then((i) => i && useStore.setState({ authKind: i.kind, email: i.email ?? null }));

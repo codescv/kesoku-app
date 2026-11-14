@@ -10,13 +10,15 @@ import { isNative } from './platform';
  *   kesoku://mode/travel       -> { kind: 'mode', mode_id: 'travel_companion' }
  *   kesoku://mode/pokemon      -> { kind: 'mode', mode_id: 'pokemon_assistant' }
  *   kesoku://pair?code=483920  -> { kind: 'pair', code: '483920' }
+ *   kesoku://pair?code=483920&relay=https%3A%2F%2Frelay.example.com
+ *                              -> { kind: 'pair', code: '483920', relay: 'https://relay.example.com' }
  * Web (PWA routes, same slugs): /mode/translator, /mode/travel, /mode/pokemon, /pair?code=...
  *
  * Any other URL parses to null and is ignored.
  */
 export type DeepLinkModeId = 'translator' | 'travel_companion' | 'pokemon_assistant';
 
-export type DeepLink = { kind: 'mode'; mode_id: DeepLinkModeId } | { kind: 'pair'; code: string };
+export type DeepLink = { kind: 'mode'; mode_id: DeepLinkModeId } | { kind: 'pair'; code: string; relay?: string };
 
 export const DEEP_LINK_SCHEME = 'kesoku';
 
@@ -38,10 +40,32 @@ function modeFromSlug(slug: string | undefined): DeepLink | null {
   return id ? { kind: 'mode', mode_id: id } : null;
 }
 
+/**
+ * Validates a relay URL from a pairing link: `https:` origins, or plain `http:` only for local tests
+ * (127.0.0.1 / localhost). Returns the bare origin (no path, no trailing slash) or null.
+ */
+export function normalizeRelay(value: string | null | undefined): string | null {
+  const raw = (value ?? '').trim();
+  if (!raw || raw.length > 512) return null;
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (u.username || u.password) return null;
+  const local = u.hostname === '127.0.0.1' || u.hostname === 'localhost';
+  if (u.protocol === 'https:' || (u.protocol === 'http:' && local)) return u.origin;
+  return null;
+}
+
 function pairFromParams(params: URLSearchParams): DeepLink | null {
   // Accept "483 920" / "483-920" as typed or displayed by the CLI.
   const code = (params.get('code') ?? '').replace(/[\s-]/g, '');
-  return PAIR_CODE_RE.test(code) ? { kind: 'pair', code } : null;
+  if (!PAIR_CODE_RE.test(code)) return null;
+  // An invalid relay is dropped; it never invalidates the code.
+  const relay = normalizeRelay(params.get('relay'));
+  return relay ? { kind: 'pair', code, relay } : { kind: 'pair', code };
 }
 
 /** "a/b/" -> ["a", "b"], percent-decoded; null on malformed escapes. */
