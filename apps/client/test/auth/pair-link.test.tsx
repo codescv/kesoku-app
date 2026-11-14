@@ -104,4 +104,33 @@ describe('AuthScreen pairing link (native)', () => {
     fireEvent.change(relayInput(), { target: { value: 'https://typed.example.org' } });
     expect(relayInput().value).toBe('https://typed.example.org');
   });
+
+  it('tapping 扫码配对 invokes native Camera.scanQRCode when available and auto-submits pairing', async () => {
+    const onDone = vi.fn();
+    (globalThis as unknown as { Capacitor?: unknown }).Capacitor = {
+      nativePromise: vi.fn(async (plugin: string, method: string) => {
+        if (plugin === 'Camera' && method === 'scanQRCode') {
+          return { value: LINK };
+        }
+        throw new Error('UNIMPLEMENTED');
+      }),
+    };
+    try {
+      render(<AuthScreen onDone={onDone} />);
+      fireEvent.click(screen.getByRole('button', { name: /扫码配对/ }));
+      await waitFor(() => expect(onDone).toHaveBeenCalled());
+      expect(relayInput().value).toBe(RELAY);
+      expect(codeInput().value).toBe('483920');
+      expect(await getRelayBase()).toBe(RELAY);
+    } finally {
+      delete (globalThis as unknown as { Capacitor?: unknown }).Capacitor;
+    }
+  });
+
+  it('tapping 扫码配对 opens QrScannerModal when native scanQRCode is unavailable', async () => {
+    render(<AuthScreen onDone={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: /扫码配对/ }));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: '扫描配对二维码' })).toBeTruthy());
+    expect(screen.getByRole('button', { name: /从相册 \/ 拍照识别二维码/ })).toBeTruthy();
+  });
 });

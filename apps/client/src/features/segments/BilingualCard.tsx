@@ -139,9 +139,9 @@ export function LexCard({ token, onClose }: { token: LexToken; onClose?: () => v
         <div className="k-lex-note">
           <Markdown text={token.note} />
         </div>
-      ) : (token as { explanation_markdown?: string }).explanation_markdown && !token.gloss_zh && !token.lemma && !token.conj ? (
+      ) : (token as unknown as { explanation_markdown?: string }).explanation_markdown && !token.gloss_zh && !token.lemma && !token.conj ? (
         <div className="k-lex-note">
-          <Markdown text={(token as { explanation_markdown: string }).explanation_markdown} />
+          <Markdown text={(token as unknown as { explanation_markdown: string }).explanation_markdown} />
         </div>
       ) : null}
     </div>

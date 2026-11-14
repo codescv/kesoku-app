@@ -288,6 +288,7 @@ describe('<SegmentList>', () => {
             type: 'question',
             prompt: '明日（あした）どこへ行く？',
             choices: ['海（うみ）へ行く', '山(やま)へ行く'],
+            multi: false,
           },
         ]}
         env={env()}

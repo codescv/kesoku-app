@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { parseDeepLink } from '../../native/deeplinks';
 import { isNative } from '../../native/platform';
+import { tryNativeQrScan } from '../../native/qr';
 import { AuthError, getAuthConfig, getRelayBase, googleLogin, pair, preloadGoogleAuth, setRelayBase, type AuthConfig } from '../../lib/auth';
+import { QrScannerModal } from './QrScannerModal';
 
 export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () => void; initialCode?: string; initialRelay?: string }) {
   const native = isNative();
@@ -13,6 +15,7 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
   const [loadingConfig, setLoadingConfig] = useState(!native);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   useEffect(() => {
     if (native) {
@@ -36,30 +39,71 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
     };
   }, [native]);
 
-  /** A pasted `kesoku://pair?code=...&relay=...` link fills both fields at once. Returns true if handled. */
-  function applyPairLink(text: string): boolean {
-    if (!/^\s*kesoku:/i.test(text)) return false;
-    const link = parseDeepLink(text);
-    if (!link || link.kind !== 'pair') return false;
-    setCode(link.code);
-    if (link.relay) setRelay(link.relay);
-    setErr(null);
-    return true;
-  }
-
-  async function submitPair(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitPairWith(targetRelay: string, targetCode: string) {
     setErr(null);
     setBusy(true);
     try {
-      if (native) await setRelayBase(relay.trim());
-      await pair(code);
+      if (native) await setRelayBase(targetRelay.trim());
+      await pair(targetCode);
       onDone();
     } catch (x) {
       setErr(x instanceof AuthError ? x.message : '网络错误，请检查中继地址');
     } finally {
       setBusy(false);
     }
+  }
+
+  /** A pasted or scanned `kesoku://pair?code=...&relay=...` link fills both fields at once. Returns true if handled. */
+  function applyPairLink(text: string, autoSubmit = false): boolean {
+    const trimmed = text.trim();
+    if (/^kesoku:/i.test(trimmed) || /^https?:\/\//i.test(trimmed)) {
+      const link = parseDeepLink(trimmed);
+      if (link && link.kind === 'pair') {
+        const nextRelay = link.relay || relay;
+        setCode(link.code);
+        if (link.relay) setRelay(link.relay);
+        setErr(null);
+        if (autoSubmit && (!native || nextRelay.trim().length > 0)) {
+          void submitPairWith(nextRelay, link.code);
+        }
+        return true;
+      }
+    }
+    if (autoSubmit && /^\d{3}[\s-]?\d{3}$/.test(trimmed)) {
+      const digits = trimmed.replace(/\D/g, '');
+      setCode(digits);
+      setErr(null);
+      if (!native || relay.trim().length > 0) {
+        void submitPairWith(relay, digits);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  async function handleStartQrScan() {
+    setErr(null);
+    const nativeOutcome = await tryNativeQrScan();
+    if (nativeOutcome.status === 'scanned') {
+      if (!applyPairLink(nativeOutcome.value, true)) {
+        setErr('二维码不是有效的 Kesoku 配对码（请运行 kesoku app pair 生成二维码）');
+      }
+      return;
+    }
+    if (nativeOutcome.status === 'cancelled') return;
+    setScannerOpen(true);
+  }
+
+  function handleModalQrDetected(value: string) {
+    setScannerOpen(false);
+    if (!applyPairLink(value, true)) {
+      setErr('二维码不是有效的 Kesoku 配对码（请运行 kesoku app pair 生成二维码）');
+    }
+  }
+
+  async function submitPair(e: React.FormEvent) {
+    e.preventDefault();
+    await submitPairWith(relay, code);
   }
 
   async function doGoogle() {
@@ -106,6 +150,15 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
         {showPairing && (
           <>
             <p className="k-auth-sub">连接你的自托管 Kesoku 引擎</p>
+            <button
+              type="button"
+              className="k-btn k-btn-primary k-btn-block k-btn-lg k-qr-scan-btn"
+              disabled={busy}
+              onClick={() => void handleStartQrScan()}
+            >
+              📷 扫码配对
+            </button>
+            <div className="k-auth-or">或手动输入配对码</div>
             <form onSubmit={submitPair} className="k-auth-form">
               {native && (
                 <label className="k-field">
@@ -139,7 +192,7 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
                 />
               </label>
               <p id="k-pair-hint" className="k-auth-hint">
-                在引擎主机运行 <code>kesoku app pair</code>，2 分钟内输入 · 连续 5 次错误即作废
+                在引擎主机运行 <code>kesoku app pair</code>，扫码或 2 分钟内输入 · 连续 5 次错误即作废
               </p>
               {err && (
                 <div className="k-auth-err" role="alert">
@@ -150,6 +203,12 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
                 {busy ? '连接中…' : '配对并连接'}
               </button>
             </form>
+            {scannerOpen && (
+              <QrScannerModal
+                onDetect={handleModalQrDetected}
+                onClose={() => setScannerOpen(false)}
+              />
+            )}
           </>
         )}
       </div>
