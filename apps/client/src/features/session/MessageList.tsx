@@ -115,8 +115,15 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
   const explain = useCallback(
     async (text: string, token: string): Promise<LexToken | null> => {
       try {
-        const r = await kesoku.rpc<EngineToClientPayload<'lexical.explain.result'>>('lexical.explain', { session_id: sessionId, text, token }, { timeoutMs: 30_000 });
-        return r.token;
+        const r = await kesoku.rpc<EngineToClientPayload<'lexical.explain.result'> & { explanation_markdown?: string }>(
+          'lexical.explain',
+          { session_id: sessionId, text, token },
+          { timeoutMs: 30_000 },
+        );
+        const rawTok = (r as { token?: unknown }).token;
+        if (rawTok && typeof rawTok === 'object') return rawTok as LexToken;
+        const md = typeof r.explanation_markdown === 'string' ? r.explanation_markdown : typeof rawTok === 'string' ? rawTok : '';
+        return { surface: token, note: md };
       } catch {
         actions.toast('精讲暂不可用', 'error');
         return null;
@@ -174,9 +181,18 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
                 <Markdown text={item.text ?? ''} />
               </div>
             );
+          let resolvedPicked = item.picked;
+          if (!resolvedPicked?.length) {
+            const nextUser = items.slice(idx + 1).find((it) => it.kind === 'user');
+            if (nextUser) {
+              const ut = (nextUser.text ?? '').trim();
+              const multi = ut.startsWith('选择：') ? ut.slice(3).split('；').map((s) => s.trim()).filter(Boolean) : null;
+              resolvedPicked = multi?.length ? multi : ut ? [ut] : ['__answered__'];
+            }
+          }
           const env: SegmentEnv = {
             ctx: makeCardContext(sessionId, item.message_id ?? item.key, modeId),
-            picked: item.picked,
+            picked: resolvedPicked,
             onPick,
             explain,
             onWord,

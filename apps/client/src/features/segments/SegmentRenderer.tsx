@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { CardSegment, DetailsSegment, FileSegment, LexToken, QuestionSegment, Segment } from '@kesoku/protocol';
 import { Skeleton, VoicePill } from '@kesoku/ui';
 import { BilingualCard } from './BilingualCard';
-import { Markdown } from './Markdown';
+import { Markdown, renderInline } from './Markdown';
 import { GenericCardSafe, getCard } from '../cards';
 import type { CardContext } from '../cards/types';
 import { useStore } from '../../lib/store';
@@ -43,9 +43,9 @@ function QuestionPills({ seg, env }: { seg: QuestionSegment; env: SegmentEnv }) 
   const max = seg.max ?? (seg.multi ? seg.choices.length : 1);
   return (
     <div className="k-q">
-      {seg.prompt && <div className="k-q-prompt">{seg.prompt}</div>}
+      {seg.prompt && <div className="k-q-prompt">{renderInline(seg.prompt, 'qp')}</div>}
       <div className="k-q-choices">
-        {seg.choices.map((c) => {
+        {seg.choices.map((c, idx) => {
           const on = picked ? picked.includes(c) : sel.includes(c);
           return (
             <button
@@ -58,7 +58,7 @@ function QuestionPills({ seg, env }: { seg: QuestionSegment; env: SegmentEnv }) 
                 setSel((s) => (s.includes(c) ? s.filter((x) => x !== c) : s.length < max ? [...s, c] : s));
               }}
             >
-              {c}
+              {renderInline(c, `qc-${idx}`)}
             </button>
           );
         })}
@@ -81,14 +81,20 @@ function DetailsBlock({ seg }: { seg: DetailsSegment }) {
   );
 }
 
-/** Images: placeholder/object load when rendered; history `ref`-only media loads on tap (media.hydrate). */
-export function MediaImage({ seg, ctx, className }: { seg: FileSegment; ctx: CardContext; className?: string }) {
+/** Images: placeholder/object load when rendered; history `ref`-only media loads on tap unless `autoHydrate` is set for the active turn. */
+export function MediaImage({ seg, ctx, className, autoHydrate }: { seg: FileSegment; ctx: CardContext; className?: string; autoHydrate?: boolean }) {
   const sticker = isStickerMedia(seg);
-  const entry = useStore((s) => (seg.placeholder_id ? s.media[seg.placeholder_id] : undefined));
-  const [url, setUrl] = useState<string | null>(seg.url ?? null);
+  const refKey = seg.ref ? 'ref:' + seg.ref : undefined;
+  const entry = useStore((s) => (seg.placeholder_id ? s.media[seg.placeholder_id] : undefined) ?? (refKey ? s.media[refKey] : undefined));
+  const [url, setUrl] = useState<string | null>(seg.url ?? entry?.url ?? null);
   const [state, setState] = useState<'idle' | 'loading' | 'failed'>('idle');
-  const lazyOnly = !seg.placeholder_id && !seg.object && !seg.url && !!seg.ref;
+  const lazyOnly = !autoHydrate && !seg.placeholder_id && !seg.object && !seg.url && !entry?.url && !!seg.ref;
   useEffect(() => {
+    if (entry?.url && !url) {
+      setUrl(entry.url);
+      setState('idle');
+      return;
+    }
     if (lazyOnly || url) return;
     if (entry?.status === 'failed') return setState('failed');
     if (seg.placeholder_id && entry?.status !== 'ready' && !seg.object) return;
@@ -101,7 +107,7 @@ export function MediaImage({ seg, ctx, className }: { seg: FileSegment; ctx: Car
     return () => {
       alive = false;
     };
-  }, [entry?.status, seg.placeholder_id, seg.object, seg.ref, lazyOnly, url, ctx]);
+  }, [entry?.status, entry?.url, seg.placeholder_id, seg.object, seg.ref, lazyOnly, url, ctx]);
 
   if (entry?.status === 'failed' || state === 'failed') return <div className="k-media k-media-failed">⚠️ 附件生成失败{entry?.reason ? ` · ${entry.reason}` : ''}</div>;
   if (url)
@@ -137,13 +143,14 @@ export function MediaImage({ seg, ctx, className }: { seg: FileSegment; ctx: Car
 
 /** Compact inline sticker for narrative flows (galgame dialogue box). */
 export function StickerThumb({ seg, ctx }: { seg: FileSegment; ctx: CardContext }) {
-  return <MediaImage seg={seg} ctx={ctx} className="k-sticker-thumb" />;
+  return <MediaImage seg={seg} ctx={ctx} className="k-sticker-thumb" autoHydrate />;
 }
 
 /** Pending/failed/ready status of a voice clip, from the media placeholder store. */
 export function useVoiceStatus(v: { placeholder_id?: string; object?: string; url?: string; ref?: string } | undefined, preloadVoice?: boolean) {
   const pid = v?.placeholder_id;
-  const entry = useStore((s) => (pid ? s.media[pid] : undefined));
+  const refKey = v?.ref ? 'ref:' + v.ref : undefined;
+  const entry = useStore((s) => (pid ? s.media[pid] : undefined) ?? (refKey ? s.media[refKey] : undefined));
   const pending = !!pid && !v?.object && !v?.url && (entry?.status === 'pending' || (!entry && !v?.ref));
   const failed = entry?.status === 'failed';
   const readyKey = entry?.url || v?.object || v?.url || '';
@@ -202,7 +209,11 @@ export function SegmentView({ seg, env }: { seg: Segment; env: SegmentEnv }) {
     case 'details':
       return <DetailsBlock seg={seg} />;
     case 'file':
-      return /^audio\//.test(seg.mime ?? '') ? <VoiceSegment seg={seg} ctx={env.ctx} preloadVoice={env.preloadVoice} /> : <MediaImage seg={seg} ctx={env.ctx} />;
+      return /^audio\//.test(seg.mime ?? '') ? (
+        <VoiceSegment seg={seg} ctx={env.ctx} preloadVoice={env.preloadVoice} />
+      ) : (
+        <MediaImage seg={seg} ctx={env.ctx} autoHydrate={Boolean(env.preloadVoice)} />
+      );
     case 'voice':
       return <VoiceSegment seg={seg} ctx={env.ctx} preloadVoice={env.preloadVoice} />;
     case 'card':

@@ -90,6 +90,16 @@ h1, h2, h3, strong, b { font-weight: 800; }
 .k-code { margin: 6px 0; padding: 12px 14px; border-radius: 14px; background: var(--subcard); border: 1.5px solid var(--line); overflow-x: auto; font: 500 14px/1.5 var(--font-mono); }
 .k-code code { background: none; padding: 0; }
 .k-md hr { border: 0; border-top: 1.5px solid var(--line); margin: 10px 0; }
+.k-spoiler { display: inline-block; padding: 1px 8px; border-radius: 8px; background: var(--subcard); border: 1px dashed var(--line-strong); cursor: pointer; user-select: none; transition: background 0.15s, border-color 0.15s; }
+.k-spoiler.is-block { display: block; padding: 8px 12px; margin: 6px 0; border-radius: 12px; }
+.k-spoiler .k-spoiler-inner { filter: blur(6px); opacity: 0.35; transition: filter 0.15s, opacity 0.15s; }
+.k-spoiler.is-open { background: var(--accent-soft); border-style: solid; border-color: var(--accent-border); user-select: text; }
+.k-spoiler.is-open .k-spoiler-inner { filter: none; opacity: 1; }
+.k-table-wrap { margin: 8px 0; overflow-x: auto; border-radius: 14px; border: 1.5px solid var(--line); background: var(--card); }
+.k-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.k-table th, .k-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.k-table th { background: var(--subcard); font-weight: 800; color: var(--ink-2); white-space: nowrap; }
+.k-table tr:last-child td { border-bottom: 0; }
 
 /* preview */
 .k-preview.is-interrupted { opacity: 0.55; }
@@ -183,9 +193,9 @@ h1, h2, h3, strong, b { font-weight: 800; }
 .k-launch-hint { color: var(--ink-2); font-weight: 700; font-size: 14px; }
 .k-mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(132px, auto); gap: 12px; }
 @media (min-width: 768px) { .k-mode-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-.k-mode-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 14px; text-align: left; border-radius: 22px; border: 1.5px solid color-mix(in srgb, var(--mode) 30%, var(--line)); background: linear-gradient(160deg, color-mix(in srgb, var(--mode) 12%, var(--card)) 0%, var(--card) 70%); box-shadow: var(--shadow); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.k-mode-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 14px; text-align: left; border-radius: 22px; border: 1.5px solid color-mix(in srgb, var(--mode) 30%, var(--line)); background: linear-gradient(160deg, color-mix(in srgb, var(--mode) 12%, var(--card)) 0%, var(--card) 70%); box-shadow: var(--shadow); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; min-width: 0; overflow: hidden; }
 .k-mode-tile:active { transform: scale(0.98); }
-.k-mode-top { display: flex; align-items: center; gap: 6px; width: 100%; flex-wrap: wrap; }
+.k-mode-top { display: flex; align-items: center; gap: 6px; width: 100%; flex-wrap: wrap; row-gap: 4px; }
 .k-mode-icon { font-size: 30px; line-height: 1; }
 .k-mode-badge { font-size: 12px; font-weight: 800; padding: 2px 7px; border-radius: 7px; background: var(--mode); color: #fff; }
 .k-mode-policy { margin-left: auto; font-size: 12px; font-weight: 800; padding: 2px 7px; border-radius: 7px; background: var(--pill); color: var(--ink-2); }
@@ -363,9 +373,15 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(18p
 .k-mode-empty h2 { margin: 0; font-size: 24px; color: var(--mode); }
 .k-mode-empty p { margin: 0; font-weight: 700; color: var(--ink-2); }
 .k-mode-empty-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 6px; }
-.k-mode-top { flex-wrap: nowrap; }
+.k-mode-top { flex-wrap: wrap; row-gap: 4px; }
 .k-mode-badge, .k-mode-policy { white-space: nowrap; }
 .k-mode-policy { flex-shrink: 0; }
+@media (max-width: 480px) {
+  .k-mode-tile { padding: 12px 10px; }
+  .k-mode-top { gap: 4px; }
+  .k-mode-icon { font-size: 24px; }
+  .k-mode-badge, .k-mode-policy { font-size: 11px; padding: 2px 5px; }
+}
 :root[data-theme='dark'] .k-mode-sub, .is-mode-dark .k-mode-sub { color: color-mix(in srgb, var(--mode) 65%, #ffffff); }
 @media (prefers-color-scheme: dark) { :root[data-theme='system'] .k-mode-sub { color: color-mix(in srgb, var(--mode) 65%, #ffffff); } }
 

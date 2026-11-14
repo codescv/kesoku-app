@@ -10,7 +10,7 @@ import { LessonCard } from './kinds/LessonCard';
 import { Grading } from './kinds/Grading';
 import { PokemonDex } from './kinds/PokemonDex';
 import { MoveWiki } from './kinds/MoveWiki';
-import { Matchup } from './kinds/Matchup';
+import { Matchup, PkmnGlossary, PkmnTypeChart } from './kinds/Matchup';
 
 /** Card boundary: a malformed card never takes down the message stage — falls back to GenericCard. */
 class CardBoundary extends Component<{ kind: string; props: CardProps<any>; children?: ReactNode }, { failed: boolean }> {
@@ -42,8 +42,11 @@ const RAW: Record<string, CardComponent> = {
   lesson_card: LessonCard,
   grading: Grading,
   pokemon_dex: PokemonDex,
+  pkmn_dex: PokemonDex,
   pkmn_move_wiki: MoveWiki,
   pkmn_matchup: Matchup,
+  pkmn_glossary: PkmnGlossary,
+  pkmn_type_chart: PkmnTypeChart,
 };
 
 const REGISTRY: Record<string, CardComponent> = Object.fromEntries(Object.entries(RAW).map(([k, c]) => [k, guarded(k, c)]));

@@ -271,4 +271,27 @@ describe('pkmn_matchup / lesson / grading', () => {
     renderKind('grading', { pass: true, original: 'ok' });
     expect(screen.getByText('✓ PASS')).toBeTruthy();
   });
+
+  it('pkmn_glossary and pkmn_type_chart render dedicated cards', () => {
+    renderKind('pkmn_glossary', {
+      version: 'za',
+      title: '多重鳞片',
+      category: 'ability',
+      pills: ['HP满时伤害减半'],
+      summary: 'HP全满时受到的攻击伤害变为0.5倍。',
+      detail_markdown: '破格特性可无视此效果。',
+    });
+    expect(screen.getByText(/多重鳞片/)).toBeTruthy();
+    expect(screen.getByText('特性')).toBeTruthy();
+    expect(screen.getByText('HP满时伤害减半')).toBeTruthy();
+
+    renderKind('pkmn_type_chart', {
+      version: 'za',
+      type: '冰',
+      offense: { x2: ['龙', '飞行', '草', '地面'], x05: ['火', '水', '冰', '钢'], x0: [] },
+      defense: { x4: [], x2: ['火', '格斗', '岩石', '钢'], x05: ['冰'], x025: [], x0: [] },
+    });
+    expect(screen.getByText(/属性相克/)).toBeTruthy();
+    expect(screen.getByText(/龙 · 飞行 · 草 · 地面/)).toBeTruthy();
+  });
 });
