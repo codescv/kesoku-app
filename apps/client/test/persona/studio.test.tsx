@@ -288,6 +288,52 @@ describe('PersonaStudio · Screen 16 avatar restyle', () => {
   });
 });
 
+describe('PersonaStudio · avatar regeneration without re-upload', () => {
+  it('a role with an existing original enables 生成 immediately and omits source_object', async () => {
+    actions.setPersonas([{ ...ROLES[1]!, avatar_ref: 'roles/asuka/avatar.webp', has_source_image: true }]);
+    m.resolveMedia.mockResolvedValue('https://media.example/asuka.webp');
+    await openRoles();
+    fireEvent.click(screen.getByRole('button', { name: '✨ AI 二次生成头像' }));
+    const go = screen.getByRole('button', { name: '✨ 生成 4 张候选' }) as HTMLButtonElement;
+    expect(go.disabled).toBe(false);
+    expect(screen.getByText('当前原图')).toBeTruthy();
+    expect(screen.getByText('更换原图')).toBeTruthy();
+    await waitFor(() => expect(screen.getByAltText('当前原图').getAttribute('src')).toContain('https://media.example/asuka.webp'));
+    fireEvent.click(go);
+    await waitFor(() => expect(calls('avatar.generate')).toHaveLength(1));
+    expect(m.upload).not.toHaveBeenCalled();
+    const payload = calls('avatar.generate')[0]![1];
+    expect(payload).toEqual({ target_type: 'role', target_id: 'asuka', style_preset: 'anime_clean', count: 4 });
+    expect('source_object' in payload).toBe(false);
+    await waitFor(() => expect(screen.getAllByTestId('ps-cand')).toHaveLength(4));
+    expect((screen.getByRole('button', { name: '↻ 换一批' }) as HTMLButtonElement).disabled).toBe(true); // generating
+  });
+
+  it('a fresh upload still wins over the existing original', async () => {
+    actions.setPersonas([{ ...ROLES[1]!, has_source_image: true }]);
+    await openRoles();
+    fireEvent.click(screen.getByRole('button', { name: '✨ AI 二次生成头像' }));
+    fireEvent.change(screen.getByLabelText('上传原图文件'), { target: { files: [new File([new Uint8Array([1])], 's.png', { type: 'image/png' })] } });
+    await waitFor(() => expect(m.upload).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText('当前原图')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '✨ 生成 4 张候选' }));
+    await waitFor(() => expect(calls('avatar.generate')).toHaveLength(1));
+    expect(calls('avatar.generate')[0]![1]).toMatchObject({ source_object: 'media/avatar/123e4567-e89b-12d3-a456-426614174000.png' });
+  });
+
+  it('my profile with an existing avatar regenerates without a source_object', async () => {
+    useStore.setState({ profile: { ...PROFILE, avatar_ref: 'user/avatar.webp', avatar_rev: 1, has_source_image: true } });
+    render(<PersonaStudio onClose={() => {}} initialTab="me" />);
+    fireEvent.click(screen.getByRole('button', { name: '✨ AI 风格化' }));
+    const go = screen.getByRole('button', { name: '✨ 生成 4 张候选' }) as HTMLButtonElement;
+    expect(go.disabled).toBe(false);
+    fireEvent.click(go);
+    await waitFor(() => expect(calls('avatar.generate')).toHaveLength(1));
+    expect(calls('avatar.generate')[0]![1]).not.toHaveProperty('source_object');
+    expect(calls('avatar.generate')[0]![1]).toMatchObject({ target_type: 'user' });
+  });
+});
+
 describe('PersonaStudio · Screen 17 my profile', () => {
   it('policy summary shows defaults, then deviations, and links to policy settings', async () => {
     const onOpen = vi.fn();

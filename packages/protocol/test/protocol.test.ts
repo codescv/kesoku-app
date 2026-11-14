@@ -102,6 +102,11 @@ describe('client → engine payloads', () => {
     expect(validatePayload(ClientToEngine, 'avatar.generate', { ...p, style_preset: 'oil' })?.ok).toBe(false);
     expect(validatePayload(ClientToEngine, 'avatar.generate', { ...p, count: 8 })?.ok).toBe(false);
   });
+  it('avatar.generate may omit source_object (regenerate from the existing original image)', () => {
+    const p = { target_type: 'role', target_id: 'asuka', style_preset: 'pixel' };
+    expect(validatePayload(ClientToEngine, 'avatar.generate', p)?.ok).toBe(true);
+    expect(validatePayload(ClientToEngine, 'avatar.generate', { ...p, source_object: '' })?.ok).toBe(false);
+  });
   it('returns null for unknown types', () => {
     expect(validatePayload(ClientToEngine, 'nope', {})).toBeNull();
   });

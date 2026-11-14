@@ -21,6 +21,12 @@ if (typeof window.matchMedia !== 'function') {
     }),
   });
 }
+// jsdom's media element methods only log "Not implemented"; voice pills buffer clips in the background.
+if (typeof window.HTMLMediaElement !== 'undefined') {
+  Object.defineProperty(window.HTMLMediaElement.prototype, 'load', { configurable: true, value() {} });
+  Object.defineProperty(window.HTMLMediaElement.prototype, 'pause', { configurable: true, value() {} });
+  Object.defineProperty(window.HTMLMediaElement.prototype, 'play', { configurable: true, value: () => Promise.resolve() });
+}
 if (!('scrollTo' in Element.prototype)) {
   Object.defineProperty(Element.prototype, 'scrollTo', { value() {} });
 }

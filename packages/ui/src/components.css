@@ -41,6 +41,11 @@ button.k-pill { cursor: pointer; min-height: 36px; }
 .k-voice.is-playing .k-wave i:nth-child(3) { animation-delay: 0.3s; }
 .k-voice.is-playing .k-wave i:nth-child(4) { animation-delay: 0.45s; }
 @keyframes k-wave { 0%, 100% { transform: scaleY(0.4); } 50% { transform: scaleY(1); } }
+.k-voice.is-pending, .k-voice.is-queued { font: 700 13px/1 var(--font-sans, inherit); opacity: 0.85; border-style: dashed; }
+.k-voice.is-pending .k-voice-icon, .k-voice.is-queued .k-voice-icon { animation: k-voice-pulse 1.4s ease-in-out infinite; }
+.k-voice.is-queued { opacity: 1; border-style: solid; }
+.k-voice.is-failed { font: 700 13px/1 var(--font-sans, inherit); opacity: 0.7; cursor: not-allowed; border-style: dashed; }
+@keyframes k-voice-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
 
 .k-sheet-root { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; }
 .k-scrim { position: absolute; inset: 0; background: var(--scrim); animation: k-fade 0.15s ease-out; }
@@ -77,5 +82,5 @@ button.k-pill { cursor: pointer; min-height: 36px; }
 @keyframes k-pulse { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .k-voice.is-playing .k-wave i, .k-skel-line, .k-sheet, .k-scrim { animation: none; }
+  .k-voice.is-playing .k-wave i, .k-voice .k-voice-icon, .k-skel-line, .k-sheet, .k-scrim { animation: none; }
 }

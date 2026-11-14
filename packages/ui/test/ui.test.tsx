@@ -108,6 +108,97 @@ describe('<VoicePill> tap-to-play', () => {
   });
 });
 
+describe('<VoicePill> eager preload + pending synthesis', () => {
+  const mkAudio = () => {
+    const el = { play: vi.fn(async () => {}), pause: vi.fn(), load: vi.fn(), preload: '', currentTime: 0, duration: NaN } as unknown as HTMLAudioElement & {
+      play: ReturnType<typeof vi.fn>;
+      load: ReturnType<typeof vi.fn>;
+    };
+    return el;
+  };
+
+  it('preload buffers the clip (preload=auto, load()) without playing, then plays instantly on tap', async () => {
+    const resolveUrl = vi.fn(async () => 'https://example.test/v.wav');
+    const el = mkAudio();
+    const createAudio = vi.fn(() => el);
+    render(<VoicePill resolveUrl={resolveUrl} createAudio={createAudio} preload preloadKey="k1" />);
+    await act(async () => {});
+    expect(resolveUrl).toHaveBeenCalledTimes(1);
+    expect(createAudio).toHaveBeenCalledWith('https://example.test/v.wav');
+    expect(el.preload).toBe('auto');
+    expect(el.load).toHaveBeenCalled();
+    expect(el.play).not.toHaveBeenCalled();
+    // metadata arrives → duration shown even without server duration_ms
+    (el as unknown as { duration: number }).duration = 5.2;
+    await act(async () => el.onloadedmetadata?.(new Event('loadedmetadata')));
+    expect(screen.getByRole('button').textContent).toContain('0:05');
+    await act(async () => fireEvent.click(screen.getByRole('button')));
+    expect(resolveUrl).toHaveBeenCalledTimes(1); // reused the buffered element
+    expect(el.play).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button').getAttribute('data-state')).toBe('playing');
+  });
+
+  it('a tap mid-preload awaits the same in-flight resolution', async () => {
+    let release!: (u: string) => void;
+    const resolveUrl = vi.fn(() => new Promise<string>((r) => (release = r)));
+    const el = mkAudio();
+    render(<VoicePill resolveUrl={resolveUrl} createAudio={() => el} preload />);
+    await act(async () => fireEvent.click(screen.getByRole('button')));
+    expect(resolveUrl).toHaveBeenCalledTimes(1);
+    await act(async () => release('u'));
+    expect(resolveUrl).toHaveBeenCalledTimes(1);
+    expect(el.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('without preload nothing is fetched on mount (role previews)', async () => {
+    const resolveUrl = vi.fn(async () => 'x');
+    render(<VoicePill resolveUrl={resolveUrl} label="点击试听" />);
+    await act(async () => {});
+    expect(resolveUrl).not.toHaveBeenCalled();
+  });
+
+  it('pending shows 合成中…; a tap queues, a second tap cancels', async () => {
+    const resolveUrl = vi.fn(async () => 'x');
+    const el = mkAudio();
+    const { rerender } = render(<VoicePill resolveUrl={resolveUrl} createAudio={() => el} pending preload />);
+    const btn = screen.getByRole('button');
+    expect(btn.getAttribute('data-state')).toBe('pending');
+    expect(btn.textContent).toContain('⏳');
+    expect(btn.textContent).toContain('合成中…');
+    expect(resolveUrl).not.toHaveBeenCalled();
+    await act(async () => fireEvent.click(btn));
+    expect(btn.getAttribute('data-state')).toBe('queued');
+    expect(btn.textContent).toContain('合成完即播');
+    await act(async () => fireEvent.click(btn));
+    expect(btn.getAttribute('data-state')).toBe('pending');
+    // ready without a queued tap → buffered but NOT played
+    rerender(<VoicePill resolveUrl={resolveUrl} createAudio={() => el} pending={false} preload preloadKey="ready" />);
+    await act(async () => {});
+    expect(el.play).not.toHaveBeenCalled();
+    expect(screen.getByRole('button').getAttribute('data-state')).toBe('idle');
+  });
+
+  it('a queued tap auto-plays as soon as synthesis finishes', async () => {
+    const resolveUrl = vi.fn(async () => 'x');
+    const el = mkAudio();
+    const { rerender } = render(<VoicePill resolveUrl={resolveUrl} createAudio={() => el} pending />);
+    await act(async () => fireEvent.click(screen.getByRole('button')));
+    expect(el.play).not.toHaveBeenCalled();
+    rerender(<VoicePill resolveUrl={resolveUrl} createAudio={() => el} pending={false} preload preloadKey="ready" />);
+    await act(async () => {});
+    expect(el.play).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button').getAttribute('data-state')).toBe('playing');
+  });
+
+  it('failed renders a disabled 语音失败 pill', () => {
+    render(<VoicePill resolveUrl={async () => 'x'} failed />);
+    const btn = screen.getByRole('button') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.getAttribute('data-state')).toBe('failed');
+    expect(btn.textContent).toContain('语音失败');
+  });
+});
+
 describe('<Segmented>', () => {
   it('marks the selected option and calls onChange', () => {
     const onChange = vi.fn();

@@ -80,6 +80,7 @@ export function ProfilePanel({
   }, [profile, loadFailed]);
 
   const avatarSrc = useAvatarUrl(userAvatarRef(profile), profile?.avatar_rev);
+  const hasExistingSource = Boolean(avatarSrc || profile?.avatar_ref || profile?.has_source_image);
 
   if (!profile) {
     return (
@@ -260,6 +261,8 @@ export function ProfilePanel({
           target={{ type: 'user', id: USER_KEY, name, characterDir: dir }}
           source={sources[USER_KEY] ?? null}
           onSource={(s) => setSource(USER_KEY, s)}
+          existingAvatarUrl={avatarSrc}
+          hasExistingSource={hasExistingSource}
           onClose={() => setGenOpen(false)}
           onApplied={(rev) => {
             const cur = useStore.getState().profile ?? profile;

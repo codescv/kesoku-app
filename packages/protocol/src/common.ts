@@ -243,6 +243,8 @@ export const PersonaSummarySchema = z
     avatar_rev: z.number().int().nonnegative().default(0),
     avatar_ref: z.string().nullable().optional(),
     avatar_ai: z.boolean().optional(),
+    /** The engine keeps an original source image, so `avatar.generate` may omit `source_object`. */
+    has_source_image: z.boolean().optional(),
     voice_preset: z.string().nullable().optional(),
     updated_at: z.number().optional(),
   })
@@ -264,6 +266,8 @@ export const UserProfileSchema = z
     avatar_rev: z.number().int().nonnegative().default(0),
     avatar_ref: z.string().nullable().optional(),
     avatar_ai: z.boolean().optional(),
+    /** The engine keeps an original source image, so `avatar.generate` may omit `source_object`. */
+    has_source_image: z.boolean().optional(),
     character_dir: z.string().optional(),
   })
   .passthrough();

@@ -1,6 +1,6 @@
 {
   "name": "@kesoku/hud",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "type": "module",
   "description": "Kesoku HUD registry: $STAGING_DIR/game/*.json state files → mode HUD components.",

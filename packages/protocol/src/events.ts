@@ -110,7 +110,11 @@ export const ClientToEngine = {
   'avatar.generate': z.object({
     target_type: z.enum(['user', 'role']),
     target_id: z.string(),
-    source_object: z.string(),
+    /**
+     * Freshly uploaded source photo. Omit to regenerate from the target's existing original image
+     * (the role's / user's current avatar source kept by the engine) — no re-upload needed.
+     */
+    source_object: z.string().min(1).optional(),
     /** Added by the relay (signed GET of `source_object`). */
     source_url: z.string().optional(),
     style_preset: AvatarStylePresetSchema,

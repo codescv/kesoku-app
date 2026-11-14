@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
-import type { MemoryPolicy, Segment } from '@kesoku/protocol';
+import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent, type PointerEvent as RPointerEvent } from 'react';
+import type { BilingualSegment, FileSegment, MemoryPolicy, Segment } from '@kesoku/protocol';
 import { PolicyBadge, SceneChips } from '@kesoku/hud';
-import { RubyText, VoicePill, resolveRubyParts } from '@kesoku/ui';
+import { RubyText, VoicePill, parseRubyNotation, resolveRubyParts } from '@kesoku/ui';
 import type { ChatItem, StreamPreview } from '../../../lib/types';
+import { useStore } from '../../../lib/store';
 import type { CardContext, MediaRef } from '../../cards/types';
 import { toMediaRef, useImageUrl } from '../../cards/util';
+import { Markdown } from '../../segments/Markdown';
+import { StickerThumb, isStickerMedia, useVoiceStatus } from '../../segments/SegmentRenderer';
+import { parseStreaming } from '../../stream/streamParser';
 
 export interface GalgameStageProps {
   items: ChatItem[];
@@ -15,6 +19,8 @@ export interface GalgameStageProps {
   onPolicyChange: (p: MemoryPolicy) => void;
   onPick: (questionMessageId: string, choices: string[]) => void;
   onExit: () => void;
+  /** Full display name of the active role (e.g. 斋藤飞鸟); generic agent sender names are never shown. */
+  personaName?: string;
 }
 
 type AnySeg = Segment & Record<string, unknown>;
@@ -29,14 +35,24 @@ function isImageSeg(s: AnySeg): boolean {
   return !name || !AUDIO_EXT.test(name);
 }
 
-/** Latest CG: newest image `file` segment of any assistant row. */
-export function latestCg(items: ChatItem[]): MediaRef | null {
+type MediaStatusMap = Record<string, { status?: string } | undefined>;
+
+/**
+ * Latest CG: newest non-sticker image `file` segment of any assistant row. Stickers / GIFs never become
+ * the CG, and a placeholder that is still generating (or failed) is skipped so the previous ready CG
+ * (or the fallback backdrop) stays until the new one is ready.
+ */
+export function latestCg(items: ChatItem[], media?: MediaStatusMap): MediaRef | null {
   for (let i = items.length - 1; i >= 0; i--) {
     const it = items[i];
     if (it.kind !== 'assistant' || !Array.isArray(it.segments)) continue;
     for (let j = it.segments.length - 1; j >= 0; j--) {
       const s = it.segments[j] as AnySeg;
       if (s && isImageSeg(s)) {
+        if (isStickerMedia(s)) continue;
+        const pid = typeof s.placeholder_id === 'string' ? s.placeholder_id : '';
+        const st = pid ? media?.[pid]?.status : undefined;
+        if (st === 'failed' || st === 'pending') continue;
         const ref = toMediaRef({ placeholder_id: s.placeholder_id, object: s.object, ref: s.ref, url: s.url });
         if (ref) return ref;
       }
@@ -45,8 +61,66 @@ export function latestCg(items: ChatItem[]): MediaRef | null {
   return null;
 }
 
+/** Generation status of the newest assistant turn's scene illustration (non-sticker image). */
+export function pendingCgStatus(items: ChatItem[], media?: MediaStatusMap): 'pending' | 'failed' | null {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.kind !== 'assistant') continue;
+    const segs = Array.isArray(it.segments) ? it.segments : [];
+    for (let j = segs.length - 1; j >= 0; j--) {
+      const s = segs[j] as AnySeg;
+      if (!s || !isImageSeg(s) || isStickerMedia(s)) continue;
+      const pid = typeof s.placeholder_id === 'string' ? s.placeholder_id : '';
+      const st = pid ? media?.[pid]?.status : undefined;
+      return st === 'pending' || st === 'failed' ? st : null;
+    }
+    return null;
+  }
+  return null;
+}
+
 type BilingualSeg = Extract<Segment, { type: 'bilingual' }>;
 type QuestionSeg = Extract<Segment, { type: 'question' }>;
+type StorySeg = Extract<Segment, { type: 'text' | 'bilingual' | 'file' }>;
+
+function isStorySeg(s: Segment | undefined | null): s is StorySeg {
+  if (!s) return false;
+  if (s.type === 'text') return typeof s.markdown === 'string' && !!s.markdown.trim();
+  if (s.type === 'bilingual') return typeof s.ja_plain === 'string';
+  if (s.type === 'file') return isStickerMedia(s);
+  return false;
+}
+
+/** Newest assistant turn with any story content: narration (`text`), dialogue (`bilingual`) or stickers. */
+export function latestTurn(items: ChatItem[]): { item: ChatItem; segments: StorySeg[] } | null {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.kind !== 'assistant' || !Array.isArray(it.segments)) continue;
+    const segments = it.segments.filter(isStorySeg);
+    if (segments.length) return { item: it, segments };
+  }
+  return null;
+}
+
+const GENERIC_NAMES = new Set(['kesoku', 'assistant']);
+const DEFAULT_PERSONA = '斋藤飞鸟';
+
+function nonGeneric(n: unknown): string | undefined {
+  if (typeof n !== 'string') return undefined;
+  const t = n.trim();
+  return t && !GENERIC_NAMES.has(t.toLowerCase()) ? t : undefined;
+}
+
+/** Speaker: segment speaker → sender display name → persona name → non-generic sender name → 斋藤飞鸟. */
+export function resolveSpeaker(segSpeaker: unknown, item: ChatItem | undefined, personaName?: string): string {
+  return (
+    nonGeneric(segSpeaker) ||
+    nonGeneric(item?.sender?.display_name) ||
+    nonGeneric(personaName) ||
+    nonGeneric(item?.sender?.name) ||
+    DEFAULT_PERSONA
+  );
+}
 
 /** Latest bilingual line (+ its row, for the speaker fallback). */
 export function latestLine(items: ChatItem[]): { seg: BilingualSeg; item: ChatItem } | null {
@@ -144,36 +218,138 @@ function CgLayers({ url }: { url: string | null | undefined }) {
   );
 }
 
-/**
- * Immersive visual-novel stage (Screen 04): full-bleed CG, top glass micro-pills, frosted dialogue box,
- * floating choice pills. Voice is strictly tap-to-play; nothing audio-related is resolved on mount.
- */
-export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicyChange, onPick, onExit }: GalgameStageProps) {
-  const cgRef = useMemo(() => latestCg(items), [items]);
-  const cgUrl = useImageUrl(ctx.resolveMedia, cgRef);
-  const line = useMemo(() => latestLine(items), [items]);
-  const question = useMemo(() => openQuestion(items), [items]);
-  const streaming = preview && !preview.interrupted ? previewLine(preview.text) : '';
-  const typed = useTypewriter(streaming);
+/** Tap-to-play voice for one dialogue line; synthesis status + background buffering (never autoplay). */
+function SpeechVoice({ seg, ctx }: { seg: BilingualSegment; ctx: CardContext }) {
+  const v = seg.voice;
+  const st = useVoiceStatus(v, true);
+  const ref = v ? toMediaRef(v) : null;
+  if (!ref) return null;
+  return (
+    <VoicePill
+      resolveUrl={() => ctx.resolveMedia(ref)}
+      pending={st.pending}
+      failed={st.failed}
+      preload={!st.pending && !st.failed}
+      preloadKey={st.preloadKey}
+      durationMs={typeof v?.duration_ms === 'number' ? v.duration_ms : st.entry?.duration_ms}
+    />
+  );
+}
 
-  const [zhOpen, setZhOpen] = useState(true);
+function hasVoice(seg: BilingualSegment): boolean {
+  const v = seg.voice;
+  return !!v && !!(v.placeholder_id || v.object || v.ref || v.url);
+}
+
+function Speech({ seg, ctx, speaker, showHead, zhOpen, onToggleZh }: { seg: BilingualSegment; ctx: CardContext; speaker: string; showHead: boolean; zhOpen: boolean; onToggleZh: () => void }) {
+  const parts = useMemo(() => resolveRubyParts(seg), [seg]);
+  return (
+    <div className="gg-speech">
+      {showHead && (
+        <div className="gg-speech-head">
+          <span className="gg-speech-name">{speaker}</span>
+          {hasVoice(seg) && <SpeechVoice seg={seg} ctx={ctx} />}
+        </div>
+      )}
+      <div className="gg-line">
+        <RubyText parts={parts} />
+      </div>
+      {seg.zh && (
+        <button
+          type="button"
+          className={'gg-zh' + (zhOpen ? '' : ' is-collapsed')}
+          aria-expanded={zhOpen}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleZh();
+          }}
+        >
+          {zhOpen ? seg.zh : '中文 ▸'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function stripQuotes(s: string): string {
+  return s.replace(/^[「『"']+/, '').replace(/[」』"']+$/, '');
+}
+
+/** Streaming body: every prose paragraph + open/closed dialogue lines, progressively (raw YAML never shown). */
+function StreamingBody({ text, speaker }: { text: string; speaker: string }) {
+  const blocks = useMemo(() => parseStreaming(text).filter((b) => (b.kind === 'text' ? !!b.text.trim() : b.kind === 'bilingual')), [text]);
+  const last = blocks[blocks.length - 1];
+  const lastText = !last ? '' : last.kind === 'text' ? last.text.trim() : last.kind === 'bilingual' ? stripQuotes(last.ja ?? '') : '';
+  const typed = useTypewriter(lastText);
+  return (
+    <>
+      {blocks.map((b, i) => {
+        const isLast = i === blocks.length - 1;
+        if (b.kind === 'text')
+          return isLast ? (
+            <div key={i} className="gg-narration is-typing">
+              {typed}
+              <span className="gg-caret" aria-hidden />
+            </div>
+          ) : (
+            <div key={i} className="gg-narration">
+              <Markdown text={b.text.trim()} />
+            </div>
+          );
+        if (b.kind !== 'bilingual') return null;
+        const ja = stripQuotes(b.ja ?? '');
+        return (
+          <div key={i} className="gg-speech">
+            {b.speaker && b.speaker !== speaker && (
+              <div className="gg-speech-head">
+                <span className="gg-speech-name">{b.speaker}</span>
+              </div>
+            )}
+            <div className={'gg-line' + (isLast ? ' is-typing' : '')} lang="ja">
+              {isLast ? typed : <RubyText parts={parseRubyNotation(ja)} />}
+              {isLast && <span className="gg-caret" aria-hidden />}
+            </div>
+            {b.closed && b.zh && <div className="gg-zh is-static">{b.zh}</div>}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * Immersive visual-novel stage (Screen 04): full-bleed CG, top glass micro-pills, frosted dialogue box
+ * with the whole scene (narration + dialogue + stickers, in order), floating choice pills.
+ * Voice playback is strictly tap-to-play; clips are only buffered in the background.
+ */
+export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicyChange, onPick, onExit, personaName }: GalgameStageProps) {
+  const media = useStore((s) => s.media);
+  const cgRef = useMemo(() => latestCg(items, media), [items, media]);
+  const cgUrl = useImageUrl(ctx.resolveMedia, cgRef);
+  const cgStatus = useMemo(() => pendingCgStatus(items, media), [items, media]);
+  const turn = useMemo(() => latestTurn(items), [items]);
+  const question = useMemo(() => openQuestion(items), [items]);
+  const streamText = preview && !preview.interrupted && preview.text.trim() ? preview.text : '';
+  const streaming = !!streamText;
+
+  const [zhClosed, setZhClosed] = useState<Record<number, boolean>>({});
   const [expanded, setExpanded] = useState(false);
   const [uiHidden, setUiHidden] = useState(false);
   const [multi, setMulti] = useState<string[]>([]);
   const press = useRef<{ t: ReturnType<typeof setTimeout> | null; y: number | null }>({ t: null, y: null });
 
   useEffect(() => setMulti([]), [question?.id]);
+  useEffect(() => setZhClosed({}), [turn?.item.key]);
   useEffect(() => () => {
     if (press.current.t) clearTimeout(press.current.t);
   }, []);
 
-  const lastItem = line?.item;
-  const personaName = lastItem?.sender?.display_name || lastItem?.sender?.name || '飞鸟';
-  const speaker = (line?.seg.speaker as string | undefined) || personaName;
-  const parts = line ? resolveRubyParts(line.seg) : [];
-  const voice = line?.seg.voice;
-  const voiceRef = voice ? toMediaRef(voice) : null;
-  const zh = line?.seg.zh ?? '';
+  const segs = turn?.segments ?? [];
+  const speeches = segs.filter((s): s is BilingualSegment => s.type === 'bilingual');
+  const firstSpeech = speeches[0];
+  const speaker = resolveSpeaker(firstSpeech?.speaker, turn?.item, personaName);
+  const roleName = resolveSpeaker(undefined, turn?.item, personaName);
+  const single = speeches.length === 1 ? speeches[0] : null;
 
   const startPress = (e: RPointerEvent) => {
     const el = e.target as HTMLElement | null;
@@ -188,6 +364,11 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
     const y = typeof e.clientY === 'number' ? e.clientY : null;
     if (press.current.y !== null && y !== null && press.current.y - y > 90) onExit(); // swipe up → bubble history
     press.current.y = null;
+  };
+  const onBoxClick = (e: RMouseEvent) => {
+    const el = e.target as HTMLElement | null;
+    if (el && typeof el.closest === 'function' && el.closest('button, a, ruby, rt, img, .k-voice')) return;
+    setExpanded((x) => !x);
   };
 
   return (
@@ -206,8 +387,13 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
 
       <div className="gg-top">
         <button type="button" className="gg-glass gg-back" onClick={onExit} aria-label="返回气泡流">
-          ← {personaName} · 约会
+          ← {roleName} · 约会
         </button>
+        {cgStatus && (
+          <span className={'gg-glass gg-cg-status is-' + cgStatus} role="status" data-testid="gg-cg-status">
+            {cgStatus === 'pending' ? '🎨 插画生成中…' : '⚠️ 插画未就绪'}
+          </span>
+        )}
         <SceneChips scene={stateFiles['game/scene.json']} glass />
         <PolicyBadge modeId="galgame" policy={policy} onPolicyChange={onPolicyChange} glass />
       </div>
@@ -243,37 +429,40 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
           </div>
         )}
 
-        {(line || typed) && (
-          <div className={'gg-box' + (expanded ? ' is-expanded' : '')} onClick={() => setExpanded((x) => !x)}>
+        {(turn || streaming) && (
+          <div className={'gg-box' + (expanded ? ' is-expanded' : '')} onClick={onBoxClick} data-testid="gg-box">
             <div className="gg-box-head">
-              <span className="gg-nameplate">{speaker}</span>
-              {!streaming && voiceRef && (
-                <VoicePill resolveUrl={() => ctx.resolveMedia(voiceRef)} durationMs={typeof voice?.duration_ms === 'number' ? voice.duration_ms : undefined} />
+              <span className="gg-nameplate">{streaming ? roleName : speaker}</span>
+              {!streaming && single && hasVoice(single) && <SpeechVoice seg={single} ctx={ctx} />}
+            </div>
+            <div className="gg-box-body" data-testid="gg-box-body">
+              {streaming ? (
+                <StreamingBody text={streamText} speaker={roleName} />
+              ) : (
+                segs.map((s, i) => (
+                  <Fragment key={i}>
+                    {s.type === 'text' ? (
+                      <div className="gg-narration">
+                        <Markdown text={s.markdown} />
+                      </div>
+                    ) : s.type === 'bilingual' ? (
+                      <Speech
+                        seg={s}
+                        ctx={ctx}
+                        speaker={resolveSpeaker(s.speaker, turn?.item, personaName)}
+                        showHead={!single}
+                        zhOpen={!zhClosed[i]}
+                        onToggleZh={() => setZhClosed((z) => ({ ...z, [i]: !z[i] }))}
+                      />
+                    ) : (
+                      <div className="gg-sticker">
+                        <StickerThumb seg={s as FileSegment} ctx={ctx} />
+                      </div>
+                    )}
+                  </Fragment>
+                ))
               )}
             </div>
-            {streaming ? (
-              <div className="gg-line is-typing" lang="ja">
-                {typed}
-                <span className="gg-caret" aria-hidden />
-              </div>
-            ) : (
-              <div className="gg-line">
-                <RubyText parts={parts} />
-              </div>
-            )}
-            {!streaming && zh && (
-              <button
-                type="button"
-                className={'gg-zh' + (zhOpen ? '' : ' is-collapsed')}
-                aria-expanded={zhOpen}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setZhOpen((o) => !o);
-                }}
-              >
-                {zhOpen ? zh : '中文 ▸'}
-              </button>
-            )}
           </div>
         )}
       </div>

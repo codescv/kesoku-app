@@ -136,7 +136,7 @@ describe('Launchpad & Composer', () => {
     render(<Composer sessionId="s" modeId={mode} roleName="飞鸟" />);
     expect(screen.getByLabelText('消息输入框')).toBeTruthy();
     expect(screen.getByLabelText('拍照或选图')).toBeTruthy();
-    expect(screen.getByLabelText('按住说话')).toBeTruthy();
+    expect(screen.getByLabelText('开始语音输入')).toBeTruthy();
   });
 
   it('send is disabled while offline', () => {

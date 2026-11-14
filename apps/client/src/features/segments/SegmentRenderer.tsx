@@ -16,6 +16,23 @@ export interface SegmentEnv {
   onWord?: (token: LexToken, sentence: string) => void;
   readOnly?: boolean;
   inlineLex?: boolean;
+  /** Eagerly buffer voice clips of this row (the latest few rows when a session is opened from history). */
+  preloadVoice?: boolean;
+}
+
+const STICKER_DIR = /(^|\/)stickers\//i;
+const GIF_EXT = /\.gif$/i;
+
+/** Chibi sticker / GIF media: rendered small inline, never as a full-width card or a galgame CG. */
+export function isStickerMedia(media: { mime?: unknown; name?: unknown; ref?: unknown; object?: unknown; url?: unknown } | Record<string, unknown>): boolean {
+  const seg = media as { mime?: unknown; name?: unknown; ref?: unknown; object?: unknown; url?: unknown };
+  if (String(seg.mime ?? '').toLowerCase() === 'image/gif') return true;
+  for (const v of [seg.ref, seg.name, seg.object, seg.url]) {
+    if (typeof v !== 'string' || !v) continue;
+    const path = v.split('?')[0];
+    if (STICKER_DIR.test(path) || GIF_EXT.test(path)) return true;
+  }
+  return false;
 }
 
 function QuestionPills({ seg, env }: { seg: QuestionSegment; env: SegmentEnv }) {
@@ -65,7 +82,8 @@ function DetailsBlock({ seg }: { seg: DetailsSegment }) {
 }
 
 /** Images: placeholder/object load when rendered; history `ref`-only media loads on tap (media.hydrate). */
-export function MediaImage({ seg, ctx }: { seg: FileSegment; ctx: CardContext }) {
+export function MediaImage({ seg, ctx, className }: { seg: FileSegment; ctx: CardContext; className?: string }) {
+  const sticker = isStickerMedia(seg);
   const entry = useStore((s) => (seg.placeholder_id ? s.media[seg.placeholder_id] : undefined));
   const [url, setUrl] = useState<string | null>(seg.url ?? null);
   const [state, setState] = useState<'idle' | 'loading' | 'failed'>('idle');
@@ -88,33 +106,68 @@ export function MediaImage({ seg, ctx }: { seg: FileSegment; ctx: CardContext })
   if (entry?.status === 'failed' || state === 'failed') return <div className="k-media k-media-failed">⚠️ 附件生成失败{entry?.reason ? ` · ${entry.reason}` : ''}</div>;
   if (url)
     return (
-      <button type="button" className="k-media k-media-img" onClick={() => overlays.image(url)} aria-label="查看大图">
-        <img src={url} alt={seg.name ?? '图片'} loading="lazy" />
+      <button
+        type="button"
+        className={['k-media', 'k-media-img', sticker && 'is-sticker', className].filter(Boolean).join(' ')}
+        onClick={(e) => {
+          e.stopPropagation();
+          overlays.image(url);
+        }}
+        aria-label={sticker ? '查看表情' : '查看大图'}
+      >
+        <img src={url} alt={seg.name ?? (sticker ? '表情' : '图片')} loading="lazy" />
       </button>
     );
   if (lazyOnly)
     return (
       <button
         type="button"
-        className="k-media k-media-tap"
-        onClick={() => {
+        className={['k-media', 'k-media-tap', sticker && 'is-sticker', className].filter(Boolean).join(' ')}
+        onClick={(e) => {
+          e.stopPropagation();
           setState('loading');
           ctx.resolveMedia({ ref: seg.ref }).then((u) => (u ? setUrl(u) : setState('failed')), () => setState('failed'));
         }}
       >
-        {state === 'loading' ? '载入中…' : '🖼 点开查看图片'}
+        {state === 'loading' ? '载入中…' : sticker ? '🙂 表情' : '🖼 点开查看图片'}
       </button>
     );
-  return <div className="k-media k-media-pending">⏳ {entry?.label || '附件生成中…'}</div>;
+  return <div className={['k-media', 'k-media-pending', sticker && 'is-sticker', className].filter(Boolean).join(' ')}>⏳ {entry?.label || (sticker ? '表情' : '附件生成中…')}</div>;
 }
 
-function VoiceSegment({ seg, ctx }: { seg: FileSegment; ctx: CardContext }) {
-  const entry = useStore((s) => (seg.placeholder_id ? s.media[seg.placeholder_id] : undefined));
-  if (entry?.status === 'failed') return <div className="k-media k-media-failed">⚠️ 语音生成失败</div>;
-  if (seg.placeholder_id && entry?.status === 'pending') return <div className="k-media k-media-pending">⏳ {entry.label || '语音生成中…'}</div>;
+/** Compact inline sticker for narrative flows (galgame dialogue box). */
+export function StickerThumb({ seg, ctx }: { seg: FileSegment; ctx: CardContext }) {
+  return <MediaImage seg={seg} ctx={ctx} className="k-sticker-thumb" />;
+}
+
+/** Pending/failed/ready status of a voice clip, from the media placeholder store. */
+export function useVoiceStatus(v: { placeholder_id?: string; object?: string; url?: string; ref?: string } | undefined, preloadVoice?: boolean) {
+  const pid = v?.placeholder_id;
+  const entry = useStore((s) => (pid ? s.media[pid] : undefined));
+  const pending = !!pid && !v?.object && !v?.url && (entry?.status === 'pending' || (!entry && !v?.ref));
+  const failed = entry?.status === 'failed';
+  const readyKey = entry?.url || v?.object || v?.url || '';
+  return {
+    entry,
+    pending,
+    failed,
+    preload: !pending && !failed && Boolean(readyKey || preloadVoice),
+    preloadKey: readyKey || v?.ref || '',
+  };
+}
+
+function VoiceSegment({ seg, ctx, preloadVoice }: { seg: FileSegment; ctx: CardContext; preloadVoice?: boolean }) {
+  const st = useVoiceStatus(seg, preloadVoice);
   return (
     <div className="k-voice-row">
-      <VoicePill durationMs={seg.duration_ms ?? entry?.duration_ms} resolveUrl={() => ctx.resolveMedia({ placeholder_id: seg.placeholder_id, object: seg.object, ref: seg.ref, url: seg.url })} />
+      <VoicePill
+        pending={st.pending}
+        failed={st.failed}
+        preload={st.preload}
+        preloadKey={st.preloadKey}
+        durationMs={seg.duration_ms ?? st.entry?.duration_ms}
+        resolveUrl={() => ctx.resolveMedia({ placeholder_id: seg.placeholder_id, object: seg.object, ref: seg.ref, url: seg.url })}
+      />
     </div>
   );
 }
@@ -140,6 +193,7 @@ export function SegmentView({ seg, env }: { seg: Segment; env: SegmentEnv }) {
           explain={env.explain}
           onWord={env.onWord}
           inlineLex={env.inlineLex}
+          preloadVoice={env.preloadVoice}
           resolveVoice={() => env.ctx.resolveMedia({ placeholder_id: seg.voice?.placeholder_id, object: seg.voice?.object, ref: seg.voice?.ref, url: seg.voice?.url })}
         />
       );
@@ -148,9 +202,9 @@ export function SegmentView({ seg, env }: { seg: Segment; env: SegmentEnv }) {
     case 'details':
       return <DetailsBlock seg={seg} />;
     case 'file':
-      return /^audio\//.test(seg.mime ?? '') ? <VoiceSegment seg={seg} ctx={env.ctx} /> : <MediaImage seg={seg} ctx={env.ctx} />;
+      return /^audio\//.test(seg.mime ?? '') ? <VoiceSegment seg={seg} ctx={env.ctx} preloadVoice={env.preloadVoice} /> : <MediaImage seg={seg} ctx={env.ctx} />;
     case 'voice':
-      return <VoiceSegment seg={seg} ctx={env.ctx} />;
+      return <VoiceSegment seg={seg} ctx={env.ctx} preloadVoice={env.preloadVoice} />;
     case 'card':
       return <CardBlock seg={seg} ctx={env.ctx} />;
     default:

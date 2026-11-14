@@ -5,6 +5,10 @@ import { actions, useStore } from '../../lib/store';
 import { compressImage, HoldRecorder } from '../../lib/files';
 import { pickImages } from '../../native/camera';
 
+function fmtSec(sec: number): string {
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+}
+
 interface Pending {
   file: File;
   preview: string;
@@ -18,6 +22,7 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
   const [text, setText] = useState('');
   const [files, setFiles] = useState<Pending[]>([]);
   const [recording, setRecording] = useState(false);
+  const [recordSec, setRecordSec] = useState(0);
   const [busy, setBusy] = useState(false);
   const [listenOther, setListenOther] = useState(false);
   const online = useStore((s) => s.conn.status === 'online');
@@ -41,6 +46,22 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
 
   useEffect(() => () => files.forEach((f) => URL.revokeObjectURL(f.preview)), [files]);
 
+  useEffect(() => {
+    if (!recording) return;
+    setRecordSec(0);
+    const t = setInterval(() => setRecordSec((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, [recording]);
+
+  // Leaving the screen mid-recording discards it (and releases the microphone).
+  useEffect(
+    () => () => {
+      recRef.current?.cancel();
+      recRef.current = null;
+    },
+    [],
+  );
+
   const placeholder = modeId === 'chat' ? `发消息给${roleName}...` : meta.placeholder;
   const canSend = online && !busy && (text.trim().length > 0 || files.length > 0);
 
@@ -59,7 +80,7 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
         if (modeId === 'pokemon_assistant') msg = '识别画面中的宝可梦并给出弱点';
         else if (modeId === 'translator') msg = '翻译图片中的文字';
       }
-      if (!msg && all.some((f) => f.type.startsWith('audio/')) && modeId === 'translator') msg = listenOther ? '【听对方说】翻译成中文' : '【按住说】翻译成对方语言';
+      if (!msg && all.some((f) => f.type.startsWith('audio/')) && modeId === 'translator') msg = listenOther ? '【听对方说】翻译成中文' : '【我说】翻译成对方语言';
       setText('');
       setFiles([]);
       await kesoku.sendMessage(sid, msg, attachments);
@@ -80,22 +101,38 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
     setFiles((x) => [...x, ...next]);
   }
 
-  async function micDown() {
+  async function startRecording() {
+    if (recording || recRef.current) return;
     if (!HoldRecorder.supported()) return actions.toast('此设备不支持录音');
+    const rec = new HoldRecorder();
+    recRef.current = rec;
     try {
-      recRef.current = new HoldRecorder();
-      await recRef.current.start();
+      await rec.start();
+      if (recRef.current !== rec) return; // cancelled / unmounted while opening the mic
+      setRecordSec(0);
       setRecording(true);
     } catch {
-      actions.toast('无法访问麦克风', 'error');
+      if (recRef.current === rec) {
+        recRef.current = null;
+        actions.toast('无法访问麦克风', 'error');
+      }
     }
   }
-  async function micUp() {
-    if (!recRef.current) return;
-    setRecording(false);
-    const f = await recRef.current.stop();
+  function cancelRecording() {
+    recRef.current?.cancel();
     recRef.current = null;
+    setRecording(false);
+    setRecordSec(0);
+  }
+  async function confirmRecording() {
+    const rec = recRef.current;
+    if (!rec) return;
+    recRef.current = null;
+    setRecording(false);
+    setRecordSec(0);
+    const f = await rec.stop();
     if (f) await send([f]);
+    else actions.toast('没有录到声音');
   }
 
   if (readOnly) return null;
@@ -105,7 +142,7 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
       {modeId === 'translator' && (
         <div className="k-composer-sub">
           <button type="button" className={'k-pill k-pill-sm ' + (!listenOther ? 'is-active' : 'k-pill-neutral')} onClick={() => setListenOther(false)}>
-            🎙️ 按住说
+            🎙️ 我说
           </button>
           <button type="button" className={'k-pill k-pill-sm ' + (listenOther ? 'is-active' : 'k-pill-neutral')} onClick={() => setListenOther(true)}>
             👂 听对方说
@@ -125,44 +162,47 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
           ))}
         </div>
       )}
-      <div className="k-composer-row">
-        <textarea
-          ref={taRef}
-          className="k-composer-input"
-          rows={1}
-          value={text}
-          placeholder={recording ? '正在录音… 松开发送' : placeholder}
-          lang={modeId === 'jp_classroom' ? 'ja' : undefined}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              if (canSend) void send();
-            }
-          }}
-          aria-label="消息输入框"
-        />
-        <button type="button" className="k-composer-btn" aria-label="拍照或选图" onClick={() => void onPick()} disabled={busy}>
-          📷
-        </button>
-        <button
-          type="button"
-          className={'k-composer-btn' + (recording ? ' is-recording' : '')}
-          aria-label="按住说话"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            void micDown();
-          }}
-          onPointerUp={() => void micUp()}
-          onPointerLeave={() => recording && void micUp()}
-          disabled={busy || !online}
-        >
-          🎙️
-        </button>
-        <button type="button" className="k-composer-send" aria-label="发送" disabled={!canSend} onClick={() => void send()}>
-          ↑
-        </button>
-      </div>
+      {recording ? (
+        <div className="k-composer-row k-rec-bar" data-testid="composer-recording-bar">
+          <button type="button" className="k-rec-cancel" aria-label="取消录音" onClick={cancelRecording}>
+            ✕ 取消
+          </button>
+          <div className="k-rec-status" role="status">
+            <span className="k-rec-dot" aria-hidden /> <span>录音中 {fmtSec(recordSec)}</span>
+          </div>
+          <button type="button" className="k-rec-send" aria-label="发送语音" disabled={busy} onClick={() => void confirmRecording()}>
+            ✓ 发送
+          </button>
+        </div>
+      ) : (
+        <div className="k-composer-row">
+          <textarea
+            ref={taRef}
+            className="k-composer-input"
+            rows={1}
+            value={text}
+            placeholder={placeholder}
+            lang={modeId === 'jp_classroom' ? 'ja' : undefined}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                if (canSend) void send();
+              }
+            }}
+            aria-label="消息输入框"
+          />
+          <button type="button" className="k-composer-btn" aria-label="拍照或选图" onClick={() => void onPick()} disabled={busy}>
+            📷
+          </button>
+          <button type="button" className="k-composer-btn" aria-label="开始语音输入" onClick={() => void startRecording()} disabled={busy || !online}>
+            🎙️
+          </button>
+          <button type="button" className="k-composer-send" aria-label="发送" disabled={!canSend} onClick={() => void send()}>
+            ↑
+          </button>
+        </div>
+      )}
     </div>
   );
 }

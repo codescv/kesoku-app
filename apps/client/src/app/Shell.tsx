@@ -126,6 +126,7 @@ export function Shell() {
   const meta = modeMeta(modeId);
   const policy = (policies[modeId] ?? 'confirm_only') as MemoryPolicy;
   const roleName = personas.find((p) => p.role_id === (session?.role ?? 'asuka'))?.display_name?.split(' ')[0] ?? '飞鸟';
+  const fullRoleName = personas.find((p) => p.role_id === (session?.role ?? 'asuka'))?.display_name || '斋藤飞鸟';
   const showLaunchpad = ui.screen === 'chat' && (ui.launchpad || !sid);
   const galStage = modeId === 'galgame' && ui.stageView === 'stage' && !showLaunchpad && !!sid;
 
@@ -224,6 +225,7 @@ export function Shell() {
               onPolicyChange={(p: MemoryPolicy) => void kesoku.setPolicy('galgame', p)}
               onPick={(qid: string, choices: string[]) => void kesoku.pick(sid!, qid, choices)}
               onExit={() => actions.setUi({ stageView: 'bubbles' })}
+              personaName={fullRoleName}
             />
           ) : (
             sid && <MessageList sessionId={sid} modeId={modeId} />

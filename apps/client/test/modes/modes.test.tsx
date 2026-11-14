@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { Segment } from '@kesoku/protocol';
-import { GalgameStage, ModePanel, PeekSheet, previewLine } from '../../src/features/modes';
+import { GalgameStage, ModePanel, PeekSheet, latestCg, latestTurn, previewLine } from '../../src/features/modes';
 import type { ChatItem } from '../../src/lib/types';
+import { useStore } from '../../src/lib/store';
 import { makeCtx } from '../cards/ctx';
 
 function assistant(key: string, segments: Segment[], extra: Partial<ChatItem> = {}): ChatItem {
@@ -56,15 +57,115 @@ describe('GalgameStage', () => {
     expect(props.onPick).toHaveBeenCalledWith('m2', ['凑近尝一口汽水']);
   });
 
-  it('creates no audio and resolves no voice before the tap', async () => {
-    const audioSpy = vi.spyOn(window, 'Audio');
-    const { ctx } = stage();
+  it('buffers the ready voice in the background but never plays it before the tap', async () => {
+    const play = vi.fn(async () => {});
+    const AudioSpy = vi.fn(function (this: Record<string, unknown>) {
+      this.play = play;
+      this.pause = vi.fn();
+      this.load = vi.fn();
+    });
+    vi.stubGlobal('Audio', AudioSpy);
+    try {
+      const { ctx } = stage();
+      await act(async () => {});
+      expect(document.querySelector('audio')).toBeNull();
+      expect(ctx.resolveMedia).toHaveBeenCalledWith(expect.objectContaining({ object: 'voice/1.ogg' }));
+      expect(AudioSpy).toHaveBeenCalledTimes(1);
+      expect(play).not.toHaveBeenCalled();
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: '播放语音' })));
+      expect(play).toHaveBeenCalledTimes(1);
+      expect(AudioSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('renders the whole scene in order: narration, 斋藤飞鸟 dialogue (never "Kesoku"), closing narration, inline sticker', async () => {
+    const turn = assistant(
+      'm9',
+      [
+        { type: 'text', markdown: '夕阳把海面染成了橘色，飞鸟踮着脚走在防波堤上。' } as Segment,
+        { type: 'bilingual', ja_plain: 'ねえ、見て！', ja: 'ねえ、見(み)て！', zh: '喂，你看！', voice: { object: 'voice/9.ogg' } } as Segment,
+        { type: 'text', markdown: '她回头冲你眨了眨眼，把汽水递了过来。' } as Segment,
+        { type: 'file', object: 'roles/asuka/stickers/21_啄你哦.gif', name: '21_啄你哦.gif' } as Segment,
+      ],
+      { sender: { name: 'Kesoku' } },
+    );
+    const { container } = stage({ items: [turn], personaName: '斋藤飞鸟' });
     await act(async () => {});
-    expect(document.querySelector('audio')).toBeNull();
-    expect(audioSpy).not.toHaveBeenCalled();
-    expect(ctx.resolveMedia).not.toHaveBeenCalledWith(expect.objectContaining({ object: 'voice/1.ogg' }));
-    expect(screen.getByRole('button', { name: '播放语音' })).toBeTruthy();
-    audioSpy.mockRestore();
+    const body = screen.getByTestId('gg-box-body');
+    const kids = Array.from(body.children).map((el) => el.className);
+    expect(kids).toEqual(['gg-narration', 'gg-speech', 'gg-narration', 'gg-sticker']);
+    expect(body.textContent).toContain('夕阳把海面染成了橘色');
+    expect(body.textContent).toContain('把汽水递了过来');
+    expect(screen.getByText('喂，你看！')).toBeTruthy();
+    expect(container.querySelector('.gg-nameplate')?.textContent).toBe('斋藤飞鸟');
+    expect(container.textContent).not.toContain('Kesoku');
+    // single dialogue line → its voice pill sits in the box header
+    expect(container.querySelector('.gg-box-head .k-voice')).toBeTruthy();
+    // the sticker stays inline and small, never the CG
+    expect(container.querySelector('.gg-sticker .k-media.is-sticker')).toBeTruthy();
+    expect(screen.getByTestId('gg-fallback')).toBeTruthy();
+  });
+
+  it('multi-line turns get a voice pill per speech; tapping the box toggles expansion but buttons do not', async () => {
+    const turn = assistant('m10', [
+      { type: 'bilingual', ja_plain: 'おはよう', zh: '早上好', voice: { object: 'v/a.ogg' } } as Segment,
+      { type: 'bilingual', ja_plain: 'またね', zh: '回头见', voice: { object: 'v/b.ogg' } } as Segment,
+    ]);
+    const { container } = stage({ items: [turn] });
+    await act(async () => {});
+    expect(container.querySelector('.gg-box-head .k-voice')).toBeNull();
+    expect(container.querySelectorAll('.gg-speech-head .k-voice')).toHaveLength(2);
+    const box = screen.getByTestId('gg-box');
+    fireEvent.click(screen.getByText('早上好'));
+    expect(box.classList.contains('is-expanded')).toBe(false);
+    fireEvent.click(container.querySelector('.gg-narration, .gg-line') as HTMLElement);
+    expect(box.classList.contains('is-expanded')).toBe(true);
+  });
+
+  it('latestCg never picks stickers and skips pending/failed placeholders (keeps the previous CG)', () => {
+    const items: ChatItem[] = [
+      assistant('a', [{ type: 'file', placeholder_id: 'cg-1', mime: 'image/webp' } as Segment]),
+      assistant('b', [
+        { type: 'file', placeholder_id: 'cg-2', mime: 'image/webp' } as Segment,
+        { type: 'file', object: 'roles/asuka/stickers/21_啄你哦.gif' } as Segment,
+        { type: 'file', ref: 'x/y/z.gif' } as Segment,
+      ]),
+    ];
+    expect(latestCg(items)).toEqual({ placeholder_id: 'cg-2' });
+    expect(latestCg(items, { 'cg-2': { status: 'pending' } })).toEqual({ placeholder_id: 'cg-1' });
+    expect(latestCg(items, { 'cg-2': { status: 'failed' } })).toEqual({ placeholder_id: 'cg-1' });
+    expect(latestCg(items, { 'cg-2': { status: 'ready' } })).toEqual({ placeholder_id: 'cg-2' });
+    expect(latestCg([assistant('s', [{ type: 'file', object: 'roles/asuka/stickers/1.gif', mime: 'image/gif' } as Segment])])).toBeNull();
+    expect(latestTurn(items)?.item.key).toBe('b');
+  });
+
+  it('shows 插画生成中 while the new CG is pending and keeps the previous CG', async () => {
+    useStore.setState((s) => ({ media: { ...s.media, 'cg-new': { status: 'pending' } } }));
+    try {
+      const { ctx } = stage();
+      await act(async () => {});
+      expect(screen.getByTestId('gg-cg-status').textContent).toContain('🎨 插画生成中…');
+      expect(ctx.resolveMedia).toHaveBeenCalledWith({ placeholder_id: 'cg-old' });
+      expect(ctx.resolveMedia).not.toHaveBeenCalledWith({ placeholder_id: 'cg-new' });
+      await act(async () => useStore.setState((s) => ({ media: { ...s.media, 'cg-new': { status: 'failed' } } })));
+      expect(screen.getByTestId('gg-cg-status').textContent).toContain('⚠️ 插画未就绪');
+      await act(async () => useStore.setState((s) => ({ media: { ...s.media, 'cg-new': { status: 'ready' } } })));
+      expect(screen.queryByTestId('gg-cg-status')).toBeNull();
+      expect(ctx.resolveMedia).toHaveBeenCalledWith({ placeholder_id: 'cg-new' });
+    } finally {
+      useStore.setState({ media: {} });
+    }
+  });
+
+  it('streaming shows earlier narration paragraphs together with the dialogue being typed', async () => {
+    stage({ preview: { turn_id: 't', round_id: 0, text: '海风吹起她的刘海。\n\n```bilingual\nja: 「寒いね」\nzh: 好冷\n```\n\n她往你身边靠了靠', thought: '', startedAt: 0 } });
+    await act(async () => {});
+    const body = screen.getByTestId('gg-box-body');
+    expect(body.textContent).toContain('海风吹起她的刘海。');
+    expect(body.querySelector('.gg-speech')).toBeTruthy();
+    expect(body.textContent).not.toContain('ja:');
   });
 
   it('falls back to a gradient without CG; ← exits; zh line toggles; policy badge changes policy', () => {

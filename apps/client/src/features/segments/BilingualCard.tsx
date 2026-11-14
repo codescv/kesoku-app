@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { BilingualSegment, LexToken } from '@kesoku/protocol';
 import { RubyText, VoicePill, resolveRubyParts, type RubyPart } from '@kesoku/ui';
+import { useStore } from '../../lib/store';
 
 export interface WordUnit extends RubyPart {
   start: number;
@@ -85,6 +86,8 @@ export interface BilingualCardProps {
   compact?: boolean;
   /** Mobile shows the breakdown inline; the desktop workbench shows it in the right column instead. */
   inlineLex?: boolean;
+  /** Buffer the voice clip in the background even when it is only a history `ref` (latest rows). */
+  preloadVoice?: boolean;
 }
 
 export function LexCard({ token, onClose }: { token: LexToken; onClose?: () => void }) {
@@ -137,7 +140,11 @@ export function LexCard({ token, onClose }: { token: LexToken; onClose?: () => v
 }
 
 /** Integrated bilingual card: real <ruby>, tap-to-play ▶ (never autoplay), tap-to-toggle 中文, tap-any-word breakdown. */
-export function BilingualCard({ seg, resolveVoice, explain, onWord, compact, inlineLex = true }: BilingualCardProps) {
+export function BilingualCard({ seg, resolveVoice, explain, onWord, compact, inlineLex = true, preloadVoice }: BilingualCardProps) {
+  const entry = useStore((s) => (seg.voice?.placeholder_id ? s.media[seg.voice.placeholder_id] : undefined));
+  const vPending = !!seg.voice?.placeholder_id && !seg.voice?.object && !seg.voice?.url && (entry?.status === 'pending' || (!entry && !seg.voice?.ref));
+  const vFailed = entry?.status === 'failed';
+  const readyKey = entry?.url || seg.voice?.object || seg.voice?.url || '';
   const parts = useMemo(() => resolveRubyParts(seg as never), [seg]);
   const plain = useMemo(() => parts.map((p) => p.base).join(''), [parts]);
   const units = useMemo(() => toWordUnits(parts, seg.tokens), [parts, seg.tokens]);
@@ -179,7 +186,16 @@ export function BilingualCard({ seg, resolveVoice, explain, onWord, compact, inl
       <div className="k-bi-head">
         {seg.speaker && <span className="k-bi-speaker">{seg.speaker}</span>}
         <span className="k-bi-spacer" />
-        {hasVoice && <VoicePill resolveUrl={resolveVoice} durationMs={seg.voice?.duration_ms} />}
+        {hasVoice && (
+          <VoicePill
+            resolveUrl={resolveVoice}
+            pending={vPending}
+            failed={vFailed}
+            preload={!vPending && !vFailed && Boolean(readyKey || preloadVoice)}
+            preloadKey={readyKey || seg.voice?.ref || ''}
+            durationMs={seg.voice?.duration_ms ?? entry?.duration_ms}
+          />
+        )}
       </div>
       <div className="k-bi-ja">
         <RubyText parts={units} onPartClick={onPart} activeIndex={active} />

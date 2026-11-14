@@ -160,7 +160,7 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
             加载更早的消息
           </button>
         )}
-        {items.map((item) => {
+        {items.map((item, idx) => {
           if (item.kind === 'user')
           return (
             <Fragment key={item.key}>
@@ -182,6 +182,7 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
             onWord,
             readOnly,
             inlineLex: !desktop,
+            preloadVoice: idx >= items.length - 3,
           };
           const evs = (item.turn_id && turnEvents[item.turn_id]) || EMPTY_EVENTS;
           return (

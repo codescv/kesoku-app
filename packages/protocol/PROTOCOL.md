@@ -27,7 +27,7 @@ Python side (`kesoku/gateway/chatbot/app/protocol.py`).
 | Concern | Rule |
 |---|---|
 | Relay-consumed client types | `auth.hello`, `ping`, `media.ticket`, `media.refresh` (never forwarded) |
-| Client → engine | everything else, verbatim + `device_id`; relay additionally injects signed GET `url` into each `message.send.attachments[]` and `source_url` into `avatar.generate` |
+| Client → engine | everything else, verbatim + `device_id`; relay additionally injects signed GET `url` into each `message.send.attachments[]` and `source_url` into `avatar.generate` (when `source_object` is present; omitting it regenerates from the target's existing original image, see `has_source_image` on persona/profile summaries) |
 | Engine offline | client frames queue in relay (≤ 1,000); overflow → `error{code:"ENGINE_OFFLINE", reply_to}` |
 | Ring buffer | every engine→client frame with `session_id` + `seq` (and no `device_id`) is appended to a 2,000-event per-session ring |
 | `sync.resume` | per session: ring covers `last_seq+1` → relay replays the ring events (unicast) then forwards `sync.replay{session_id, after_seq: <last replayed seq>, limit:500}` to the engine (engine answers `sync.done` with `active_turn`); ring miss → forward `sync.replay{after_seq: last_seq}`; engine offline → relay answers `sync.done{has_more:false}` from the ring |

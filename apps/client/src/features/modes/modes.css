@@ -101,6 +101,31 @@
 .gg-zh.is-collapsed { align-self: flex-start; color: rgba(255, 255, 255, 0.6); }
 .gg-stage .k-voice { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.24); color: #fff; }
 
+/* Whole-scene dialogue box body: narration + dialogue + stickers in narrative order. */
+.gg-box-body {
+  display: flex; flex-direction: column; gap: 10px; max-height: min(38vh, 280px); overflow-y: auto; overscroll-behavior: contain;
+  padding-right: 4px; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.28) transparent; -webkit-overflow-scrolling: touch;
+}
+.gg-box.is-expanded .gg-box-body { max-height: min(62vh, 460px); }
+.gg-box-body::-webkit-scrollbar { width: 4px; }
+.gg-box-body::-webkit-scrollbar-track { background: transparent; }
+.gg-box-body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.28); border-radius: 4px; }
+.gg-box-body .gg-line { -webkit-line-clamp: unset; line-clamp: none; overflow: visible; display: block; }
+.gg-narration { color: rgba(246, 242, 236, 0.9); font: 500 14.5px/1.65 var(--font-sans); letter-spacing: 0.01em; text-indent: 1em; }
+.gg-narration p { margin: 0 0 6px; }
+.gg-narration p:last-child { margin-bottom: 0; }
+.gg-narration.is-typing { white-space: pre-wrap; }
+.gg-speech { display: flex; flex-direction: column; gap: 6px; padding-left: 10px; border-left: 2px solid color-mix(in srgb, var(--m-galgame) 70%, transparent); }
+.gg-speech-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.gg-speech-name { color: color-mix(in srgb, var(--m-galgame) 40%, #fff); font-size: 13px; font-weight: 900; }
+.gg-zh.is-static { cursor: default; }
+.gg-sticker { display: flex; }
+.gg-sticker .k-media.is-sticker, .gg-sticker .k-media.is-sticker img { max-height: 76px; width: auto; border-radius: 8px; }
+.gg-sticker .k-media.is-sticker { max-width: 120px; color: rgba(255, 255, 255, 0.7); }
+.gg-cg-status { display: inline-flex; align-items: center; padding: 5px 10px; border-radius: 999px; color: rgba(255, 255, 255, 0.88); font-size: 12px; font-weight: 700; }
+.gg-cg-status.is-pending { animation: gg-breathe 2.2s ease-in-out infinite; }
+@keyframes gg-breathe { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+
 .gg-stage.is-ui-hidden .gg-top,
 .gg-stage.is-ui-hidden .gg-bottom { opacity: 0; pointer-events: none; }
 .gg-stage.is-ui-hidden .gg-vignette { opacity: 0; }
@@ -110,7 +135,7 @@
   .gg-choices { max-width: 720px; align-self: center; width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .gg-cg, .gg-cg.is-top, .gg-choice, .gg-caret { animation: none; }
+  .gg-cg, .gg-cg.is-top, .gg-choice, .gg-caret, .gg-cg-status { animation: none; }
 }
 
 /* ============================ Wiki Peek Sheet ============================ */

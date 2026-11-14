@@ -3,8 +3,9 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { BilingualSegment, Segment } from '@kesoku/protocol';
 import { BilingualCard, findToken, toWordUnits, tokenSpans } from '../src/features/segments/BilingualCard';
 import { Markdown, parseBlocks } from '../src/features/segments/Markdown';
-import { SegmentList, type SegmentEnv } from '../src/features/segments/SegmentRenderer';
+import { SegmentList, isStickerMedia, type SegmentEnv } from '../src/features/segments/SegmentRenderer';
 import type { CardContext } from '../src/features/cards/types';
+import { useStore } from '../src/lib/store';
 
 function ctx(overrides: Partial<CardContext> = {}): CardContext {
   return {
@@ -56,25 +57,39 @@ describe('word units', () => {
 });
 
 describe('<BilingualCard>', () => {
-  it('renders ruby, never fetches voice before the tap, and plays on tap', async () => {
+  it('renders ruby, shows 合成中 while TTS is pending, buffers when ready, plays only on tap', async () => {
     const resolveVoice = vi.fn(async () => 'https://media.test/v.m4a');
     const play = vi.fn(async () => {});
+    const load = vi.fn();
     const AudioSpy = vi.fn(function (this: Record<string, unknown>) {
       this.play = play;
       this.pause = vi.fn();
+      this.load = load;
     });
     vi.stubGlobal('Audio', AudioSpy);
-    const { container } = render(<BilingualCard seg={seg} resolveVoice={resolveVoice} explain={vi.fn()} />);
-    expect(container.querySelectorAll('ruby').length).toBe(2);
-    expect(container.querySelector('rt')?.textContent).toBe('きょう');
-    expect(container.querySelector('audio')).toBeNull();
-    expect(resolveVoice).not.toHaveBeenCalled();
-    expect(AudioSpy).not.toHaveBeenCalled();
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '播放语音' })));
-    expect(resolveVoice).toHaveBeenCalledTimes(1);
-    expect(AudioSpy).toHaveBeenCalledWith('https://media.test/v.m4a');
-    expect(play).toHaveBeenCalled();
-    vi.unstubAllGlobals();
+    try {
+      const { container } = render(<BilingualCard seg={seg} resolveVoice={resolveVoice} explain={vi.fn()} />);
+      expect(container.querySelectorAll('ruby').length).toBe(2);
+      expect(container.querySelector('rt')?.textContent).toBe('きょう');
+      expect(container.querySelector('audio')).toBeNull();
+      // placeholder not ready yet → pending pill, nothing fetched
+      const pill = container.querySelector('.k-voice') as HTMLButtonElement;
+      expect(pill.getAttribute('data-state')).toBe('pending');
+      expect(pill.textContent).toContain('合成中…');
+      expect(resolveVoice).not.toHaveBeenCalled();
+      // synthesis finished → buffered eagerly in the background, never played
+      await act(async () => useStore.setState((s) => ({ media: { ...s.media, pv1: { status: 'ready', url: 'https://media.test/v.m4a' } } })));
+      expect(resolveVoice).toHaveBeenCalledTimes(1);
+      expect(AudioSpy).toHaveBeenCalledWith('https://media.test/v.m4a');
+      expect(load).toHaveBeenCalled();
+      expect(play).not.toHaveBeenCalled();
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: '播放语音' })));
+      expect(resolveVoice).toHaveBeenCalledTimes(1);
+      expect(play).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      useStore.setState({ media: {} });
+    }
   });
 
   it('toggles the Chinese translation on tap', () => {
@@ -178,10 +193,84 @@ describe('<SegmentList>', () => {
     expect(resolveMedia).not.toHaveBeenCalled();
     expect(screen.getByText('🖼 点开查看图片')).toBeTruthy();
   });
-  it('voice segments do not fetch until tapped', () => {
+  it('voice segments buffer in the background but never play before the tap', async () => {
     const resolveMedia = vi.fn(async () => 'u');
-    render(<SegmentList segments={[{ type: 'voice', object: 'media/aaaaaaaa/x.m4a' }]} env={env({ ctx: ctx({ resolveMedia }) })} />);
+    const play = vi.fn(async () => {});
+    vi.stubGlobal(
+      'Audio',
+      vi.fn(function (this: Record<string, unknown>) {
+        this.play = play;
+        this.pause = vi.fn();
+      }),
+    );
+    try {
+      render(<SegmentList segments={[{ type: 'voice', object: 'media/aaaaaaaa/x.m4a' }]} env={env({ ctx: ctx({ resolveMedia }) })} />);
+      await act(async () => {});
+      expect(resolveMedia).toHaveBeenCalledTimes(1);
+      expect(play).not.toHaveBeenCalled();
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: '播放语音' })));
+      expect(resolveMedia).toHaveBeenCalledTimes(1);
+      expect(play).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it('history-only voice refs are not fetched unless the row is among the latest (preloadVoice)', async () => {
+    const resolveMedia = vi.fn(async () => 'u');
+    const segs: Segment[] = [{ type: 'voice', ref: 'sessions/x/v.wav' }];
+    const { unmount } = render(<SegmentList segments={segs} env={env({ ctx: ctx({ resolveMedia }) })} />);
+    await act(async () => {});
     expect(resolveMedia).not.toHaveBeenCalled();
+    unmount();
+    render(<SegmentList segments={segs} env={env({ ctx: ctx({ resolveMedia }), preloadVoice: true })} />);
+    await act(async () => {});
+    expect(resolveMedia).toHaveBeenCalledTimes(1);
+  });
+  it('pending voice placeholders show 合成中 and failed ones 语音失败', async () => {
+    useStore.setState((s) => ({ media: { ...s.media, pa: { status: 'pending' }, pb: { status: 'failed' } } }));
+    try {
+      const { container } = render(
+        <SegmentList
+          segments={[
+            { type: 'voice', placeholder_id: 'pa' },
+            { type: 'voice', placeholder_id: 'pb' },
+          ]}
+          env={env()}
+        />,
+      );
+      const pills = container.querySelectorAll('.k-voice');
+      expect(pills[0].getAttribute('data-state')).toBe('pending');
+      expect(pills[0].textContent).toContain('合成中…');
+      expect(pills[1].getAttribute('data-state')).toBe('failed');
+      expect(pills[1].textContent).toContain('语音失败');
+    } finally {
+      useStore.setState({ media: {} });
+    }
+  });
+  it('stickers render small (.is-sticker), regular images as full cards', async () => {
+    const resolveMedia = vi.fn(async (r: { object?: string }) => `https://media.test/${r.object}`);
+    const { container } = render(
+      <SegmentList
+        segments={[
+          { type: 'file', object: 'roles/asuka/stickers/21_啄你哦.gif', mime: 'image/gif' },
+          { type: 'file', object: 'sessions/s1/cg.webp', mime: 'image/webp' },
+        ]}
+        env={env({ ctx: ctx({ resolveMedia }) })}
+      />,
+    );
+    await act(async () => {});
+    const imgs = container.querySelectorAll('.k-media-img');
+    expect(imgs).toHaveLength(2);
+    expect(imgs[0].classList.contains('is-sticker')).toBe(true);
+    expect(imgs[1].classList.contains('is-sticker')).toBe(false);
+  });
+  it('isStickerMedia matches gif mime, stickers/ dirs and .gif paths (ignoring ?query)', () => {
+    expect(isStickerMedia({ mime: 'IMAGE/GIF' })).toBe(true);
+    expect(isStickerMedia({ ref: 'roles/asuka/stickers/21_啄你哦.png' })).toBe(true);
+    expect(isStickerMedia({ name: '[file: x]', url: 'https://cdn.test/a/b.gif?sig=1' })).toBe(true);
+    expect(isStickerMedia({ object: 'stickers/a.webp' })).toBe(true);
+    expect(isStickerMedia({ object: 'sessions/s/cg.webp', mime: 'image/webp' })).toBe(false);
+    expect(isStickerMedia({ url: 'https://cdn.test/gif/cg.png?x=.gif' })).toBe(false);
   });
   it('unknown card kinds fall back to a generic card', () => {
     render(<SegmentList segments={[{ type: 'card', kind: 'mystery_kind', data: { title: '神秘卡片', note: 'hello' } }]} env={env()} />);

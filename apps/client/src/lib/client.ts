@@ -19,7 +19,7 @@ import type { ChatItem } from './types';
 import type { MediaRef } from '../features/cards/types';
 
 const SEQ_TYPES = new Set<string>(SEQ_EVENT_TYPES);
-const APP_VERSION = '0.1.3';
+const APP_VERSION = '0.1.4';
 
 type Payload = Record<string, unknown>;
 

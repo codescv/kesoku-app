@@ -104,12 +104,18 @@ export function AvatarSheet({
   onSource,
   onClose,
   onApplied,
+  existingAvatarUrl,
+  hasExistingSource,
 }: {
   target: AvatarTarget;
   source: AvatarSource | null;
   onSource: (s: AvatarSource | null) => void;
   onClose: () => void;
   onApplied?: (avatarRev?: number) => void;
+  /** Current avatar of the target, shown as the default source thumbnail. */
+  existingAvatarUrl?: string | null;
+  /** The engine already keeps an original image for the target → generation needs no upload. */
+  hasExistingSource?: boolean;
 }) {
   const [style, setStyle] = useState<AvatarStylePreset>('anime_clean');
   const [hint, setHint] = useState('');
@@ -134,6 +140,9 @@ export function AvatarSheet({
     return !!ph && s.media[ph]?.status === 'ready';
   });
   const fresh = isFreshSource(source);
+  /** No uploaded photo: regenerate from the target's existing original image (no re-upload). */
+  const usingExisting = !source && !!hasExistingSource;
+  const canGenerate = fresh || usingExisting;
 
   useEffect(() => {
     if (!generating) return;
@@ -154,8 +163,10 @@ export function AvatarSheet({
   }
 
   async function generate() {
-    if (!isFreshSource(source) || requesting) {
-      if (!isFreshSource(source)) actions.toast('请先上传原图', 'error');
+    const freshNow = isFreshSource(source);
+    const useExisting = !source && !!hasExistingSource;
+    if ((!freshNow && !useExisting) || requesting) {
+      if (!freshNow && !useExisting) actions.toast(source && hasExistingSource ? '上传的原图已过期，请重新上传或使用默认原图' : '请先上传原图', 'error');
       return;
     }
     const prompt_hint = sanitizePromptHint(hint, { trim: true });
@@ -166,7 +177,8 @@ export function AvatarSheet({
         {
           target_type: target.type,
           target_id: target.id,
-          source_object: source.object,
+          // Fresh upload → send it; otherwise omit so the engine uses the existing original on disk.
+          ...(freshNow ? { source_object: source.object } : {}),
           style_preset: style,
           ...(prompt_hint ? { prompt_hint } : {}),
           count: 4,
@@ -183,7 +195,7 @@ export function AvatarSheet({
       const code = errorCode(e);
       if (code === 'RATE_LIMITED') actions.toast('生成太频繁，请稍后再试', 'error');
       else if (code === 'AVATAR_SOURCE_INVALID') {
-        actions.toast('原图无效或已过期，请重新上传', 'error');
+        actions.toast(freshNow ? '原图无效或已过期，请重新上传' : '默认原图不可用，请上传原图', 'error');
         onSource(null);
       } else if (code === 'ENGINE_OFFLINE') actions.toast('🔴 引擎离线，无法生成', 'error');
       else actions.toast('生成请求失败，请重试', 'error');
@@ -223,12 +235,27 @@ export function AvatarSheet({
           <div className="ps-gen-src-row">
             <div className="ps-gen-src">
               <span className="ps-gen-src-thumb">
-                {source?.preview ? <img src={source.preview} alt="已上传原图" /> : <span aria-hidden>{fresh ? '✓' : '＋'}</span>}
-                <span className="ps-gen-src-tag">原图</span>
+                {usingExisting ? (
+                  existingAvatarUrl ? (
+                    <img src={existingAvatarUrl} alt="当前原图" />
+                  ) : (
+                    <span aria-hidden>✓</span>
+                  )
+                ) : source?.preview ? (
+                  <img src={source.preview} alt="已上传原图" />
+                ) : (
+                  <span aria-hidden>{fresh ? '✓' : '＋'}</span>
+                )}
+                <span className="ps-gen-src-tag">{usingExisting ? '当前原图' : '原图'}</span>
               </span>
               <PickImageButton className="ps-link" onPick={(f) => void upload(f)} disabled={uploading} label="上传原图文件">
-                {uploading ? '上传中…' : source ? '更换原图' : '上传原图'}
+                {uploading ? '上传中…' : source || usingExisting ? '更换原图' : '上传原图'}
               </PickImageButton>
+              {source && !fresh && hasExistingSource && (
+                <button type="button" className="ps-link" onClick={() => onSource(null)}>
+                  使用默认原图
+                </button>
+              )}
             </div>
             <span className="ps-gen-arrow" aria-hidden>
               →
@@ -249,7 +276,9 @@ export function AvatarSheet({
               ))}
             </div>
           </div>
-          {source && !fresh && <div className="ps-gen-warn">原图已超过 10 分钟，请重新上传后再生成</div>}
+          {source && !fresh && (
+            <div className="ps-gen-warn">{hasExistingSource ? '上传的原图已超过 10 分钟，请重新上传或使用默认原图' : '原图已超过 10 分钟，请重新上传后再生成'}</div>
+          )}
           <label className="ps-hint">
             <span className="ps-hint-k">细节补充</span>
             <input
@@ -261,7 +290,7 @@ export function AvatarSheet({
             />
             <span className="ps-count">{`${Array.from(hint).length}/${LIMITS.PROMPT_HINT_MAX}`}</span>
           </label>
-          <button type="button" className="ps-btn ps-btn-pri ps-gen-go" disabled={!fresh || generating || uploading} onClick={() => void generate()}>
+          <button type="button" className="ps-btn ps-btn-pri ps-gen-go" disabled={!canGenerate || generating || uploading} onClick={() => void generate()}>
             {generating ? (
               <>
                 <span className="ps-ring" aria-hidden /> {progress}
@@ -277,7 +306,7 @@ export function AvatarSheet({
             <div className="ps-gen-head">
               <span className="ps-strong">✨ AI 候选头像 · 点击择一</span>
               <span className="ps-pill-mini">{STYLE_PRESET_LABELS[batch.style].replace('✦ ', '')}</span>
-              <button type="button" className="ps-link" disabled={generating || !fresh} onClick={() => void generate()}>
+              <button type="button" className="ps-link" disabled={!canGenerate || generating || uploading} onClick={() => void generate()}>
                 ↻ 换一批
               </button>
             </div>
@@ -303,7 +332,7 @@ export function AvatarSheet({
             )}
           </section>
         ) : (
-          <div className="ps-gen-empty">{fresh ? '选择画风后生成 4 张候选 · 保留脸型 / 发型 / 配饰，只改画风' : '① 上传原图 → ② 选画风 → ③ 生成 4 张候选'}</div>
+          <div className="ps-gen-empty">{canGenerate ? '选择画风后生成 4 张候选 · 保留脸型 / 发型 / 配饰，只改画风' : '① 上传原图 → ② 选画风 → ③ 生成 4 张候选'}</div>
         )}
 
         <div className="ps-gen-toggle">

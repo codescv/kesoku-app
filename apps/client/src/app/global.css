@@ -141,6 +141,10 @@ h1, h2, h3, strong, b { font-weight: 800; }
 .k-media-img img { display: block; width: 100%; height: auto; }
 .k-media-pending, .k-media-failed, .k-media-tap { padding: 14px 16px; font-weight: 800; color: var(--ink-2); text-align: left; }
 .k-media-failed { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-border); }
+/* Chibi stickers / GIFs: small inline, never a full-width card. */
+.k-media.is-sticker { max-width: 128px; max-height: 128px; width: auto; height: auto; border: none; background: transparent; padding: 0; box-shadow: none; border-radius: 8px; }
+.k-media.is-sticker img { max-width: 128px; max-height: 128px; width: auto; height: auto; object-fit: contain; border-radius: 8px; }
+.k-media-pending.is-sticker, .k-media-tap.is-sticker { padding: 6px 10px; font-size: 13px; color: var(--ink-3, var(--ink-2)); }
 .k-voice-row { display: flex; }
 
 /* proposal card */
@@ -364,3 +368,14 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(18p
 .k-mode-policy { flex-shrink: 0; }
 :root[data-theme='dark'] .k-mode-sub, .is-mode-dark .k-mode-sub { color: color-mix(in srgb, var(--mode) 65%, #ffffff); }
 @media (prefers-color-scheme: dark) { :root[data-theme='system'] .k-mode-sub { color: color-mix(in srgb, var(--mode) 65%, #ffffff); } }
+
+/* Tap-to-record bar: ✕ 取消 · 录音中 0:03 · ✓ 发送 */
+.k-rec-bar { align-items: center; }
+.k-rec-cancel, .k-rec-send { height: 52px; padding: 0 16px; flex-shrink: 0; border-radius: 16px; border: 1.5px solid var(--line-strong); background: var(--card); font-size: 16px; font-weight: 800; color: var(--ink); }
+.k-rec-send { background: var(--primary-strong); border-color: var(--primary-strong); color: #fff; }
+.k-rec-send:disabled { opacity: 0.4; }
+.k-rec-status { flex: 1; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font: 800 16px/1 var(--font-mono); color: var(--danger); }
+.k-rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: k-breath 1s infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .k-rec-dot { animation: none; }
+}
