@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mirrors the web design tokens (bg / primary / accent), dark theme. -->
+    <color name="kesoku_bg">#15171C</color>
+    <color name="kesoku_primary">#60A5FA</color>
+    <color name="kesoku_accent">#8B78E6</color>
+    <color name="colorPrimary">#60A5FA</color>
+    <color name="colorPrimaryDark">#15171C</color>
+    <color name="colorAccent">#8B78E6</color>
+</resources>

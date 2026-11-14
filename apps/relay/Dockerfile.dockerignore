@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/coverage
+**/.vite
+**/*.log
+**/.env
+**/.env.*
+.git
+apps/relay/.local-media
+apps/client/android
+apps/client/ios
+**/*.jks
+**/*.keystore
+**/keystore.properties

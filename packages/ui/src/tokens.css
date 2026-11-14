@@ -1,0 +1,142 @@
+/* Kesoku design tokens — Warm Washi Light × Frosted Night Dark (UI doc §2). */
+:root,
+:root[data-theme='light'] {
+  --bg: #faf8f5;
+  --card: #ffffff;
+  --subcard: #f3efe8;
+  --pill: #eae5dc;
+  --card-glass: rgba(255, 255, 255, 0.72);
+  --ink: #14161a;
+  --ink-2: #4e5564;
+  --line: #e0d9ce;
+  --line-strong: #c9c0b1;
+  --primary: #3b82f6;
+  --primary-strong: #2563eb;
+  --primary-soft: #eff6ff;
+  --primary-border: #bfdbfe;
+  --accent: #6e56cf;
+  --accent-soft: #f4f1ff;
+  --accent-border: #d7cefa;
+  --ok: #1b9c6b;
+  --ok-soft: #ecfdf3;
+  --ok-border: #9ae6b4;
+  --warn: #d97706;
+  --warn-soft: #fffbeb;
+  --warn-border: #fde68a;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --danger-border: #fecaca;
+  --scrim: rgba(20, 22, 26, 0.38);
+  --shadow: 0 3px 10px rgba(20, 22, 26, 0.04);
+  --shadow-lg: 0 20px 44px rgba(20, 22, 26, 0.12);
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg: #15171c;
+  --card: #1e2128;
+  --subcard: #262a34;
+  --pill: #2d323f;
+  --card-glass: rgba(30, 33, 40, 0.68);
+  --ink: #f3f4f6;
+  --ink-2: #a3a9b8;
+  --line: #323846;
+  --line-strong: #454e62;
+  --primary: #60a5fa;
+  --primary-strong: #3b82f6;
+  --primary-soft: #1c2c4c;
+  --primary-border: #2e4c80;
+  --accent: #8b78e6;
+  --accent-soft: #2a2344;
+  --accent-border: #4c3d7a;
+  --ok: #34d399;
+  --ok-soft: #163324;
+  --ok-border: #1f6b47;
+  --warn: #fbbf24;
+  --warn-soft: #382812;
+  --warn-border: #78521a;
+  --danger: #f87171;
+  --danger-soft: #3a1d22;
+  --danger-border: #7f2d36;
+  --scrim: rgba(0, 0, 0, 0.55);
+  --shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 22px 48px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='system'] {
+    --bg: #15171c;
+    --card: #1e2128;
+    --subcard: #262a34;
+    --pill: #2d323f;
+    --card-glass: rgba(30, 33, 40, 0.68);
+    --ink: #f3f4f6;
+    --ink-2: #a3a9b8;
+    --line: #323846;
+    --line-strong: #454e62;
+    --primary: #60a5fa;
+    --primary-strong: #3b82f6;
+    --primary-soft: #1c2c4c;
+    --primary-border: #2e4c80;
+    --accent: #8b78e6;
+    --accent-soft: #2a2344;
+    --accent-border: #4c3d7a;
+    --ok: #34d399;
+    --ok-soft: #163324;
+    --ok-border: #1f6b47;
+    --warn: #fbbf24;
+    --warn-soft: #382812;
+    --warn-border: #78521a;
+    --danger: #f87171;
+    --danger-soft: #3a1d22;
+    --danger-border: #7f2d36;
+    --scrim: rgba(0, 0, 0, 0.55);
+    --shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+    --shadow-lg: 0 22px 48px rgba(0, 0, 0, 0.45);
+    color-scheme: dark;
+  }
+}
+
+:root {
+  /* Per-mode capsule accents (§2.2) */
+  --m-chat: #3b82f6;
+  --m-galgame: #ec6b8f;
+  --m-travel_companion: #1d4ed8;
+  --m-translator: #0f766e;
+  --m-jp_classroom: #15803d;
+  --m-trpg: #d97706;
+  --m-pokemon_assistant: #f43f5e;
+  --m-pokemon_assistant-2: #06b6d4;
+  --m-story_theater: #7e22ce;
+  --mode: var(--m-chat);
+
+  --font-sans: 'Inter', 'Noto Sans SC', 'Noto Sans JP', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-ja: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', var(--font-sans);
+  --font-mono: 'JetBrains Mono', 'DejaVu Sans Mono', 'Noto Sans Mono', ui-monospace, monospace;
+
+  --fs-body: 17px;
+  --lh-body: 1.55;
+  --fs-ja: 20px;
+  --fs-rt: 11px;
+  --fs-capsule: 15px;
+  --fs-show: 34px;
+
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-pill: 999px;
+
+  --hit: 44px;
+
+  --safe-t: env(safe-area-inset-top, var(--safe-top, 0px));
+  --safe-b: env(safe-area-inset-bottom, var(--safe-bottom, 0px));
+  --safe-l: env(safe-area-inset-left, var(--safe-left, 0px));
+  --safe-r: env(safe-area-inset-right, var(--safe-right, 0px));
+}
+
+:root[data-fontsize='large'] {
+  --fs-body: 19px;
+  --fs-ja: 23px;
+  --fs-rt: 12px;
+}

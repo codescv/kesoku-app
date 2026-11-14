@@ -1,0 +1,23 @@
+{
+  "name": "@kesoku/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Kesoku wire protocol V1.2: zod schemas + TypeScript types for the WS envelope and every event.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run",
+    "gen:schema": "node --experimental-strip-types scripts/gen-schema.ts"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.0",
+    "zod-to-json-schema": "^3.24.6"
+  }
+}

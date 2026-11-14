@@ -1,0 +1,20 @@
+packages:
+  - packages/*
+  - apps/*
+
+# Zero compiled native addons: pnpm 10 never runs dependency lifecycle scripts
+# unless allow-listed here. Keeping this EMPTY guarantees no node-gyp / .node
+# builds anywhere in the tree. `pnpm check:native` additionally scans for
+# `.node` binaries and `binding.gyp` files in production dependencies.
+onlyBuiltDependencies: []
+
+overrides:
+  bufferutil: "-"
+  utf-8-validate: "-"
+  better-sqlite3: "-"
+  sqlite3: "-"
+  sharp: "-"
+  canvas: "-"
+  # Vite's bundler: use the WebAssembly build so not even a prebuilt `.node` binary is installed.
+  rollup: npm:@rollup/wasm-node@^4.50.0
+  "@napi-rs/lzma-linux-x64-gnu": "-"

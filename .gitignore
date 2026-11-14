@@ -1,0 +1,31 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+.vite/
+apps/relay/.local-media/
+
+# Android
+apps/client/android/.gradle/
+apps/client/android/build/
+apps/client/android/app/build/
+apps/client/android/local.properties
+apps/client/android/app/src/main/assets/public/
+apps/client/android/app/src/main/assets/capacitor.config.json
+apps/client/android/app/src/main/assets/capacitor.plugins.json
+apps/client/android/capacitor-cordova-android-plugins/build/
+apps/client/android/keystore.properties
+*.jks
+*.keystore
+
+# iOS
+apps/client/ios/App/App/public/
+apps/client/ios/App/Pods/
+apps/client/ios/App/build/
+apps/client/ios/DerivedData/
+xcuserdata/

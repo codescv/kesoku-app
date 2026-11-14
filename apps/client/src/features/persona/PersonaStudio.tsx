@@ -1,0 +1,76 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { EngineToClientPayload } from '@kesoku/protocol';
+import { Segmented } from '@kesoku/ui';
+import { kesoku } from '../../lib/client';
+import { actions, useStore } from '../../lib/store';
+import type { AvatarSource } from './AvatarSheet';
+import { ProfilePanel } from './ProfilePanel';
+import { RolesPanel } from './RolesPanel';
+import './persona.css';
+
+export interface PersonaStudioProps {
+  onClose: () => void;
+  initialTab?: 'roles' | 'me';
+  onOpenPolicies?: () => void;
+}
+
+/** 🎭 Persona & Avatar Studio — full-screen secondary page (Screens 15–17). */
+export function PersonaStudio({ onClose, initialTab = 'roles', onOpenPolicies }: PersonaStudioProps) {
+  const [tab, setTab] = useState<'roles' | 'me'>(initialTab);
+  const count = useStore((s) => s.personas.length);
+  const [sources, setSources] = useState<Record<string, AvatarSource | null>>({});
+  const previews = useRef(new Set<string>());
+
+  // Fetch the role list once if the core has not loaded it yet.
+  useEffect(() => {
+    if (useStore.getState().personas.length) return;
+    let alive = true;
+    kesoku
+      .rpc<EngineToClientPayload<'persona.list.result'>>('persona.list', {})
+      .then((r) => alive && actions.setPersonas(r.roles, [], true))
+      .catch(() => alive && actions.toast('角色列表加载失败', 'error'));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Revoke local preview object URLs when the studio closes.
+  useEffect(() => {
+    const set = previews.current;
+    return () => {
+      if (typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') for (const u of set) URL.revokeObjectURL(u);
+      set.clear();
+    };
+  }, []);
+
+  const setSource = useCallback((key: string, s: AvatarSource | null) => {
+    if (s?.preview) previews.current.add(s.preview);
+    setSources((m) => ({ ...m, [key]: s }));
+  }, []);
+
+  return (
+    <div className="ps-root" role="dialog" aria-modal="true" aria-label="角色与形象工坊">
+      <header className="ps-top">
+        <button type="button" className="ps-back" aria-label="返回" onClick={onClose}>
+          ←
+        </button>
+        <h1 className="ps-top-title">角色与形象工坊</h1>
+        <Segmented
+          ariaLabel="工坊分区"
+          size="sm"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'roles', label: `AI 角色 (${count})` },
+            { value: 'me', label: '我的形象' },
+          ]}
+        />
+      </header>
+      {tab === 'roles' ? (
+        <RolesPanel sources={sources} setSource={setSource} />
+      ) : (
+        <ProfilePanel sources={sources} setSource={setSource} onOpenPolicies={onOpenPolicies} />
+      )}
+    </div>
+  );
+}

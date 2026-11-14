@@ -1,0 +1,147 @@
+/* Kesoku mode HUD slot (UI doc §2.4 "Mode HUD Slot"). Tokens only — light & dark via tokens.css. */
+
+.k-hud {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 12px 8px;
+  background: var(--card);
+  border-bottom: 1.5px solid var(--line);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+.k-hud-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.k-hud-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.k-hud-ellipsis { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-hud-num { font-variant-numeric: tabular-nums; font-weight: 800; white-space: nowrap; }
+.k-hud button { font-family: inherit; cursor: pointer; }
+
+/* Compact colour chips */
+.k-hud-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%; min-height: 30px;
+  padding: 4px 10px; border-radius: 9px; border: 1.5px solid transparent;
+  font: 800 14px/1.2 var(--font-sans); white-space: nowrap; color: var(--ink); background: var(--pill);
+}
+.k-hud-chip.is-mode { background: color-mix(in srgb, var(--mode) 14%, transparent); border-color: color-mix(in srgb, var(--mode) 40%, transparent); color: var(--mode); }
+.k-hud-chip.is-primary { background: var(--primary-soft); border-color: var(--primary-border); color: var(--primary-strong); }
+.k-hud-chip.is-danger { background: var(--danger-soft); border-color: var(--danger-border); color: var(--danger); }
+.k-hud-chip.is-warn { background: var(--warn-soft); border-color: var(--warn-border); color: var(--warn); }
+.k-hud-chip.is-ok { background: var(--ok-soft); border-color: var(--ok-border); color: var(--ok); }
+.k-hud-chip.is-glass {
+  background: var(--card-glass); color: var(--ink); border-color: color-mix(in srgb, var(--ink) 14%, transparent);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+}
+.k-hud-mark.is-glass { color: var(--danger); }
+button.k-hud-chip:hover { filter: brightness(0.97); }
+.k-hud-dietary { flex: 1 1 auto; }
+
+/* Memory-policy badge + inline segmented control */
+.k-hud-policy { position: relative; flex-shrink: 0; margin-left: auto; }
+.k-hud-policy-badge {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding: 4px 10px;
+  border-radius: var(--r-pill); border: 1.5px solid var(--warn-border); background: var(--warn-soft); color: var(--warn);
+  font: 800 13px/1.2 var(--font-sans); white-space: nowrap; cursor: pointer;
+}
+.k-hud-policy.is-full .k-hud-policy-badge { border-color: var(--ok-border); background: var(--ok-soft); color: var(--ok); }
+.k-hud-policy.is-isolated .k-hud-policy-badge { border-color: var(--line-strong); background: var(--pill); color: var(--ink-2); }
+.k-hud-policy.is-glass .k-hud-policy-badge {
+  background: var(--card-glass); color: var(--ink); border-color: color-mix(in srgb, var(--ink) 14%, transparent);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+}
+.k-hud-policy-pop {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; display: block;
+  padding: 6px; border-radius: 16px; background: var(--card); border: 1.5px solid var(--line); box-shadow: var(--shadow-lg);
+}
+.k-hud-policy-pop .k-seg { --seg-color: var(--policy-color, var(--mode)); }
+
+/* jp_classroom */
+.k-hud-lesson { flex: 1 1 200px; min-width: 0; display: block; padding: 2px 0; border: 0; background: transparent; color: inherit; text-align: left; }
+.k-hud-lesson .k-progress-label { font-size: 15px; }
+.k-hud-mistakes { flex-shrink: 0; }
+
+/* translator */
+.k-hud-pair {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 12px; min-height: 34px;
+  border-radius: 11px; background: var(--mode); color: #fff; font: 800 15px/1 var(--font-sans);
+}
+.k-hud-pair-lang { white-space: nowrap; }
+.k-hud-swap {
+  min-width: 32px; height: 30px; margin: 0 2px; border: 0; border-radius: 8px;
+  background: color-mix(in srgb, #fff 18%, transparent); color: #fff; font: 900 16px/1 var(--font-sans);
+}
+.k-hud-pair-lang:last-child { padding-right: 8px; }
+.k-hud-quick {
+  min-height: 34px; padding: 0 12px; border-radius: 11px; border: 1.5px solid var(--line);
+  background: var(--pill); color: var(--ink-2); font: 800 14px/1 var(--font-sans);
+}
+.k-hud-quick.is-on { border-color: color-mix(in srgb, var(--mode) 50%, transparent); color: var(--mode); background: color-mix(in srgb, var(--mode) 12%, transparent); }
+
+/* trpg */
+.k-hud-world { flex: 0 1 auto; min-width: 0; }
+.k-hud-collapse {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; border: 1.5px solid var(--line);
+  background: var(--card); color: var(--ink); font: 900 13px/1 var(--font-sans);
+}
+.k-hud-squad-mini {
+  display: inline-flex; gap: 10px; min-width: 0; overflow: hidden; padding: 4px 8px; border-radius: 9px;
+  border: 0; background: var(--subcard); color: var(--ink); font: 700 13px/1.2 var(--font-sans); white-space: nowrap;
+}
+.k-hud-squad { display: flex; flex-direction: column; gap: 6px; }
+.k-hud-boss, .k-hud-member {
+  display: grid; align-items: center; gap: 3px 8px; text-align: left; color: var(--ink);
+  border-radius: 12px; font: 800 14px/1.2 var(--font-sans);
+}
+.k-hud-boss {
+  grid-template-columns: auto 1fr auto; padding: 7px 10px;
+  background: var(--danger-soft); border: 1.5px solid var(--danger-border);
+}
+.k-hud-boss .k-hud-fname { color: var(--danger); }
+.k-hud-boss .k-hp { grid-column: 1 / -1; }
+.k-hud-boss .k-hud-status { justify-self: end; }
+.k-hud-members { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 6px; }
+.k-hud-member { grid-template-columns: 1fr; padding: 6px 9px; background: var(--subcard); border: 1.5px solid var(--line); }
+.k-hud-member.is-player { border-color: color-mix(in srgb, var(--mode) 55%, transparent); }
+.k-hud-member .k-hud-num { font-size: 12.5px; color: var(--ink-2); }
+.k-hud-fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.k-hud-statuses { display: flex; flex-wrap: wrap; gap: 3px; }
+.k-hud-status {
+  display: inline-block; padding: 1px 6px; border-radius: 6px; font: 800 11.5px/1.35 var(--font-sans);
+  background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn-border); white-space: nowrap;
+}
+.k-hud-status.is-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+.k-hud-status.is-accent { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-border); }
+.k-hud-more { align-self: flex-end; font: 800 12px/1 var(--font-sans); color: var(--ink-2); }
+
+/* pokemon_assistant */
+.k-hud-ver-wrap { position: relative; flex-shrink: 0; }
+.k-hud-ver, .k-hud-ver-opt {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 12px;
+  border-radius: 10px; font: 800 14px/1 var(--font-sans); white-space: nowrap; --ver: var(--m-pokemon_assistant);
+  border: 1.5px solid color-mix(in srgb, var(--ver) 55%, transparent);
+  background: color-mix(in srgb, var(--ver) 14%, transparent); color: var(--ver);
+}
+.k-hud-ver.is-za, .k-hud-ver-opt.is-za { --ver: var(--m-pokemon_assistant-2); }
+.k-hud-ver-pop {
+  position: absolute; left: 0; top: calc(100% + 6px); z-index: 40; display: flex; flex-direction: column; gap: 6px;
+  padding: 6px; border-radius: 14px; background: var(--card); border: 1.5px solid var(--line); box-shadow: var(--shadow-lg);
+}
+.k-hud-ver-opt { min-height: var(--hit); justify-content: flex-start; }
+.k-hud-ver-opt.is-on { background: var(--ver); color: #fff; }
+.k-hud-pin {
+  display: inline-flex; align-items: center; min-width: 0; border-radius: 10px; overflow: hidden;
+  background: var(--pill); border: 1.5px solid var(--line);
+}
+.k-hud-pin-body { min-height: 30px; padding: 0 4px 0 10px; border: 0; background: transparent; color: var(--ink); font: 800 14px/1 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.k-hud-pin-x { min-width: 30px; min-height: 30px; border: 0; background: transparent; color: var(--ink-2); font: 900 16px/1 var(--font-sans); }
+.k-hud-pin-x:hover { color: var(--danger); }
+
+/* story_theater */
+.k-hud-chapter { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 4px; font: 800 15px/1.25 var(--font-sans); }
+.k-hud-chapter-bar .k-progress-track { height: 5px; }
+.k-hud-roster { flex-shrink: 0; }
+
+@media (max-width: 420px) {
+  .k-hud { padding: 5px 10px 7px; }
+  .k-hud-chip, .k-hud-quick { font-size: 13px; }
+  .k-hud-members { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

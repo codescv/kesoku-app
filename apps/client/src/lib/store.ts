@@ -1,0 +1,449 @@
+import { create } from 'zustand';
+import {
+  DEFAULT_MEMORY_POLICIES,
+  type EngineToClientPayload,
+  type LlmOverride,
+  type MemoryPolicy,
+  type MemoryProposal,
+  type MessageRecord,
+  type PersonaSummary,
+  type SessionSummary,
+  type UserProfile,
+} from '@kesoku/protocol';
+import type { SocketStatus } from './ws';
+import type { ChatItem, InspectorPanel, PolicyState, StreamPreview, TurnEvent } from './types';
+import { applyClear, applyDelta, fromActiveTurn, type DeltaPayload } from '../features/stream/previewBuffer';
+
+export interface MediaEntry {
+  status: 'pending' | 'ready' | 'failed';
+  url?: string;
+  object?: string;
+  mime?: string;
+  kind?: string;
+  label?: string;
+  reason?: string;
+  expires_at?: number;
+  duration_ms?: number;
+}
+
+export interface AvatarJob {
+  job_id: string;
+  placeholders: string[];
+  eta_ms: number;
+  startedAt: number;
+}
+
+export interface Settings {
+  theme: 'system' | 'light' | 'dark';
+  fontSize: 'standard' | 'large';
+  allChannels: boolean;
+  ttsEngine: 'native' | 'server';
+  defaultModel: LlmOverride;
+  translatorModel: string;
+}
+
+export type Screen = 'chat' | 'settings' | 'memory' | 'studio';
+
+export interface Toast {
+  id: number;
+  text: string;
+  tone?: 'info' | 'error';
+}
+
+export interface KesokuState {
+  conn: { status: SocketStatus; engineOnline: boolean; latencyMs: number | null; deviceId: string | null; retryInMs?: number; engineSince?: number };
+  auth: 'unknown' | 'needed' | 'ok';
+  authKind: 'pair' | 'google' | null;
+  email: string | null;
+  sessions: Record<string, SessionSummary>;
+  currentSessionId: string | null;
+  items: Record<string, ChatItem[]>;
+  previews: Record<string, StreamPreview | undefined>;
+  finalized: Set<string>;
+  turnEvents: Record<string, TurnEvent[]>;
+  lastSeq: Record<string, number>;
+  headSeq: Record<string, number>;
+  stateFiles: Record<string, Record<string, unknown>>;
+  modePrefs: Record<string, Record<string, unknown>>;
+  llmOverride: Record<string, LlmOverride | null>;
+  origin: Record<string, string>;
+  takenOver: Record<string, boolean>;
+  hasMoreHistory: Record<string, boolean>;
+  policies: PolicyState;
+  personas: PersonaSummary[];
+  profile: UserProfile | null;
+  proposals: Record<string, MemoryProposal>;
+  media: Record<string, MediaEntry>;
+  avatarJobs: Record<string, AvatarJob>;
+  searchHits: EngineToClientPayload<'session.search.result'>['hits'];
+  settings: Settings;
+  ui: {
+    drawerOpen: boolean;
+    launchpad: boolean;
+    inspector: InspectorPanel | null;
+    screen: Screen;
+    stageView: 'stage' | 'bubbles';
+    roleFilter: string | null;
+    pendingMode: { sessionId: string; modeId: string; at: number } | null;
+    composerInsert: { text: string; n: number } | null;
+  };
+  toasts: Toast[];
+}
+
+export const DEFAULT_SETTINGS: Settings = {
+  theme: 'system',
+  fontSize: 'standard',
+  allChannels: false,
+  ttsEngine: 'native',
+  defaultModel: { llm: 'gemini', model_name: 'gemini-4-hydrogen', thinking_level: 'low', stream: true },
+  translatorModel: 'gemini-3.8-flash',
+};
+
+export function initialState(): KesokuState {
+  return {
+    conn: { status: 'idle', engineOnline: false, latencyMs: null, deviceId: null },
+    auth: 'unknown',
+    authKind: null,
+    email: null,
+    sessions: {},
+    currentSessionId: null,
+    items: {},
+    previews: {},
+    finalized: new Set(),
+    turnEvents: {},
+    lastSeq: {},
+    headSeq: {},
+    stateFiles: {},
+    modePrefs: {},
+    llmOverride: {},
+    origin: {},
+    takenOver: {},
+    hasMoreHistory: {},
+    policies: { policies: { ...DEFAULT_MEMORY_POLICIES }, defaults: { ...DEFAULT_MEMORY_POLICIES }, updated_at: 0 },
+    personas: [],
+    profile: null,
+    proposals: {},
+    media: {},
+    avatarJobs: {},
+    searchHits: [],
+    settings: { ...DEFAULT_SETTINGS },
+    ui: { drawerOpen: false, launchpad: true, inspector: null, screen: 'chat', stageView: 'stage', roleFilter: null, pendingMode: null, composerInsert: null },
+    toasts: [],
+  };
+}
+
+export const useStore = create<KesokuState>(() => initialState());
+
+// ───────────────────────── pure helpers ─────────────────────────
+
+export function recordToItem(m: MessageRecord): ChatItem {
+  const kind = m.role === 'user' ? 'user' : m.role === 'assistant' ? 'assistant' : 'system';
+  return {
+    key: m.message_id,
+    kind,
+    message_id: m.message_id,
+    turn_id: m.turn_id,
+    client_msg_id: m.client_msg_id,
+    text: m.text,
+    segments: m.segments,
+    raw_markdown: m.raw_markdown,
+    ts: m.ts,
+    seq: m.seq,
+    attachments: m.attachments,
+    status: kind === 'user' ? 'sent' : undefined,
+    sender: m.sender as ChatItem['sender'],
+  };
+}
+
+function sortItems(items: ChatItem[]): ChatItem[] {
+  return [...items].sort((a, b) => a.ts - b.ts || (a.seq ?? 0) - (b.seq ?? 0));
+}
+
+/** Insert or replace by key (and by client_msg_id for optimistic user rows). */
+export function upsertItem(list: ChatItem[] | undefined, item: ChatItem): ChatItem[] {
+  const out = [...(list ?? [])];
+  let idx = out.findIndex((x) => x.key === item.key || (item.message_id && x.message_id === item.message_id));
+  if (idx < 0 && item.client_msg_id) idx = out.findIndex((x) => x.client_msg_id === item.client_msg_id);
+  if (idx >= 0) {
+    out[idx] = { ...out[idx], ...item, events: item.events ?? out[idx].events, picked: out[idx].picked ?? item.picked };
+    return out;
+  }
+  out.push(item);
+  return out.length > 1 && out[out.length - 2].ts > item.ts ? sortItems(out) : out;
+}
+
+// ───────────────────────── actions ─────────────────────────
+
+const set = useStore.setState;
+const get = useStore.getState;
+let toastSeq = 0;
+
+export const actions = {
+  reset() {
+    set(initialState());
+  },
+  toast(text: string, tone: Toast['tone'] = 'info') {
+    const id = ++toastSeq;
+    set((s) => ({ toasts: [...s.toasts, { id, text, tone }].slice(-3) }));
+    setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), 3200);
+  },
+  setConn(patch: Partial<KesokuState['conn']>) {
+    set((s) => ({ conn: { ...s.conn, ...patch } }));
+  },
+  setUi(patch: Partial<KesokuState['ui']>) {
+    set((s) => ({ ui: { ...s.ui, ...patch } }));
+  },
+  setSettings(patch: Partial<Settings>) {
+    set((s) => ({ settings: { ...s.settings, ...patch } }));
+  },
+  setSessions(list: SessionSummary[], replace = false) {
+    set((s) => {
+      const sessions = replace ? {} : { ...s.sessions };
+      for (const x of list) sessions[x.session_id] = { ...sessions[x.session_id], ...x };
+      return { sessions };
+    });
+  },
+  removeSession(id: string) {
+    set((s) => {
+      const sessions = { ...s.sessions };
+      delete sessions[id];
+      return { sessions, currentSessionId: s.currentSessionId === id ? null : s.currentSessionId };
+    });
+  },
+  applySnapshot(p: EngineToClientPayload<'session.snapshot'>) {
+    const sid = p.session.session_id;
+    set((s) => {
+      const finalized = new Set(s.finalized);
+      const items = p.last_messages.map(recordToItem);
+      for (const it of items) if (it.turn_id && it.kind === 'assistant') finalized.add(it.turn_id);
+      // Keep optimistic unsent rows.
+      const pendingLocal = (s.items[sid] ?? []).filter((x) => x.status === 'sending' || x.status === 'failed');
+      const proposals = { ...s.proposals };
+      for (const pr of p.pending_proposals ?? []) proposals[pr.proposal_id] = pr;
+      return {
+        sessions: { ...s.sessions, [sid]: { ...s.sessions[sid], ...p.session } },
+        items: { ...s.items, [sid]: sortItems([...items, ...pendingLocal]) },
+        stateFiles: { ...s.stateFiles, [sid]: { ...(p.state_files ?? {}) } },
+        modePrefs: { ...s.modePrefs, [sid]: { ...(p.mode_prefs ?? {}) } },
+        llmOverride: { ...s.llmOverride, [sid]: p.llm_override ?? null },
+        origin: { ...s.origin, [sid]: p.origin_channel ?? p.session.chatbot_id ?? 'app' },
+        takenOver: { ...s.takenOver, [sid]: !!p.session.app_bound },
+        lastSeq: { ...s.lastSeq, [sid]: Math.max(p.head_seq, 0) },
+        headSeq: { ...s.headSeq, [sid]: p.head_seq },
+        previews: { ...s.previews, [sid]: fromActiveTurn(p.active_turn, finalized) },
+        hasMoreHistory: { ...s.hasMoreHistory, [sid]: p.last_messages.length >= 50 },
+        finalized,
+        proposals,
+      };
+    });
+  },
+  prependHistory(sid: string, records: MessageRecord[], hasMore: boolean) {
+    set((s) => {
+      let list = s.items[sid] ?? [];
+      for (const r of records) list = upsertItem(list, recordToItem(r));
+      return { items: { ...s.items, [sid]: sortItems(list) }, hasMoreHistory: { ...s.hasMoreHistory, [sid]: hasMore } };
+    });
+  },
+  addLocalUser(sid: string, item: ChatItem) {
+    set((s) => ({ items: { ...s.items, [sid]: upsertItem(s.items[sid], item) } }));
+  },
+  markUser(sid: string, clientMsgId: string, patch: Partial<ChatItem>) {
+    set((s) => ({
+      items: { ...s.items, [sid]: (s.items[sid] ?? []).map((x) => (x.client_msg_id === clientMsgId ? { ...x, ...patch } : x)) },
+    }));
+  },
+  markPicked(sid: string, messageId: string, choices: string[]) {
+    set((s) => ({ items: { ...s.items, [sid]: (s.items[sid] ?? []).map((x) => (x.message_id === messageId ? { ...x, picked: choices } : x)) } }));
+  },
+  /** Apply one seq'd / non-seq'd engine event for a session (gap handling is done by the controller). */
+  applySessionEvent(sid: string, type: string, payload: Record<string, unknown>, seq?: number) {
+    set((s) => {
+      const patch: Partial<KesokuState> = {};
+      if (seq !== undefined) {
+        patch.lastSeq = { ...s.lastSeq, [sid]: Math.max(s.lastSeq[sid] ?? 0, seq) };
+        patch.headSeq = { ...s.headSeq, [sid]: Math.max(s.headSeq[sid] ?? 0, seq) };
+      }
+      switch (type) {
+        case 'message.user': {
+          const p = payload as EngineToClientPayload<'message.user'>;
+          const item: ChatItem = {
+            key: p.message_id,
+            kind: 'user',
+            message_id: p.message_id,
+            client_msg_id: p.client_msg_id,
+            text: p.text,
+            attachments: p.attachments,
+            ts: p.ts,
+            seq,
+            status: 'sent',
+            sender: p.sender as ChatItem['sender'],
+          };
+          patch.items = { ...s.items, [sid]: upsertItem(s.items[sid], item) };
+          // A new user message interrupts a running preview (UI marks it 已打断).
+          const pv = s.previews[sid];
+          if (pv && !s.finalized.has(pv.turn_id) && pv.turn_id !== p.message_id && p.client_msg_id) {
+            patch.previews = { ...s.previews, [sid]: { ...pv, interrupted: true } };
+          }
+          break;
+        }
+        case 'turn.event': {
+          const p = payload as TurnEvent;
+          const evs = [...(s.turnEvents[p.turn_id] ?? [])];
+          const i = evs.findIndex((e) => e.message_id && e.message_id === p.message_id && e.kind === p.kind);
+          if (i >= 0) evs[i] = { ...evs[i], ...p };
+          else evs.push({ ...p, ts: Date.now() });
+          patch.turnEvents = { ...s.turnEvents, [p.turn_id]: evs };
+          break;
+        }
+        case 'message.final': {
+          const p = payload as EngineToClientPayload<'message.final'>;
+          const finalized = new Set(s.finalized);
+          finalized.add(p.turn_id);
+          const item: ChatItem = {
+            key: p.message_id,
+            kind: 'assistant',
+            message_id: p.message_id,
+            turn_id: p.turn_id,
+            segments: p.segments,
+            raw_markdown: p.raw_markdown,
+            ts: p.ts,
+            seq,
+            sender: p.sender as ChatItem['sender'],
+          };
+          patch.items = { ...s.items, [sid]: upsertItem(s.items[sid], item) };
+          patch.finalized = finalized;
+          const pv = s.previews[sid];
+          if (pv && pv.turn_id === p.turn_id) patch.previews = { ...s.previews, [sid]: undefined };
+          break;
+        }
+        case 'media.pending': {
+          const p = payload as EngineToClientPayload<'media.pending'>;
+          patch.media = { ...s.media, [p.placeholder_id]: { ...s.media[p.placeholder_id], status: 'pending', kind: p.kind, label: p.label } };
+          break;
+        }
+        case 'media.ready': {
+          const p = payload as EngineToClientPayload<'media.ready'>;
+          const entry: MediaEntry = { status: 'ready', url: p.url, object: p.object, mime: p.mime, kind: p.kind, expires_at: p.expires_at, duration_ms: p.duration_ms };
+          const media = { ...s.media };
+          if (p.placeholder_id) media[p.placeholder_id] = entry;
+          if (p.object) media[`obj:${p.object}`] = entry;
+          if (p.ref) media[`ref:${p.ref}`] = entry;
+          patch.media = media;
+          break;
+        }
+        case 'media.failed': {
+          const p = payload as EngineToClientPayload<'media.failed'>;
+          patch.media = { ...s.media, [p.placeholder_id]: { ...s.media[p.placeholder_id], status: 'failed', reason: p.reason } };
+          break;
+        }
+        case 'state.sync': {
+          const p = payload as EngineToClientPayload<'state.sync'>;
+          const files = { ...(s.stateFiles[sid] ?? {}), ...p.files };
+          for (const r of p.removed) delete files[r];
+          patch.stateFiles = { ...s.stateFiles, [sid]: files };
+          if (s.ui.pendingMode?.sessionId === sid) patch.ui = { ...s.ui, pendingMode: null };
+          break;
+        }
+        case 'session.updated': {
+          const p = payload as EngineToClientPayload<'session.updated'>;
+          if (p.deleted) {
+            const sessions = { ...s.sessions };
+            delete sessions[sid];
+            patch.sessions = sessions;
+          } else {
+            const prev = s.sessions[sid];
+            patch.sessions = {
+              ...s.sessions,
+              [sid]: { ...(prev ?? { session_id: sid, title: '', role: 'asuka', chatbot_id: 'app' }), ...p, session_id: sid } as SessionSummary,
+            };
+          }
+          break;
+        }
+        case 'memory.proposal': {
+          const p = payload as MemoryProposal;
+          patch.proposals = { ...s.proposals, [p.proposal_id]: { ...p, status: p.status ?? 'pending' } };
+          break;
+        }
+        case 'memory.proposal.resolved': {
+          const p = payload as EngineToClientPayload<'memory.proposal.resolved'>;
+          const prev = s.proposals[p.proposal_id];
+          if (prev) patch.proposals = { ...s.proposals, [p.proposal_id]: { ...prev, status: p.status, applied_files: p.applied_files } };
+          break;
+        }
+      }
+      return patch;
+    });
+  },
+  /** One rAF batch of stream frames. Returns session ids that need a resync. */
+  applyStreamBatch(frames: Array<{ sid: string; type: 'stream.delta' | 'stream.clear'; payload: Record<string, unknown> }>): string[] {
+    const resync = new Set<string>();
+    set((s) => {
+      const previews = { ...s.previews };
+      for (const f of frames) {
+        if (f.type === 'stream.clear') {
+          previews[f.sid] = applyClear(previews[f.sid], f.payload as { turn_id: string; round_id: number }, s.finalized);
+        } else {
+          const r = applyDelta(previews[f.sid], f.payload as unknown as DeltaPayload, s.finalized);
+          previews[f.sid] = r.preview;
+          if (r.needResync) resync.add(f.sid);
+        }
+      }
+      return { previews };
+    });
+    return [...resync];
+  },
+  applySyncDone(p: EngineToClientPayload<'sync.done'>) {
+    set((s) => {
+      const patch: Partial<KesokuState> = {
+        lastSeq: { ...s.lastSeq, [p.session_id]: Math.max(s.lastSeq[p.session_id] ?? 0, p.replayed_through_seq) },
+        headSeq: { ...s.headSeq, [p.session_id]: p.head_seq },
+      };
+      if (p.active_turn !== undefined) {
+        patch.previews = { ...s.previews, [p.session_id]: fromActiveTurn(p.active_turn, s.finalized) };
+      }
+      return patch;
+    });
+  },
+  setPolicies(p: Partial<PolicyState>) {
+    set((s) => ({ policies: { ...s.policies, ...p, policies: { ...s.policies.policies, ...(p.policies ?? {}) } } }));
+  },
+  setPolicyOptimistic(modeId: string, policy: MemoryPolicy) {
+    set((s) => ({ policies: { ...s.policies, policies: { ...s.policies.policies, [modeId]: policy } } }));
+  },
+  setPersonas(roles: PersonaSummary[], deleted: string[] = [], replace = false) {
+    set((s) => {
+      const map = new Map((replace ? [] : s.personas).map((r) => [r.role_id, r]));
+      for (const r of roles) map.set(r.role_id, { ...map.get(r.role_id), ...r });
+      for (const d of deleted) map.delete(d);
+      return { personas: [...map.values()] };
+    });
+  },
+  setProfile(p: UserProfile) {
+    set({ profile: p });
+  },
+  setProposals(list: MemoryProposal[]) {
+    set((s) => {
+      const proposals = { ...s.proposals };
+      for (const p of list) proposals[p.proposal_id] = p;
+      return { proposals };
+    });
+  },
+  setModePrefs(sid: string, prefs: Record<string, unknown>) {
+    set((s) => ({ modePrefs: { ...s.modePrefs, [sid]: { ...(s.modePrefs[sid] ?? {}), ...prefs } } }));
+  },
+  setLlmOverride(sid: string, o: LlmOverride | null) {
+    set((s) => ({ llmOverride: { ...s.llmOverride, [sid]: o } }));
+  },
+  setMedia(key: string, entry: MediaEntry) {
+    set((s) => ({ media: { ...s.media, [key]: entry } }));
+  },
+  addAvatarJob(job: AvatarJob) {
+    set((s) => ({ avatarJobs: { ...s.avatarJobs, [job.job_id]: job } }));
+  },
+};
+
+export const selectCurrentItems = (s: KesokuState) => (s.currentSessionId ? s.items[s.currentSessionId] ?? EMPTY : EMPTY);
+const EMPTY: ChatItem[] = [];
+export function getState() {
+  return get();
+}

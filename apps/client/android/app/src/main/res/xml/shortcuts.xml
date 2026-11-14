@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static launcher shortcuts. Each one opens a kesoku:// deep link that the web layer
+     maps to a mode (see src/native/deeplinks.ts). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="mode_translator"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_translator"
+        android:shortcutShortLabel="@string/shortcut_translator_short"
+        android:shortcutLongLabel="@string/shortcut_translator_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="kesoku://mode/translator"
+            android:targetPackage="dev.kesoku.app"
+            android:targetClass="dev.kesoku.app.MainActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="mode_travel"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_travel"
+        android:shortcutShortLabel="@string/shortcut_travel_short"
+        android:shortcutLongLabel="@string/shortcut_travel_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="kesoku://mode/travel"
+            android:targetPackage="dev.kesoku.app"
+            android:targetClass="dev.kesoku.app.MainActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="mode_pokemon"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_pokemon"
+        android:shortcutShortLabel="@string/shortcut_pokemon_short"
+        android:shortcutLongLabel="@string/shortcut_pokemon_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="kesoku://mode/pokemon"
+            android:targetPackage="dev.kesoku.app"
+            android:targetClass="dev.kesoku.app.MainActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+</shortcuts>

@@ -1,0 +1,191 @@
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import type { EngineToClientPayload, LexToken, MemoryProposal } from '@kesoku/protocol';
+import { Avatar, modeMeta } from '@kesoku/ui';
+import { kesoku } from '../../lib/client';
+import { actions, useStore } from '../../lib/store';
+import type { ChatItem } from '../../lib/types';
+import { SegmentList, type SegmentEnv } from '../segments/SegmentRenderer';
+import { Markdown } from '../segments/Markdown';
+import { StreamingPreview, ThinkingPill } from '../stream/StreamingPreview';
+import { ProposalCard } from '../proposals/ProposalCard';
+import { makeCardContext } from './cardContext';
+import { useIsDesktop } from '../../app/useMedia';
+
+const EMPTY_ITEMS: ChatItem[] = [];
+
+const STARTERS: Record<string, string[]> = {
+  chat: ['今天过得怎么样？', '教我一句地道的日语'],
+  galgame: ['我们去江之岛海边吧', '约你去看烟花大会'],
+  travel_companion: ['📷 拍菜单照，帮我排雷', '帮我做一张问路大字卡'],
+  translator: ['すみません、お会計お願いします', '我对荞麦过敏'],
+  jp_classroom: ['开始今天的课程', '复习我的错题'],
+  trpg: ['开一局赛博朋克跑团', '克苏鲁 · 阿卡姆调查'],
+  pokemon_assistant: ['刚遇到失控超级快龙，弱什么？', '神速在 Z-A 里的冷却是多少？'],
+  story_theater: ['继续下一片段', '回看上一段'],
+};
+
+function ModeEmpty({ modeId, sessionId }: { modeId: string; sessionId: string }) {
+  const m = modeMeta(modeId);
+  return (
+    <div className="k-mode-empty" style={{ ['--mode' as string]: m.color }}>
+      <span className="k-mode-empty-icon" aria-hidden>
+        {m.icon}
+      </span>
+      <h2>{m.title}</h2>
+      <p>{m.subtitle}</p>
+      <div className="k-mode-empty-chips">
+        {(STARTERS[modeId] ?? STARTERS.chat).map((t) => (
+          <button key={t} type="button" className="k-choice" onClick={() => void kesoku.sendMessage(sessionId, t.replace(/^📷 /, ''))}>
+            {t}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+const EMPTY_EVENTS: never[] = [];
+
+function UserBubble({ item, sessionId }: { item: ChatItem; sessionId: string }) {
+  return (
+    <div className={'k-row k-row-user' + (item.status === 'failed' ? ' is-failed' : '')}>
+      <div className="k-bubble k-bubble-user">
+        {item.attachments?.length ? (
+          <div className="k-attach-row">
+            {item.attachments.map((a, i) => (
+              <span key={a.object || i} className="k-pill k-pill-neutral k-pill-sm">
+                🖼 图{i + 1}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {item.text && <div className="k-user-text">{item.text}</div>}
+        {item.status === 'sending' && <span className="k-sending" aria-label="发送中">···</span>}
+      </div>
+      {item.status === 'failed' && (
+        <button type="button" className="k-retry" onClick={() => void kesoku.retry(sessionId, item)}>
+          未送达 · 点击重试
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string; modeId: string; readOnly?: boolean }) {
+  const items = useStore((s) => s.items[sessionId] ?? EMPTY_ITEMS);
+  const preview = useStore((s) => s.previews[sessionId]);
+  const turnEvents = useStore((s) => s.turnEvents);
+  const proposalsAll = useStore((s) => s.proposals);
+  const hasMore = useStore((s) => s.hasMoreHistory[sessionId]);
+  const session = useStore((s) => s.sessions[sessionId]);
+  const personas = useStore((s) => s.personas);
+  const desktop = useIsDesktop();
+  const scroller = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+
+  const proposals = useMemo(() => Object.values(proposalsAll).filter((p) => p.session_id === sessionId), [proposalsAll, sessionId]);
+  const byMessage = useMemo(() => {
+    const m = new Map<string, MemoryProposal[]>();
+    const ids = new Set(items.map((i) => i.message_id));
+    const tail: MemoryProposal[] = [];
+    for (const p of proposals) {
+      if (p.message_id && ids.has(p.message_id)) m.set(p.message_id, [...(m.get(p.message_id) ?? []), p]);
+      else tail.push(p);
+    }
+    return { m, tail };
+  }, [proposals, items]);
+
+  const explain = useCallback(
+    async (text: string, token: string): Promise<LexToken | null> => {
+      try {
+        const r = await kesoku.rpc<EngineToClientPayload<'lexical.explain.result'>>('lexical.explain', { session_id: sessionId, text, token }, { timeoutMs: 30_000 });
+        return r.token;
+      } catch {
+        actions.toast('精讲暂不可用', 'error');
+        return null;
+      }
+    },
+    [sessionId],
+  );
+  const onWord = useCallback(
+    (token: LexToken, sentence: string) => {
+      if (desktop) actions.setUi({ inspector: { kind: 'word', token, sentence } });
+    },
+    [desktop],
+  );
+  const onPick = useCallback((qid: string, choices: string[]) => void kesoku.pick(sessionId, qid, choices), [sessionId]);
+
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [items, preview?.text, proposals.length]);
+
+  useEffect(() => {
+    stick.current = true;
+  }, [sessionId]);
+
+  const persona = personas.find((p) => p.role_id === session?.role);
+  const name = persona?.display_name ?? (session?.role === 'coder' ? 'Coder' : '飞鸟');
+
+  return (
+    <div
+      className="k-stage-scroll"
+      ref={scroller}
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      }}
+    >
+      <div className="k-stage-inner">
+        {items.length === 0 && !preview && <ModeEmpty modeId={modeId} sessionId={sessionId} />}
+        {hasMore && (
+          <button type="button" className="k-load-older" onClick={() => void kesoku.loadOlder(sessionId)}>
+            加载更早的消息
+          </button>
+        )}
+        {items.map((item) => {
+          if (item.kind === 'user') return <UserBubble key={item.key} item={item} sessionId={sessionId} />;
+          if (item.kind === 'system' || item.kind === 'error')
+            return (
+              <div key={item.key} className="k-row k-row-system">
+                <Markdown text={item.text ?? ''} />
+              </div>
+            );
+          const env: SegmentEnv = {
+            ctx: makeCardContext(sessionId, item.message_id ?? item.key, modeId),
+            picked: item.picked,
+            onPick,
+            explain,
+            onWord,
+            readOnly,
+            inlineLex: !desktop,
+          };
+          const evs = (item.turn_id && turnEvents[item.turn_id]) || EMPTY_EVENTS;
+          return (
+            <div key={item.key} className="k-row k-row-assistant">
+              <div className="k-assistant-head">
+                <Avatar name={item.sender?.display_name ?? name} size={28} />
+                <span className="k-assistant-name">{item.sender?.display_name ?? name}</span>
+              </div>
+              <ThinkingPill events={evs} running={false} />
+              {item.segments?.length ? <SegmentList segments={item.segments} env={env} /> : item.text ? <Markdown text={item.text} /> : null}
+              {(item.message_id && byMessage.m.get(item.message_id)?.map((p) => <ProposalCard key={p.proposal_id} proposal={p} />)) || null}
+            </div>
+          );
+        })}
+        {byMessage.tail.map((p) => (
+          <ProposalCard key={p.proposal_id} proposal={p} />
+        ))}
+        {preview && (preview.text || preview.thought || (turnEvents[preview.turn_id]?.length ?? 0) > 0) && (
+          <div className="k-row k-row-assistant is-streaming">
+            <div className="k-assistant-head">
+              <Avatar name={name} size={28} />
+              <span className="k-assistant-name">{name}</span>
+            </div>
+            <ThinkingPill events={turnEvents[preview.turn_id] ?? EMPTY_EVENTS} running={!preview.interrupted} startedAt={preview.startedAt} thought={preview.thought} />
+            <StreamingPreview preview={preview} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
