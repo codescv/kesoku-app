@@ -110,29 +110,110 @@ export interface AuthConfig {
   google_login: boolean;
 }
 
+const NO_AUTH_CONFIG: AuthConfig = { firebase: null, google_login: false };
+
+/** In-memory cache of the last successful `/auth/config` fetch, keyed by relay base URL. */
+let cachedAuthConfig: AuthConfig | null = null;
+let cachedAuthBase = '';
+
 export async function getAuthConfig(): Promise<AuthConfig> {
   try {
     const base = await getRelayBase();
+    if (cachedAuthConfig && cachedAuthBase === base) return cachedAuthConfig;
     const res = await fetch(base + '/auth/config', { credentials: fetchCredentials() });
-    if (!res.ok) return { firebase: null, google_login: false };
-    return (await res.json()) as AuthConfig;
+    if (!res.ok) return NO_AUTH_CONFIG;
+    const cfg = (await res.json()) as AuthConfig;
+    cachedAuthConfig = cfg;
+    cachedAuthBase = base;
+    return cfg;
   } catch {
-    return { firebase: null, google_login: false };
+    return NO_AUTH_CONFIG;
   }
 }
 
-/** Web one-tap Google login via Firebase Auth popup (SDK lazy-loaded). */
-export async function googleLogin(): Promise<AuthInfo> {
-  const cfg = await getAuthConfig();
+type FirebaseApp = import('firebase/app').FirebaseApp;
+type FirebaseAuthModule = typeof import('firebase/auth');
+
+interface WarmFirebase {
+  app: FirebaseApp;
+  fa: FirebaseAuthModule;
+}
+
+const FIREBASE_APP_NAME = 'kesoku';
+let firebasePromise: Promise<WarmFirebase> | null = null;
+let warmFirebase: WarmFirebase | null = null;
+
+/** Test hook: forget the cached config and warmed SDK handles (the named Firebase app itself persists). */
+export function resetAuthCaches(): void {
+  cachedAuthConfig = null;
+  cachedAuthBase = '';
+  firebasePromise = null;
+  warmFirebase = null;
+}
+
+/** Load the Firebase SDK once and reuse the named app (never `app/duplicate-app` on retry). */
+function loadFirebase(firebaseCfg: NonNullable<AuthConfig['firebase']>): Promise<WarmFirebase> {
+  firebasePromise ??= (async () => {
+    const [appMod, fa] = await Promise.all([import('firebase/app'), import('firebase/auth')]);
+    const app = appMod.getApps().find((a) => a.name === FIREBASE_APP_NAME) ?? appMod.initializeApp(firebaseCfg, FIREBASE_APP_NAME);
+    const warm = { app, fa };
+    warmFirebase = warm;
+    return warm;
+  })();
+  firebasePromise.catch(() => {
+    firebasePromise = null;
+  });
+  return firebasePromise;
+}
+
+/**
+ * Warm everything the Google popup needs (config + SDK + app instance) before the user clicks, so the
+ * click handler can open the popup without awaiting the network (popup blockers require the popup to
+ * open synchronously within the user gesture).
+ */
+export async function preloadGoogleAuth(cfg?: AuthConfig): Promise<void> {
+  try {
+    const c = cfg ?? (await getAuthConfig());
+    if (c.firebase) await loadFirebase(c.firebase);
+  } catch {
+    /* best effort: googleLogin() retries the load */
+  }
+}
+
+function firebaseErrorCode(x: unknown): string {
+  return x && typeof x === 'object' && typeof (x as { code?: unknown }).code === 'string' ? (x as { code: string }).code : '';
+}
+
+/** Web Google login via Firebase Auth popup (SDK lazy-loaded, ideally pre-warmed by `preloadGoogleAuth`). */
+export async function googleLogin(preloadedCfg?: AuthConfig): Promise<AuthInfo> {
+  const cfg = preloadedCfg ?? cachedAuthConfig ?? (await getAuthConfig());
   if (!cfg.firebase) throw new AuthError('NO_GOOGLE', '此中继未启用 Google 登录');
-  const [{ initializeApp }, fa] = await Promise.all([import('firebase/app'), import('firebase/auth')]);
-  const app = initializeApp(cfg.firebase, 'kesoku');
+  const { app, fa } = warmFirebase ?? (await loadFirebase(cfg.firebase));
   const auth = fa.getAuth(app);
-  const cred = await fa.signInWithPopup(auth, new fa.GoogleAuthProvider());
-  const idToken = await cred.user.getIdToken();
+  const provider = new fa.GoogleAuthProvider();
+  // Always show the account chooser so a different (allowlisted) account can be picked on retry.
+  provider.setCustomParameters({ prompt: 'select_account' });
+  let idToken: string;
+  try {
+    const cred = await fa.signInWithPopup(auth, provider);
+    idToken = await cred.user.getIdToken();
+  } catch (x) {
+    const code = firebaseErrorCode(x);
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') throw new AuthError('CANCELLED', '已取消登录');
+    if (code === 'auth/popup-blocked') throw new AuthError('POPUP_BLOCKED', '浏览器拦截了登录弹窗，请允许此站点的弹窗后重试');
+    throw new AuthError('LOGIN_FAILED', '登录失败，请重试');
+  }
   const { status, data } = await postJson('/auth/google', { id_token: idToken });
   await fa.signOut(auth).catch(() => {});
-  if (status === 403) throw new AuthError('FORBIDDEN_EMAIL', '该 Google 账号不在白名单内', status);
+  if (status === 403) {
+    await db.kv.delete('auth').catch(() => {});
+    throw new AuthError(
+      'FORBIDDEN_EMAIL',
+      typeof data.email === 'string' ? `账号 ${data.email} 不在访问白名单内，请切换受权账号重试` : '该 Google 账号不在访问白名单内，请切换受权账号重试',
+      403,
+    );
+  }
+  if (status === 429) throw new AuthError('RATE_LIMITED', '尝试过于频繁，请稍后再试', status);
   if (status !== 200 || typeof data.device_id !== 'string') throw new AuthError('LOGIN_FAILED', '登录失败', status);
   const email = typeof data.email === 'string' ? data.email : undefined;
   await persist(data.device_id, typeof data.device_token === 'string' ? data.device_token : undefined, 'google', email);

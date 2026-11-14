@@ -1,7 +1,9 @@
 /**
  * Device token wire format (Blueprint §4.2):
- *   kdt1.<b64url(device_id "|" issued_at "|" kind)>.<b64url(HMAC-SHA256(DEVICE_HMAC_KEY, same bytes))>
- * `issued_at` is integer Unix seconds, `kind` ∈ {pair, google}. HMAC is computed/verified by the relay only.
+ *   kdt1.<b64url(device_id "|" issued_at "|" kind ["|" email])>.<b64url(HMAC-SHA256(DEVICE_HMAC_KEY, same bytes))>
+ * `issued_at` is integer Unix seconds, `kind` ∈ {pair, google}. `google` tokens additionally bind the verified,
+ * lower-cased account email as a 4th field; `pair` tokens (and legacy `google` tokens) keep the 3-field body.
+ * HMAC is computed/verified by the relay only.
  */
 
 export const DEVICE_TOKEN_PREFIX = 'kdt1';
@@ -11,7 +13,11 @@ export interface DeviceTokenClaims {
   device_id: string;
   issued_at: number;
   kind: 'pair' | 'google';
+  /** Verified, lower-cased Google account email (only on `google` tokens). */
+  email?: string;
 }
+
+const MAX_EMAIL_LEN = 254;
 
 export function b64urlEncode(bytes: Uint8Array): string {
   let bin = '';
@@ -29,22 +35,29 @@ export function b64urlDecode(s: string): Uint8Array {
 }
 
 export function encodeClaims(c: DeviceTokenClaims): string {
-  return `${c.device_id}|${Math.floor(c.issued_at)}|${c.kind}`;
+  const base = `${c.device_id}|${Math.floor(c.issued_at)}|${c.kind}`;
+  if (c.kind === 'google' && c.email) return `${base}|${c.email.trim().toLowerCase()}`;
+  return base;
 }
 
 export function decodeClaims(body: string): DeviceTokenClaims | null {
   const parts = body.split('|');
-  if (parts.length !== 3) return null;
-  const [device_id, issued, kind] = parts;
+  if (parts.length !== 3 && parts.length !== 4) return null;
+  const [device_id, issued, kind, email] = parts;
   if (!DEVICE_ID_RE.test(device_id)) return null;
   if (!/^\d{1,12}$/.test(issued)) return null;
   if (kind !== 'pair' && kind !== 'google') return null;
+  if (parts.length === 4) {
+    if (kind !== 'google') return null;
+    if (!email || !email.includes('@') || email.length > MAX_EMAIL_LEN) return null;
+    return { device_id, issued_at: Number(issued), kind, email };
+  }
   return { device_id, issued_at: Number(issued), kind };
 }
 
 /** Split a token into its parts without verifying the MAC. */
 export function splitDeviceToken(token: string): { body: string; bodyB64: string; macB64: string; claims: DeviceTokenClaims } | null {
-  if (typeof token !== 'string' || token.length > 512) return null;
+  if (typeof token !== 'string' || token.length > 768) return null;
   const parts = token.split('.');
   if (parts.length !== 3 || parts[0] !== DEVICE_TOKEN_PREFIX) return null;
   try {

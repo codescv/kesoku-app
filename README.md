@@ -55,6 +55,8 @@ timeout, secrets from Secret Manager). See the script header for required enviro
 
 * Device tokens: `kdt1.*` HMAC, stored in Keychain / EncryptedSharedPreferences on mobile; on the Web
   the token lives only in an `HttpOnly; Secure; SameSite=Lax` `__Host-kesoku_session` cookie.
+* With Google Sign-In configured, the Web app accepts only allowlisted Google accounts (`ALLOWED_EMAILS`);
+  6-digit pairing remains for the iOS / Android apps (and for the Web in local mode without Firebase).
 * No `innerHTML` / `dangerouslySetInnerHTML`: Markdown and `<ruby>` are rendered as React elements.
 * Voice never autoplays: audio URLs are resolved only inside the ▶ tap handler.
 * Relay sends strict CSP, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`.

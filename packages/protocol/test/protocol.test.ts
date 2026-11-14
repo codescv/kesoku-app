@@ -171,4 +171,33 @@ describe('device token format', () => {
     expect(splitDeviceToken('kdt1.@@@.b')).toBeNull();
     expect(decodeClaims('dev_x|1|root')).toBeNull();
   });
+
+  it('google claims bind a lower-cased email as a 4th field; pair stays 3-part', () => {
+    const g = encodeClaims({ device_id: 'dev_0123456789AB', issued_at: 1763100000.9, kind: 'google', email: ' Owner@Example.com ' });
+    expect(g).toBe('dev_0123456789AB|1763100000|google|owner@example.com');
+    expect(decodeClaims(g)).toEqual({ device_id: 'dev_0123456789AB', issued_at: 1763100000, kind: 'google', email: 'owner@example.com' });
+    // `email` is ignored for pair tokens (backward-compatible 3-part body).
+    const p = encodeClaims({ device_id: 'dev_0123456789AB', issued_at: 1763100000, kind: 'pair', email: 'x@example.com' });
+    expect(p).toBe('dev_0123456789AB|1763100000|pair');
+    expect(decodeClaims(p)).toEqual({ device_id: 'dev_0123456789AB', issued_at: 1763100000, kind: 'pair' });
+    // Legacy 3-part google bodies still decode.
+    expect(decodeClaims('dev_0123456789AB|1|google')).toEqual({ device_id: 'dev_0123456789AB', issued_at: 1, kind: 'google' });
+  });
+
+  it('rejects malformed 4-part bodies', () => {
+    expect(decodeClaims('dev_0123456789AB|1|pair|owner@example.com')).toBeNull();
+    expect(decodeClaims('dev_0123456789AB|1|google|')).toBeNull();
+    expect(decodeClaims('dev_0123456789AB|1|google|not-an-email')).toBeNull();
+    expect(decodeClaims(`dev_0123456789AB|1|google|${'a'.repeat(250)}@x.io`)).toBeNull();
+    expect(decodeClaims('dev_0123456789AB|1|google|a@b.c|extra')).toBeNull();
+  });
+
+  it('splits 4-part google tokens and allows longer tokens up to 768 chars', () => {
+    const email = `${'a'.repeat(200)}@example.com`;
+    const body = encodeClaims({ device_id: 'dev_0123456789AB', issued_at: 1, kind: 'google', email });
+    const tok = `kdt1.${b64urlEncode(new TextEncoder().encode(body))}.${'A'.repeat(43)}`;
+    expect(tok.length).toBeGreaterThan(300);
+    expect(splitDeviceToken(tok)?.claims).toEqual({ device_id: 'dev_0123456789AB', issued_at: 1, kind: 'google', email });
+    expect(splitDeviceToken(`kdt1.${'A'.repeat(800)}.B`)).toBeNull();
+  });
 });

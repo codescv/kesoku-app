@@ -31,11 +31,17 @@ function post(path: string, body: unknown, headers: Record<string, string> = {})
 describe('POST /auth/google', () => {
   it('rejects non-allowlisted and unverified emails with 403 FORBIDDEN_EMAIL', async () => {
     h = await startRelay(makeConfig(), { idTokenVerifier: fakeVerifier });
-    for (const t of ['tok-stranger', 'tok-unverified']) {
+    for (const [t, email] of [
+      ['tok-stranger', 'stranger@example.com'],
+      ['tok-unverified', 'owner@example.com'],
+    ]) {
       const r = await post('/auth/google', { id_token: t });
       expect(r.status).toBe(403);
-      expect(await json(r)).toEqual({ error: 'FORBIDDEN_EMAIL' });
-      expect(r.headers.get('set-cookie')).toBeNull();
+      expect(await json(r)).toEqual({ error: 'FORBIDDEN_EMAIL', email });
+      // Never issues a session; any stale one is cleared.
+      const cookies = r.headers.getSetCookie();
+      expect(cookies.length).toBeGreaterThan(0);
+      expect(cookies.every((c) => c.includes('Max-Age=0'))).toBe(true);
     }
     const bad = await post('/auth/google', { id_token: 'garbage' });
     expect(bad.status).toBe(401);

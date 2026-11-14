@@ -39,11 +39,21 @@ export class DeviceAuth {
     return createHmac('sha256', this.key).update(body, 'utf8').digest();
   }
 
-  issue(kind: DeviceTokenClaims['kind'], deviceId: string = newDeviceId(), issuedAt: number = Math.floor(Date.now() / 1000)): {
+  /**
+   * Issue a signed token. `email` is bound into `google` tokens only (ignored for `pair`), lower-cased.
+   */
+  issue(
+    kind: DeviceTokenClaims['kind'],
+    deviceId: string = newDeviceId(),
+    issuedAt: number = Math.floor(Date.now() / 1000),
+    email?: string,
+  ): {
     token: string;
     claims: DeviceTokenClaims;
   } {
     const claims: DeviceTokenClaims = { device_id: deviceId, issued_at: Math.floor(issuedAt), kind };
+    const normalized = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    if (kind === 'google' && normalized) claims.email = normalized;
     const body = encodeClaims(claims);
     const token = `${DEVICE_TOKEN_PREFIX}.${b64urlEncode(new TextEncoder().encode(body))}.${b64urlEncode(this.mac(body))}`;
     return { token, claims };

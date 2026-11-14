@@ -11,7 +11,7 @@ import {
 } from '@kesoku/protocol';
 import { getPlatform } from '../native/platform';
 import { getDeviceToken, wsUrl } from './auth';
-import { allCursors, kvSet, saveMessages, setCursor } from './db';
+import { allCursors, db, kvSet, saveMessages, setCursor } from './db';
 import { createFrameBatcher } from '../features/stream/previewBuffer';
 import { KesokuSocket, RpcError, type SocketStatus } from './ws';
 import { actions, getState, useStore } from './store';
@@ -19,7 +19,7 @@ import type { ChatItem } from './types';
 import type { MediaRef } from '../features/cards/types';
 
 const SEQ_TYPES = new Set<string>(SEQ_EVENT_TYPES);
-const APP_VERSION = '0.1.1';
+const APP_VERSION = '0.1.2';
 
 type Payload = Record<string, unknown>;
 
@@ -165,7 +165,12 @@ function onStatus(status: SocketStatus, info?: { retryInMs?: number; deviceId?: 
   if (info?.engineOnline !== undefined) patch.engineOnline = info.engineOnline;
   if (info?.latencyMs !== undefined) patch.latencyMs = info.latencyMs;
   actions.setConn(patch);
-  if (status === 'unauthorized') useStore.setState({ auth: 'needed' });
+  if (status === 'unauthorized') {
+    // Rejected / revoked / forbidden session (e.g. an older Web pairing session once Google Sign-In is
+    // required): drop the local marker so the next boot shows the sign-in screen instead of retrying.
+    useStore.setState({ auth: 'needed', authKind: null, email: null });
+    void db.kv.delete('auth').catch(() => {});
+  }
   if (status === 'online' && info?.deviceId) {
     useStore.setState({ auth: 'ok' });
     void afterConnect();

@@ -94,6 +94,10 @@ export function createRelay(config: RelayConfig, deps: RelayDeps = {}): Relay {
   const verifier: IdTokenVerifier | null =
     deps.idTokenVerifier ?? (config.firebaseProjectId ? createFirebaseVerifier(config.firebaseProjectId) : null);
 
+  // Google Sign-In active: Web browsers must sign in with an allowlisted Google account (no 6-digit
+  // pairing, no pairing cookie); native shells keep pairing and carry the token in the secure store.
+  const googleLoginEnabled = Boolean(config.firebaseWeb && verifier);
+
   const bridge = new Bridge({ config, auth, pairing, media, logger: log });
   const pairLimiter = new SlidingWindowLimiter(L.pairIpLimit, L.pairIpWindowMs);
   const googleLimiter = new SlidingWindowLimiter(L.authGoogleIpLimit, L.authGoogleIpWindowMs);
@@ -145,7 +149,7 @@ export function createRelay(config: RelayConfig, deps: RelayDeps = {}): Relay {
 
   // Public Firebase web config for the client's Google popup (not secret).
   app.get('/auth/config', (c) =>
-    c.json({ firebase: config.firebaseWeb, google_login: Boolean(config.firebaseWeb && verifier) }, 200, { 'Cache-Control': 'no-cache' }),
+    c.json({ firebase: config.firebaseWeb, google_login: googleLoginEnabled }, 200, { 'Cache-Control': 'no-cache' }),
   );
 
   app.post('/auth/google', async (c) => {
@@ -169,9 +173,12 @@ export function createRelay(config: RelayConfig, deps: RelayDeps = {}): Relay {
     const email = isEmailAllowed(claims, config.allowedEmails);
     if (!email) {
       log.warn('google sign-in refused (not allowlisted or unverified)');
-      return c.json({ error: 'FORBIDDEN_EMAIL' }, 403);
+      // Drop any stale session so a refused account never keeps riding an older cookie.
+      for (const ck of clearSessionCookies()) c.header('Set-Cookie', ck, { append: true });
+      return c.json({ error: 'FORBIDDEN_EMAIL', email: typeof claims.email === 'string' ? claims.email : undefined }, 403);
     }
-    const { token, claims: dev } = auth.issue('google');
+    // The signed session binds the verified email, so later allowlist removals revoke it on the next connect.
+    const { token, claims: dev } = auth.issue('google', undefined, undefined, email);
     const platform = body.device?.platform ?? 'web';
     bridge.sendControlToEngine('device.registered', {
       device_id: dev.device_id,
@@ -198,6 +205,8 @@ export function createRelay(config: RelayConfig, deps: RelayDeps = {}): Relay {
     }
     const code = body.code.replace(/[\s-]/g, '');
     if (!/^\d{6}$/.test(code)) return c.json({ error: 'BAD_REQUEST' }, 400);
+    // Checked before redeem() so a browser request can never consume (or burn) a native pairing offer.
+    if (googleLoginEnabled && body.device.platform === 'web') return c.json({ error: 'WEB_GOOGLE_REQUIRED' }, 403);
     const r = pairing.redeem(code);
     if (!r.ok) {
       if (r.reason === 'burned') {
@@ -215,7 +224,8 @@ export function createRelay(config: RelayConfig, deps: RelayDeps = {}): Relay {
       ...(d.model ? { model: d.model } : {}),
     });
     log.info('device paired', { device_id: claims.device_id, platform: d.platform });
-    c.header('Set-Cookie', sessionCookie(token));
+    // Native shells read `device_token` from the body; the cookie is only for offline/local Web pairing.
+    if (!googleLoginEnabled) c.header('Set-Cookie', sessionCookie(token));
     return c.json({ device_id: claims.device_id, device_token: token });
   });
 

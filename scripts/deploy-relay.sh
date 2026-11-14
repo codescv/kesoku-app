@@ -140,12 +140,25 @@ g run deploy "$SERVICE_NAME" \
 
 URL="$(g run services describe "$SERVICE_NAME" --region="$REGION" --format='value(status.url)')"
 
-echo "==> media bucket CORS for ${URL} + native WebViews"
-ORIGINS="\"${URL}\",\"https://localhost\",\"capacitor://localhost\""
+# Cloud Run serves the same service under two hostnames (the deterministic
+# <service>-<project-number>.<region>.run.app form and the hashed status.url form); allow both.
+DETERMINISTIC_URL="https://${SERVICE_NAME}-${PROJECT_NUMBER}.${REGION}.run.app"
+echo "==> media bucket CORS for ${DETERMINISTIC_URL} + ${URL} + native WebViews"
+cors_list=("$DETERMINISTIC_URL" "$URL" "https://localhost" "capacitor://localhost")
 if [[ -n "${EXTRA_CORS_ORIGINS:-}" ]]; then
   IFS=',' read -ra extra <<<"$EXTRA_CORS_ORIGINS"
-  for o in "${extra[@]}"; do ORIGINS="${ORIGINS},\"${o}\""; done
+  for o in "${extra[@]}"; do
+    o="${o#"${o%%[![:space:]]*}"}"
+    o="${o%"${o##*[![:space:]]}"}"
+    if [[ -n "$o" ]]; then cors_list+=("$o"); fi
+  done
 fi
+# Deduplicate (bash 3 compatible: no associative arrays).
+ORIGINS=""
+for o in "${cors_list[@]}"; do
+  if [[ -z "$o" || ",${ORIGINS}," == *",\"${o}\","* ]]; then continue; fi
+  ORIGINS="${ORIGINS:+${ORIGINS},}\"${o}\""
+done
 CORS="$(mktemp)"
 printf '[{"origin":[%s],"method":["GET","HEAD","PUT"],"responseHeader":["Content-Type","Content-Length","x-goog-content-length-range"],"maxAgeSeconds":3600}]' "$ORIGINS" >"$CORS"
 g storage buckets update "gs://${MEDIA_BUCKET}" --cors-file="$CORS" >/dev/null

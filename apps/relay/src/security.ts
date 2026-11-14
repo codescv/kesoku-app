@@ -10,18 +10,21 @@ export function safeEqual(a: string, b: string): boolean {
 
 /**
  * @param localMode   adds loopback http/ws sources (offline E2E with LOCAL_MEDIA_DIR)
- * @param googleSignIn Firebase web config present → the popup helper script (apis.google.com) is allowed
+ * @param googleSignIn Firebase web config present → the sign-in popup helper script, account endpoints and
+ *                     profile avatars are allowed
  */
 export function buildCsp(localMode: boolean, googleSignIn = false): string {
   const loop = localMode ? ' http://127.0.0.1:* ws://127.0.0.1:*' : '';
-  const gsi = googleSignIn ? ' https://apis.google.com' : '';
+  const gsiScript = googleSignIn ? ' https://apis.google.com' : '';
+  const gsiConnect = googleSignIn ? ' https://apis.google.com https://accounts.google.com' : '';
+  const gsiImg = googleSignIn ? ' https://*.googleusercontent.com' : '';
   return [
     "default-src 'self'",
-    `script-src 'self'${gsi}`,
+    `script-src 'self'${gsiScript}`,
     "style-src 'self' 'unsafe-inline'",
-    `img-src 'self' data: blob: https://storage.googleapis.com${loop}`,
+    `img-src 'self' data: blob: https://storage.googleapis.com${gsiImg}${loop}`,
     `media-src 'self' blob: https://storage.googleapis.com${loop}`,
-    `connect-src 'self' wss: https://storage.googleapis.com https://*.googleapis.com https://*.firebaseapp.com${loop}`,
+    `connect-src 'self' wss: https://storage.googleapis.com https://*.googleapis.com https://*.firebaseapp.com${gsiConnect}${loop}`,
     // Firebase Auth's auth-domain iframe / Google account chooser (popup sign-in).
     "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com",
     "frame-ancestors 'none'",

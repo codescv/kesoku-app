@@ -38,6 +38,8 @@ const RELAY = process.env.KESOKU_RELAY_DEV ?? 'http://127.0.0.1:8787';
 export default defineConfig({
   plugins: [react(), formatterGuard()],
   base: '/',
+  // Keep production bundles compact: drop inline third-party license banners from the output.
+  esbuild: { legalComments: 'none' },
   build: {
     outDir: 'dist',
     sourcemap: false,

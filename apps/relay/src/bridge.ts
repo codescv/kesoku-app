@@ -306,6 +306,19 @@ export class Bridge {
     const v = this.auth.verify(token);
     if (!v.ok) return fail(v.reason === 'revoked' ? WS_CLOSE.REVOKED : WS_CLOSE.UNAUTHORIZED, v.reason === 'revoked' ? 'revoked' : 'unauthorized');
     if (ctx.deviceParam && ctx.deviceParam !== v.claims.device_id) return fail(WS_CLOSE.UNAUTHORIZED, 'device mismatch');
+    const allowed = this.config.allowedEmails;
+    // Browser sessions (cookie) must be allowlisted Google sign-ins whenever Google Sign-In is configured;
+    // this retires older pairing cookies and enforces allowlist removals on every reconnect.
+    const webGoogleRequired = Boolean(this.config.firebaseWeb);
+    if (!payloadToken && ctx.cookieToken && webGoogleRequired) {
+      const email = v.claims.email;
+      if (v.claims.kind !== 'google' || typeof email !== 'string' || !allowed.includes(email.toLowerCase())) {
+        return fail(WS_CLOSE.FORBIDDEN, 'forbidden');
+      }
+    }
+    if (v.claims.kind === 'google' && v.claims.email && allowed.length > 0 && !allowed.includes(v.claims.email.toLowerCase())) {
+      return fail(WS_CLOSE.FORBIDDEN, 'forbidden');
+    }
     const leg: ClientLeg = { ws, alive: true, deviceId: v.claims.device_id, kind: v.claims.kind, ip: ctx.ip };
     this.clients.add(leg);
     send(

@@ -58,9 +58,17 @@ avatar source (client) → `media/avatar/<uuid>.<ext>`, avatar candidate → `me
 
 ## 4. Auth
 
-* Device token: `kdt1.<b64url("dev_xxx|<issued_at_s>|pair|google")>.<b64url(HMAC-SHA256)>`.
-* `POST /pair {code, device:{platform, model?, name?}}` → `{device_token, device_id}` + `Set-Cookie`.
-* `POST /auth/google {id_token}` → allowlist check → `{device_id, device_token, email}` + `Set-Cookie` (403 `FORBIDDEN_EMAIL`).
+* Device token: `kdt1.<b64url("dev_xxx|<issued_at_s>|pair")>.<b64url(HMAC-SHA256)>` for paired devices, and
+  `kdt1.<b64url("dev_xxx|<issued_at_s>|google|<email>")>.<b64url(HMAC-SHA256)>` for Google sign-ins (verified,
+  lower-cased email; legacy 3-field `google` bodies still decode). Max token length 768.
+* `POST /pair {code, device:{platform, model?, name?}}` → `{device_token, device_id}`. When Google Sign-In is
+  enabled (`/auth/config` `google_login: true`), `platform: "web"` is refused with 403 `WEB_GOOGLE_REQUIRED`
+  (before the code is checked) and no cookie is set (native shells keep the token from the body); otherwise
+  (local mode) the response also sets the session cookie.
+* `POST /auth/google {id_token}` → allowlist check → `{device_id, device_token, email}` + `Set-Cookie`;
+  refused accounts get 403 `{error: "FORBIDDEN_EMAIL", email}` and any session cookie is cleared.
+* `/ws` with Google Sign-In enabled: cookie sessions must be `google` tokens whose email is in `ALLOWED_EMAILS`,
+  and `google` tokens whose email has left the allowlist are refused (close `4403`).
 * `POST /auth/logout` → clears cookie.
 * Cookie `__Host-kesoku_session` (`HttpOnly; Secure; SameSite=Lax; Path=/`) holds the device token for Web;
   `auth.hello.device_token` may then be omitted.
