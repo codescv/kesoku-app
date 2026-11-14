@@ -121,9 +121,9 @@ EOF
   rm -f "$CB"
 fi
 
-ENV_VARS="ALLOWED_EMAILS=${ALLOWED_EMAILS}@FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}@MEDIA_BUCKET=${MEDIA_BUCKET}"
+ENV_VARS="ALLOWED_EMAILS=${ALLOWED_EMAILS};FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID};MEDIA_BUCKET=${MEDIA_BUCKET}"
 if [[ -n "${FIREBASE_WEB_API_KEY:-}" ]]; then
-  ENV_VARS="${ENV_VARS}@FIREBASE_WEB_API_KEY=${FIREBASE_WEB_API_KEY}@FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN:-${FIREBASE_PROJECT_ID}.firebaseapp.com}"
+  ENV_VARS="${ENV_VARS};FIREBASE_WEB_API_KEY=${FIREBASE_WEB_API_KEY};FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN:-${FIREBASE_PROJECT_ID}.firebaseapp.com}"
 fi
 
 echo "==> deploy ${SERVICE_NAME} (${REGION})"
@@ -136,7 +136,7 @@ g run deploy "$SERVICE_NAME" \
   --cpu=1 --memory=512Mi --no-cpu-throttling \
   --ingress=all --allow-unauthenticated \
   --set-secrets="ENGINE_TOKEN=${ENGINE_SECRET}:latest,DEVICE_HMAC_KEY=${HMAC_SECRET}:latest" \
-  --set-env-vars="^@^${ENV_VARS}"
+  --set-env-vars="^;^${ENV_VARS}"
 
 URL="$(g run services describe "$SERVICE_NAME" --region="$REGION" --format='value(status.url)')"
 
