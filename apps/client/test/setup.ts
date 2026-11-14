@@ -7,7 +7,7 @@ afterEach(() => {
 });
 
 // jsdom lacks these.
-if (!('matchMedia' in window)) {
+if (typeof window.matchMedia !== 'function') {
   Object.defineProperty(window, 'matchMedia', {
     value: (q: string) => ({
       matches: false,

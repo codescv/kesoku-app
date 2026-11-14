@@ -221,6 +221,8 @@ export const MemoryProposalSchema = z
     proposal_id: z.string(),
     session_id: z.string(),
     message_id: z.string().nullable().optional(),
+    /** Triggering user message id (= assistant turn_id); preferred anchor for the inline card. */
+    turn_id: z.string().nullable().optional(),
     role: z.string().optional(),
     source_mode: z.string().nullable().optional(),
     ops: z.array(ProposalOpSchema),

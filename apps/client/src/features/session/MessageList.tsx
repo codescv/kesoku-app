@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { EngineToClientPayload, LexToken, MemoryProposal } from '@kesoku/protocol';
 import { Avatar, modeMeta } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
@@ -12,6 +12,28 @@ import { makeCardContext } from './cardContext';
 import { useIsDesktop } from '../../app/useMedia';
 
 const EMPTY_ITEMS: ChatItem[] = [];
+
+/** Map proposals to the `key` of the chat row they render under (see MessageList). */
+export function anchorProposals(items: ChatItem[], proposals: MemoryProposal[]): { m: Map<string, MemoryProposal[]>; tail: MemoryProposal[] } {
+  const m = new Map<string, MemoryProposal[]>();
+  const tail: MemoryProposal[] = [];
+  const byMsg = new Map<string, ChatItem>();
+  const replyByTurn = new Map<string, ChatItem>();
+  for (const it of items) {
+    if (it.message_id) byMsg.set(it.message_id, it);
+    if (it.kind === 'assistant' && it.turn_id) replyByTurn.set(it.turn_id, it); // last reply of the turn wins
+  }
+  for (const p of proposals) {
+    const target = p.message_id ? byMsg.get(p.message_id) : undefined;
+    let anchor: ChatItem | undefined = p.turn_id ? (replyByTurn.get(p.turn_id) ?? byMsg.get(p.turn_id)) : undefined;
+    if (!anchor && target?.kind === 'assistant') anchor = target;
+    else if (!anchor && target?.kind === 'user') anchor = replyByTurn.get(target.message_id!) ?? target;
+    else if (!anchor && p.message_id) anchor = replyByTurn.get(p.message_id);
+    if (anchor) m.set(anchor.key, [...(m.get(anchor.key) ?? []), p]);
+    else tail.push(p);
+  }
+  return { m, tail };
+}
 
 const STARTERS: Record<string, string[]> = {
   chat: ['今天过得怎么样？', '教我一句地道的日语'],
@@ -83,16 +105,12 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
   const stick = useRef(true);
 
   const proposals = useMemo(() => Object.values(proposalsAll).filter((p) => p.session_id === sessionId), [proposalsAll, sessionId]);
-  const byMessage = useMemo(() => {
-    const m = new Map<string, MemoryProposal[]>();
-    const ids = new Set(items.map((i) => i.message_id));
-    const tail: MemoryProposal[] = [];
-    for (const p of proposals) {
-      if (p.message_id && ids.has(p.message_id)) m.set(p.message_id, [...(m.get(p.message_id) ?? []), p]);
-      else tail.push(p);
-    }
-    return { m, tail };
-  }, [proposals, items]);
+  /**
+   * Anchor each proposal under a chat row: the engine may reference the assistant message or the triggering
+   * user message (whose id is the assistant turn's `turn_id`). Prefer the assistant reply of that turn; if it has
+   * not arrived yet, show the card right after the user bubble; unknown ids go to the tail.
+   */
+  const byMessage = useMemo(() => anchorProposals(items, proposals), [proposals, items]);
 
   const explain = useCallback(
     async (text: string, token: string): Promise<LexToken | null> => {
@@ -143,7 +161,13 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
           </button>
         )}
         {items.map((item) => {
-          if (item.kind === 'user') return <UserBubble key={item.key} item={item} sessionId={sessionId} />;
+          if (item.kind === 'user')
+          return (
+            <Fragment key={item.key}>
+              <UserBubble item={item} sessionId={sessionId} />
+              {byMessage.m.get(item.key)?.map((p) => <ProposalCard key={p.proposal_id} proposal={p} />)}
+            </Fragment>
+          );
           if (item.kind === 'system' || item.kind === 'error')
             return (
               <div key={item.key} className="k-row k-row-system">
@@ -168,7 +192,7 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
               </div>
               <ThinkingPill events={evs} running={false} />
               {item.segments?.length ? <SegmentList segments={item.segments} env={env} /> : item.text ? <Markdown text={item.text} /> : null}
-              {(item.message_id && byMessage.m.get(item.message_id)?.map((p) => <ProposalCard key={p.proposal_id} proposal={p} />)) || null}
+              {byMessage.m.get(item.key)?.map((p) => <ProposalCard key={p.proposal_id} proposal={p} />) ?? null}
             </div>
           );
         })}

@@ -351,7 +351,7 @@ export const kesoku = {
   },
 
   async startMode(modeId: ModeId): Promise<void> {
-    let sid = getState().currentSessionId;
+    const sid = getState().currentSessionId;
     if (!sid) {
       await kesoku.createSession({ mode: modeId });
       return;
@@ -365,15 +365,7 @@ export const kesoku = {
       actions.setUi({ pendingMode: null });
       actions.toast('模式启动失败', 'error');
     });
-    // Roll back the optimistic capsule if no state.sync confirms within 2.5 s.
-    setTimeout(() => {
-      const pm = getState().ui.pendingMode;
-      if (pm && pm.sessionId === sid && pm.modeId === modeId) {
-        actions.setUi({ pendingMode: null });
-        actions.toast('模式切换未确认，已回滚');
-      }
-    }, 2500);
-    sid = null;
+    watchPendingMode(sid, modeId);
   },
 
   async stopMode(sessionId: string): Promise<void> {
@@ -495,6 +487,33 @@ export const kesoku = {
     return ref.url ?? null;
   },
 };
+
+/**
+ * Optimistic mode capsule rollback (UI doc Screen 01 §3): if no `state.sync` confirms the mode within 2.5 s
+ * and the engine shows no turn activity, roll back. While the launch turn is running (preview / turn events),
+ * keep waiting; roll back if that turn finalises without a confirming `state.sync` (2 s grace) or after 20 s.
+ */
+export function watchPendingMode(targetSid: string, modeId: string, now: () => number = Date.now): void {
+  const startedAt = now();
+  const startTs = startedAt / 1000;
+  const tick = () => {
+    const s = getState();
+    const pm = s.ui.pendingMode;
+    if (!pm || pm.sessionId !== targetSid || pm.modeId !== modeId) return; // confirmed or superseded
+    const elapsed = now() - startedAt;
+    const items = s.items[targetSid] ?? [];
+    const finalAfter = items.find((i) => i.kind === 'assistant' && i.ts >= startTs);
+    const active = !!s.previews[targetSid] || items.some((i) => i.kind === 'user' && i.ts >= startTs - 1) || !!finalAfter;
+    const finalGraceOver = finalAfter ? now() / 1000 - Math.max(finalAfter.ts, startTs) > 2 : false;
+    if ((elapsed >= 2500 && !active) || finalGraceOver || elapsed >= 20_000) {
+      actions.setUi({ pendingMode: null });
+      actions.toast('模式切换未确认，已回滚');
+      return;
+    }
+    setTimeout(tick, 500);
+  };
+  setTimeout(tick, 500);
+}
 
 function waitForMedia(placeholderId: string, timeoutMs: number): Promise<string | null> {
   return new Promise((resolve) => {
