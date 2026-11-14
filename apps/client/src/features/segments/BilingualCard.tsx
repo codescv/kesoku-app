@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { BilingualSegment, LexToken } from '@kesoku/protocol';
 import { RubyText, VoicePill, resolveRubyParts, type RubyPart } from '@kesoku/ui';
 import { useStore } from '../../lib/store';
+import { Markdown } from './Markdown';
 
 export interface WordUnit extends RubyPart {
   start: number;
@@ -134,14 +135,26 @@ export function LexCard({ token, onClose }: { token: LexToken; onClose?: () => v
           </div>
         </div>
       )}
-      {token.note && <div className="k-lex-note">{token.note}</div>}
+      {token.note ? (
+        <div className="k-lex-note">
+          <Markdown text={token.note} />
+        </div>
+      ) : (token as { explanation_markdown?: string }).explanation_markdown && !token.gloss_zh && !token.lemma && !token.conj ? (
+        <div className="k-lex-note">
+          <Markdown text={(token as { explanation_markdown: string }).explanation_markdown} />
+        </div>
+      ) : null}
     </div>
   );
 }
 
 /** Integrated bilingual card: real <ruby>, tap-to-play ▶ (never autoplay), tap-to-toggle 中文, tap-any-word breakdown. */
 export function BilingualCard({ seg, resolveVoice, explain, onWord, compact, inlineLex = true, preloadVoice }: BilingualCardProps) {
-  const entry = useStore((s) => (seg.voice?.placeholder_id ? s.media[seg.voice.placeholder_id] : undefined));
+  const entry = useStore(
+    (s) =>
+      (seg.voice?.placeholder_id ? s.media[seg.voice.placeholder_id] : undefined) ??
+      (seg.voice?.ref ? s.media['ref:' + seg.voice.ref] : undefined),
+  );
   const vPending = !!seg.voice?.placeholder_id && !seg.voice?.object && !seg.voice?.url && (entry?.status === 'pending' || (!entry && !seg.voice?.ref));
   const vFailed = entry?.status === 'failed';
   const readyKey = entry?.url || seg.voice?.object || seg.voice?.url || '';

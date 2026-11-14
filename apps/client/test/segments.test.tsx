@@ -276,4 +276,31 @@ describe('<SegmentList>', () => {
     render(<SegmentList segments={[{ type: 'card', kind: 'mystery_kind', data: { title: '神秘卡片', note: 'hello' } }]} env={env()} />);
     expect(screen.getByText('神秘卡片')).toBeTruthy();
   });
+  it('renders <spoiler>, ||spoiler||, GFM tables, and ruby inside question choices', () => {
+    const { container } = render(
+      <SegmentList
+        segments={[
+          {
+            type: 'text',
+            markdown: '答案：<spoiler>秘密内容</spoiler> 或 ||隐藏词||\n\n| 假名 | 含义 |\n|---|---|\n| 明日(あした) | 明天 |',
+          },
+          {
+            type: 'question',
+            prompt: '明日（あした）どこへ行く？',
+            choices: ['海（うみ）へ行く', '山(やま)へ行く'],
+          },
+        ]}
+        env={env()}
+      />,
+    );
+    const spoilers = container.querySelectorAll('.k-spoiler');
+    expect(spoilers.length).toBe(2);
+    expect(spoilers[0].classList.contains('is-open')).toBe(false);
+    fireEvent.click(spoilers[0]);
+    expect(spoilers[0].classList.contains('is-open')).toBe(true);
+    expect(container.querySelector('table.k-table')).toBeTruthy();
+    const rts = Array.from(container.querySelectorAll('rt')).map((el) => el.textContent);
+    expect(rts).toContain('うみ');
+    expect(rts).toContain('やま');
+  });
 });

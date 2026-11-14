@@ -10,6 +10,8 @@ export interface RubyTextProps {
   activeIndex?: number | null;
 }
 
+const WORD_CHAR_RE = /[\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3005-\u3007A-Za-z0-9]/;
+
 /** Renders parts as real <ruby>/<rt> React elements (JSX-escaped; never raw HTML injection). */
 export function RubyText({ parts, className, style, onPartClick, activeIndex }: RubyTextProps) {
   return (
@@ -23,7 +25,7 @@ export function RubyText({ parts, className, style, onPartClick, activeIndex }: 
         ) : (
           p.base
         );
-        if (!onPartClick) return <Fragment key={i}>{inner}</Fragment>;
+        if (!onPartClick || (!p.rt && !WORD_CHAR_RE.test(p.base))) return <Fragment key={i}>{inner}</Fragment>;
         return (
           <span
             key={i}

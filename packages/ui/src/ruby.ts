@@ -9,10 +9,11 @@ export interface RubyPart {
 }
 
 const KANJI = '[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF々〆ヶヵ〇]';
+const HIRA = '[\\u3041-\\u3096]';
 const KANA = '[\\u3041-\\u309F\\u30A0-\\u30FFー・\\uFF66-\\uFF9F]';
-// 漢字(かな) / 漢字（かな） and Aozora-style ｜base《rt》 / base《rt》
+// 漢字(かな) / 漢字（かな） (including okurigana compounds like 勘違い（かんちがい） or 木漏れ日（こもれび）) and Aozora-style ｜base《rt》 / base《rt》
 const NOTATION_RE = new RegExp(
-  `[｜|]([^｜|《》()（）]+?)《(${KANA}+)》|(${KANJI}+)《(${KANA}+)》|(${KANJI}+)[(（](${KANA}+)[)）]`,
+  `[｜|]([^｜|《》()（）]+?)《(${KANA}+)》|(${KANJI}+)《(${KANA}+)》|(${KANJI}+(${HIRA}{1,3}))[(（](${KANA}+?\\6)[)）]|(${KANJI}+(?:${HIRA}{1,2}${KANJI}+)*)[(（](${KANA}+)[)）]`,
   'gu',
 );
 
@@ -31,8 +32,8 @@ export function parseRubyNotation(text: string): RubyPart[] {
   const re = new RegExp(NOTATION_RE.source, NOTATION_RE.flags);
   for (let m = re.exec(text); m; m = re.exec(text)) {
     pushText(parts, text.slice(cursor, m.index));
-    const base = m[1] ?? m[3] ?? m[5];
-    const rt = m[2] ?? m[4] ?? m[6];
+    const base = m[1] ?? m[3] ?? m[5] ?? m[8];
+    const rt = m[2] ?? m[4] ?? m[7] ?? m[9];
     parts.push({ base, rt });
     cursor = m.index + m[0].length;
   }

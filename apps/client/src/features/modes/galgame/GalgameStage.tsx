@@ -1,12 +1,14 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent, type PointerEvent as RPointerEvent } from 'react';
-import type { BilingualSegment, FileSegment, MemoryPolicy, Segment } from '@kesoku/protocol';
+import type { BilingualSegment, EngineToClientPayload, FileSegment, LexToken, MemoryPolicy, Segment } from '@kesoku/protocol';
 import { PolicyBadge, SceneChips } from '@kesoku/hud';
-import { RubyText, VoicePill, parseRubyNotation, resolveRubyParts } from '@kesoku/ui';
+import { RubyText, VoicePill, parseRubyNotation, resolveRubyParts, type RubyPart } from '@kesoku/ui';
 import type { ChatItem, StreamPreview } from '../../../lib/types';
+import { kesoku } from '../../../lib/client';
 import { useStore } from '../../../lib/store';
 import type { CardContext, MediaRef } from '../../cards/types';
 import { toMediaRef, useImageUrl } from '../../cards/util';
-import { Markdown } from '../../segments/Markdown';
+import { LexCard, findToken, toWordUnits } from '../../segments/BilingualCard';
+import { Markdown, renderInline } from '../../segments/Markdown';
 import { StickerThumb, isStickerMedia, useVoiceStatus } from '../../segments/SegmentRenderer';
 import { parseStreaming } from '../../stream/streamParser';
 
@@ -241,18 +243,81 @@ function hasVoice(seg: BilingualSegment): boolean {
   return !!v && !!(v.placeholder_id || v.object || v.ref || v.url);
 }
 
-function Speech({ seg, ctx, speaker, showHead, zhOpen, onToggleZh }: { seg: BilingualSegment; ctx: CardContext; speaker: string; showHead: boolean; zhOpen: boolean; onToggleZh: () => void }) {
+function Speech({
+  seg,
+  ctx,
+  speaker,
+  showSpeaker,
+  showVoice,
+  zhOpen,
+  onToggleZh,
+  onOpenLex,
+}: {
+  seg: BilingualSegment;
+  ctx: CardContext;
+  speaker: string;
+  showSpeaker: boolean;
+  showVoice: boolean;
+  zhOpen: boolean;
+  onToggleZh: () => void;
+  onOpenLex?: () => void;
+}) {
   const parts = useMemo(() => resolveRubyParts(seg), [seg]);
+  const plain = useMemo(() => parts.map((p) => p.base).join(''), [parts]);
+  const units = useMemo(() => toWordUnits(parts, seg.tokens), [parts, seg.tokens]);
+  const [active, setActive] = useState<number | null>(null);
+  const [lex, setLex] = useState<LexToken | null>(null);
+  const [loading, setLoading] = useState(false);
+  const lexRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (lex && lexRef.current && typeof lexRef.current.scrollIntoView === 'function') {
+      lexRef.current.scrollIntoView({ block: 'nearest' });
+    }
+  }, [lex]);
+
+  async function onPart(_p: RubyPart, i: number) {
+    if (active === i) {
+      setActive(null);
+      setLex(null);
+      return;
+    }
+    setActive(i);
+    onOpenLex?.();
+    const u = units[i];
+    const bundled = findToken(u, plain, seg.tokens);
+    if (bundled) {
+      setLex(bundled);
+      return;
+    }
+    setLoading(true);
+    setLex({ surface: u.base, reading: u.rt });
+    try {
+      const r = await kesoku.rpc<EngineToClientPayload<'lexical.explain.result'> & { explanation_markdown?: string }>(
+        'lexical.explain',
+        { session_id: ctx.sessionId, text: plain, token: u.base },
+        { timeoutMs: 30_000 },
+      );
+      const rawTok = (r as { token?: unknown }).token;
+      if (rawTok && typeof rawTok === 'object') setLex(rawTok as LexToken);
+      else setLex({ surface: u.base, reading: u.rt, note: typeof r.explanation_markdown === 'string' ? r.explanation_markdown : String(rawTok ?? '') });
+    } catch {
+      /* keep surface/reading fallback */
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <div className="gg-speech">
-      {showHead && (
+    <div className="gg-speech" onClick={() => active !== null && (setActive(null), setLex(null))}>
+      {(showSpeaker || showVoice) && (
         <div className="gg-speech-head">
-          <span className="gg-speech-name">{speaker}</span>
-          {hasVoice(seg) && <SpeechVoice seg={seg} ctx={ctx} />}
+          {showSpeaker ? <span className="gg-speech-name">{speaker}</span> : <span />}
+          {showVoice && <SpeechVoice seg={seg} ctx={ctx} />}
         </div>
       )}
       <div className="gg-line">
-        <RubyText parts={parts} />
+        <RubyText parts={units} onPartClick={onPart} activeIndex={active} />
       </div>
       {seg.zh && (
         <button
@@ -266,6 +331,12 @@ function Speech({ seg, ctx, speaker, showHead, zhOpen, onToggleZh }: { seg: Bili
         >
           {zhOpen ? seg.zh : '中文 ▸'}
         </button>
+      )}
+      {lex && (
+        <div ref={lexRef} className="gg-lex" onClick={(e) => e.stopPropagation()}>
+          <LexCard token={lex} onClose={() => (setActive(null), setLex(null))} />
+          {loading && <div className="k-lex-loading">精讲生成中…</div>}
+        </div>
       )}
     </div>
   );
@@ -349,7 +420,13 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
   const firstSpeech = speeches[0];
   const speaker = resolveSpeaker(firstSpeech?.speaker, turn?.item, personaName);
   const roleName = resolveSpeaker(undefined, turn?.item, personaName);
-  const single = speeches.length === 1 ? speeches[0] : null;
+  const voicedSpeeches = speeches.filter(hasVoice);
+  const headerVoiceSeg =
+    speeches.length === 1 && hasVoice(speeches[0])
+      ? speeches[0]
+      : voicedSpeeches.length === 1 && resolveSpeaker(voicedSpeeches[0].speaker, turn?.item, personaName) === speaker
+        ? voicedSpeeches[0]
+        : null;
 
   const startPress = (e: RPointerEvent) => {
     const el = e.target as HTMLElement | null;
@@ -401,7 +478,7 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
       <div className="gg-bottom">
         {question && (
           <div className="gg-choices" role="group" aria-label={question.seg.prompt || '选项'}>
-            {question.seg.choices.map((c) => {
+            {question.seg.choices.map((c, idx) => {
               const on = multi.includes(c);
               return (
                 <button
@@ -414,7 +491,7 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
                     setMulti((m) => (m.includes(c) ? m.filter((x) => x !== c) : question.seg.max && m.length >= question.seg.max ? m : [...m, c]));
                   }}
                 >
-                  <span aria-hidden>✦</span> {c}
+                  <span aria-hidden>✦</span> <span className="gg-choice-text">{renderInline(c, `gc-${idx}`)}</span>
                   <span className="gg-choice-go" aria-hidden>
                     ›
                   </span>
@@ -433,34 +510,53 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
           <div className={'gg-box' + (expanded ? ' is-expanded' : '')} onClick={onBoxClick} data-testid="gg-box">
             <div className="gg-box-head">
               <span className="gg-nameplate">{streaming ? roleName : speaker}</span>
-              {!streaming && single && hasVoice(single) && <SpeechVoice seg={single} ctx={ctx} />}
+              <div className="gg-head-right">
+                {!streaming && headerVoiceSeg && <SpeechVoice seg={headerVoiceSeg} ctx={ctx} />}
+                <button
+                  type="button"
+                  className="gg-expand-btn"
+                  aria-expanded={expanded}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpanded((x) => !x);
+                  }}
+                >
+                  {expanded ? '▴ 收起' : '▾ 展开'}
+                </button>
+              </div>
             </div>
             <div className="gg-box-body" data-testid="gg-box-body">
               {streaming ? (
                 <StreamingBody text={streamText} speaker={roleName} />
               ) : (
-                segs.map((s, i) => (
-                  <Fragment key={i}>
-                    {s.type === 'text' ? (
-                      <div className="gg-narration">
-                        <Markdown text={s.markdown} />
-                      </div>
-                    ) : s.type === 'bilingual' ? (
-                      <Speech
-                        seg={s}
-                        ctx={ctx}
-                        speaker={resolveSpeaker(s.speaker, turn?.item, personaName)}
-                        showHead={!single}
-                        zhOpen={!zhClosed[i]}
-                        onToggleZh={() => setZhClosed((z) => ({ ...z, [i]: !z[i] }))}
-                      />
-                    ) : (
-                      <div className="gg-sticker">
-                        <StickerThumb seg={s as FileSegment} ctx={ctx} />
-                      </div>
-                    )}
-                  </Fragment>
-                ))
+                segs.map((s, i) => {
+                  const spIdx = s.type === 'bilingual' ? speeches.indexOf(s) : -1;
+                  const segSpeaker = s.type === 'bilingual' ? resolveSpeaker(s.speaker, turn?.item, personaName) : speaker;
+                  const prevSpeaker = spIdx > 0 ? resolveSpeaker(speeches[spIdx - 1].speaker, turn?.item, personaName) : speaker;
+                  return (
+                    <Fragment key={i}>
+                      {s.type === 'text' ? (
+                        <div className="gg-narration">
+                          <Markdown text={s.markdown} />
+                        </div>
+                      ) : s.type === 'bilingual' ? (
+                        <Speech
+                          seg={s}
+                          ctx={ctx}
+                          speaker={segSpeaker}
+                          showSpeaker={segSpeaker !== prevSpeaker}
+                          showVoice={hasVoice(s) && s !== headerVoiceSeg}
+                          zhOpen={!zhClosed[i]}
+                          onToggleZh={() => setZhClosed((z) => ({ ...z, [i]: !z[i] }))}
+                        />
+                      ) : (
+                        <div className="gg-sticker">
+                          <StickerThumb seg={s as FileSegment} ctx={ctx} />
+                        </div>
+                      )}
+                    </Fragment>
+                  );
+                })
               )}
             </div>
           </div>

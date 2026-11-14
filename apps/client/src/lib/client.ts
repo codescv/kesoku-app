@@ -19,7 +19,7 @@ import type { ChatItem } from './types';
 import type { MediaRef } from '../features/cards/types';
 
 const SEQ_TYPES = new Set<string>(SEQ_EVENT_TYPES);
-const APP_VERSION = '0.1.4';
+const APP_VERSION = '0.1.5';
 
 type Payload = Record<string, unknown>;
 
@@ -287,7 +287,10 @@ export const kesoku = {
     tracked.add(sid);
     useStore.setState({ currentSessionId: sid });
     actions.setUi({ launchpad: !opts.mode, screen: 'chat', drawerOpen: false });
-    if (opts.mode) actions.setUi({ pendingMode: { sessionId: sid, modeId: opts.mode, at: Date.now() } });
+    if (opts.mode) {
+      actions.setUi({ pendingMode: { sessionId: sid, modeId: opts.mode, at: Date.now() } });
+      watchPendingMode(sid, opts.mode);
+    }
     return sid;
   },
 
@@ -486,7 +489,7 @@ export const kesoku = {
         ...(ctx.sessionId ? { session_id: ctx.sessionId } : {}),
         ...(ctx.messageId ? { message_id: ctx.messageId } : {}),
       }, { timeoutMs: 60_000 });
-      actions.setMedia(key, { status: 'ready', url: r.url, object: r.object, expires_at: r.expires_at, mime: r.mime });
+      actions.setMedia(key, { status: 'ready', url: r.url, object: r.object, expires_at: r.expires_at, mime: r.mime, duration_ms: r.duration_ms });
       return r.url;
     }
     return ref.url ?? null;
@@ -508,9 +511,10 @@ export function watchPendingMode(targetSid: string, modeId: string, now: () => n
     const elapsed = now() - startedAt;
     const items = s.items[targetSid] ?? [];
     const finalAfter = items.find((i) => i.kind === 'assistant' && i.ts >= startTs);
-    const active = !!s.previews[targetSid] || items.some((i) => i.kind === 'user' && i.ts >= startTs - 1) || !!finalAfter;
+    const streaming = !!s.previews[targetSid] && !s.previews[targetSid]?.interrupted;
+    const active = streaming || items.some((i) => i.kind === 'user' && i.ts >= startTs - 1) || !!finalAfter;
     const finalGraceOver = finalAfter ? now() / 1000 - Math.max(finalAfter.ts, startTs) > 2 : false;
-    if ((elapsed >= 2500 && !active) || finalGraceOver || elapsed >= 20_000) {
+    if ((elapsed >= 2500 && !active) || finalGraceOver || (!streaming && elapsed >= 20_000) || elapsed >= 120_000) {
       actions.setUi({ pendingMode: null });
       actions.toast('模式切换未确认，已回滚');
       return;

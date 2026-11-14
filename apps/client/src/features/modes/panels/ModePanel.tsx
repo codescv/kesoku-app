@@ -103,7 +103,8 @@ function RosterAvatar({ refStr, name, ctx }: { refStr: string; name: string; ctx
 }
 
 function RosterPanel({ stateFiles, ctx }: { stateFiles: Record<string, unknown>; ctx: CardContext }) {
-  const members = Object.entries(obj(file(stateFiles, 'game/roster.json').members)).filter(([, v]) => isObj(v)) as Array<[string, Dict]>;
+  const roster = file(stateFiles, 'game/roster.json');
+  const members = Object.entries(obj(roster.members ?? roster.cast ?? roster.characters)).filter(([, v]) => isObj(v)) as Array<[string, Dict]>;
   return (
     <Panel title="🎭 演员定妆表" badge={<span className="kc-badge kc-badge-mode">{members.length}</span>} className="km-roster">
       {!members.length && <Empty>还没有登记角色</Empty>}
@@ -113,7 +114,7 @@ function RosterPanel({ stateFiles, ctx }: { stateFiles: Record<string, unknown>;
           const base = obj(m.base_appearance);
           const ref = pick(m, 'ref') || pick(base, 'ref') || pick(m, 'visual_ref');
           const actor = pick(m, 'actor', 'cast', 'performer', 'display_name') || (ref ? ref.split('/').filter(Boolean).pop()?.replace(/[_-]+/g, ' ') ?? '' : '');
-          const tags = [...strList(m.tags), ...strList(m.costume), ...strList(pick(m, 'outfit'))].slice(0, 6);
+          const tags = [...strList(m.tags), ...strList(m.traits), ...strList(m.costume), ...strList(pick(m, 'outfit'))].slice(0, 6);
           const role = pick(m, 'role');
           return (
             <li key={key} className="km-roster-row">
@@ -164,6 +165,7 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
   const hp = num(rec.hp);
   const max = num(rec.max_hp ?? rec.hp_max) ?? hp;
   const role = pick(rec, 'role');
+  const cls = pick(rec, 'class', 'job');
   const level = num(rec.level);
   const status = strList(rec.status ?? rec.statuses);
   const attrs = { ...obj(rec.base), ...rec };
@@ -173,12 +175,17 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
   const skills = arr(rec.skills)
     .map((s) => (isObj(s) ? { name: pick(s, 'name'), tail: [pick(s, 'dmg'), pick(s, 'status'), pick(s, 'desc')].filter(Boolean).join(' · ') } : { name: str(s), tail: '' }))
     .filter((s) => s.name);
-  const inv = itemsList(rec.inventory ?? rec.items ?? rec.bag);
+  const equipObj = obj(rec.equip);
+  const equipItems = ['weapon', 'armor', 'accessory']
+    .map((slot) => pick(equipObj, slot))
+    .filter(Boolean);
+  const inv = [...equipItems, ...itemsList(rec.inventory ?? rec.items ?? rec.bag)];
   return (
     <li className={'km-fighter' + (enemy ? ' is-enemy' : '')}>
       <div className="km-fighter-head">
         <b>{enemy ? '👹 ' : ''}{pick(rec, 'display_name', 'name') || name}</b>
         {role && ROLE_LABEL[role] && <span className="kc-badge kc-badge-tag">{ROLE_LABEL[role]}</span>}
+        {cls && <span className="kc-badge kc-badge-tag">{cls}</span>}
         {level !== null && <span className="kc-badge kc-badge-primary">Lv {level}</span>}
         {status.map((s) => (
           <span key={s} className="kc-badge kc-badge-warn">
@@ -228,11 +235,12 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
 
 function PartyPanel({ stateFiles }: { stateFiles: Record<string, unknown> }) {
   const party = file(stateFiles, 'game/party.json');
+  const ledger = file(stateFiles, 'game/ledger.json');
   const members = Object.entries(obj(party.members)).filter(([, v]) => isObj(v)) as Array<[string, Dict]>;
   const enemies = Object.entries(obj(party.enemies)).filter(([, v]) => isObj(v)) as Array<[string, Dict]>;
   members.sort((a, b) => Number(b[1].role === 'player') - Number(a[1].role === 'player'));
   const shared = itemsList(party.inventory ?? party.bag ?? party.loot);
-  const gold = num(party.gold);
+  const gold = num(obj(ledger.global).gold ?? party.gold);
   return (
     <Panel title="⚔️ 小队" className="km-party">
       {!members.length && !enemies.length && <Empty>暂无队伍数据</Empty>}

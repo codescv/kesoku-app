@@ -220,12 +220,13 @@ export const actions = {
       const pendingLocal = (s.items[sid] ?? []).filter((x) => x.status === 'sending' || x.status === 'failed');
       const proposals = { ...s.proposals };
       for (const pr of p.pending_proposals ?? []) proposals[pr.proposal_id] = pr;
+      const nestedPrefs = (p as { prefs?: { mode_prefs?: Record<string, unknown>; llm_override?: LlmOverride | null } }).prefs;
       return {
         sessions: { ...s.sessions, [sid]: { ...s.sessions[sid], ...p.session } },
         items: { ...s.items, [sid]: sortItems([...items, ...pendingLocal]) },
         stateFiles: { ...s.stateFiles, [sid]: { ...(p.state_files ?? {}) } },
-        modePrefs: { ...s.modePrefs, [sid]: { ...(p.mode_prefs ?? {}) } },
-        llmOverride: { ...s.llmOverride, [sid]: p.llm_override ?? null },
+        modePrefs: { ...s.modePrefs, [sid]: { ...(p.mode_prefs ?? nestedPrefs?.mode_prefs ?? {}) } },
+        llmOverride: { ...s.llmOverride, [sid]: p.llm_override ?? nestedPrefs?.llm_override ?? null },
         origin: { ...s.origin, [sid]: p.origin_channel ?? p.session.chatbot_id ?? 'app' },
         takenOver: { ...s.takenOver, [sid]: !!p.session.app_bound },
         lastSeq: { ...s.lastSeq, [sid]: Math.max(p.head_seq, 0) },

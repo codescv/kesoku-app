@@ -68,7 +68,7 @@ export function ProposalCard({ proposal, compact }: { proposal: MemoryProposal; 
               <span className="k-proposal-tags">
                 {op.tags.map((t) => (
                   <span key={t} className="k-pill k-pill-accent k-pill-sm">
-                    #{t}
+                    #{t.replace(/^#+/, '')}
                   </span>
                 ))}
               </span>
