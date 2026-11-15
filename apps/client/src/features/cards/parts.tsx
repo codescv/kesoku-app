@@ -1,5 +1,7 @@
-import { useState, type ReactNode } from 'react';
-import { RubyText, Sheet, VoicePill, resolveRubyParts, type RubySpecInput } from '@kesoku/ui';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type { LexToken } from '@kesoku/protocol';
+import { RubyText, Sheet, VoicePill, resolveRubyParts, type RubyPart, type RubySpecInput } from '@kesoku/ui';
+import { LexCard, explainLexCached, findToken, getCachedSentenceLex, mergeTokens, toWordUnits } from '../segments/BilingualCard';
 import type { CardContext } from './types';
 import { bboxPosition, cardMedia, hasKana, isObj, num, photoRef, pick, toBBox, useImageUrl, type BBox, type Dict } from './util';
 
@@ -25,9 +27,91 @@ export function CardShell({
   );
 }
 
+function isJapanese(text: string, lang: string | undefined, ruby: unknown, rubyParts: unknown): boolean {
+  if (lang) {
+    const l = lang.toLowerCase();
+    return l.startsWith('ja') || lang === '日语' || lang === '日本語';
+  }
+  return hasKana(text) || hasKana(typeof ruby === 'string' ? ruby : '') || ruby != null || Array.isArray(rubyParts);
+}
+
+const KANJI_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff々〆ヶ]/;
+const KANA_ONLY_RE = /^[\u3041-\u309f\u30a0-\u30ffー・\s]+$/;
+
 /**
- * Japanese (or any) line with optional ruby. Accepts `{text, ruby?, ruby_parts?}`; strings containing
- * `漢字(かな)` notation are parsed. Non-Japanese text renders as a plain span.
+ * Japanese line whose words are tappable (same flow as `BilingualCard`): bundled `tokens` → whole-sentence cache →
+ * `lexical.explain`, with the `LexCard` breakdown shown right under the line. Words the model left without furigana
+ * get the reading from a matching analysed token.
+ */
+function InteractiveJa({ parts, className, ctx, tokens }: { parts: RubyPart[]; className?: string; ctx: CardContext; tokens?: LexToken[] }) {
+  const plain = useMemo(() => parts.map((p) => p.base).join(''), [parts]);
+  const [sentenceTokens, setSentenceTokens] = useState<LexToken[] | undefined>(() => getCachedSentenceLex(plain));
+  useEffect(() => setSentenceTokens(getCachedSentenceLex(plain)), [plain]);
+  const effective = useMemo(() => mergeTokens(tokens, sentenceTokens), [tokens, sentenceTokens]);
+  const units = useMemo(() => {
+    const base = toWordUnits(parts, tokens?.length ? tokens : sentenceTokens);
+    return base.map((u) => {
+      if (u.rt || !KANJI_RE.test(u.base)) return u;
+      const t = findToken(u, plain, effective);
+      const reading = t?.reading?.trim();
+      return reading && reading !== u.base && KANA_ONLY_RE.test(reading) && t?.surface === u.base ? { ...u, rt: reading } : u;
+    });
+  }, [parts, tokens, sentenceTokens, plain, effective]);
+  const [activeAt, setActiveAt] = useState<number | null>(null);
+  const [lex, setLex] = useState<LexToken | null>(null);
+  const [loading, setLoading] = useState(false);
+  const seqRef = useRef(0);
+  const active = activeAt === null ? null : units.findIndex((u) => u.start <= activeAt && activeAt < u.end);
+  const close = () => {
+    seqRef.current++;
+    setActiveAt(null);
+    setLex(null);
+    setLoading(false);
+  };
+  const onPart = async (_p: RubyPart, i: number) => {
+    if (active === i) return close();
+    const seq = ++seqRef.current;
+    const u = units[i];
+    setActiveAt(u.start);
+    const hit = findToken(u, plain, effective);
+    if (hit) {
+      setLoading(false);
+      setLex(hit);
+      ctx.onWord?.(hit, plain);
+      return;
+    }
+    setLoading(true);
+    setLex({ surface: u.base, reading: u.rt });
+    try {
+      const r = await explainLexCached(plain, u.base, (text, token) => ctx.explain!(text, token));
+      const whole = getCachedSentenceLex(plain);
+      if (whole) setSentenceTokens(whole);
+      if (seq !== seqRef.current) return;
+      if (r) {
+        setLex(r);
+        ctx.onWord?.(r, plain);
+      }
+    } finally {
+      if (seq === seqRef.current) setLoading(false);
+    }
+  };
+  return (
+    <>
+      <RubyText parts={units} className={className} onPartClick={(p, i) => void onPart(p, i)} activeIndex={active !== null && active >= 0 ? active : null} />
+      {lex && (
+        <div className="kc-tr-lex" onClick={(e) => e.stopPropagation()}>
+          <LexCard token={lex} onClose={close} />
+          {loading && <div className="k-lex-loading">精讲生成中…</div>}
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * Japanese (or any) line with optional ruby. Accepts `{text, ruby?, ruby_parts?}`; `漢字(かな)`, `{漢字|かな}` and
+ * `<ruby>漢字<rt>かな</rt></ruby>` are parsed. Non-Japanese text renders as a plain span. With `interactive` and a
+ * card context that can `explain`, every Japanese word is tappable for the AI lexical breakdown.
  */
 export function Ja({
   text,
@@ -35,21 +119,30 @@ export function Ja({
   rubyParts,
   className,
   lang,
+  interactive,
+  ctx,
+  tokens,
 }: {
   text: string;
   ruby?: unknown;
   rubyParts?: unknown;
   className?: string;
   lang?: string;
+  interactive?: boolean;
+  ctx?: CardContext;
+  tokens?: unknown;
 }) {
   if (!text) return null;
-  const isJa = lang ? lang.startsWith('ja') : hasKana(text) || ruby != null || Array.isArray(rubyParts);
-  if (!isJa) return <span className={className}>{text}</span>;
+  if (!isJapanese(text, lang, ruby, rubyParts)) return <span className={className}>{text}</span>;
   const parts = resolveRubyParts({
     ja: text,
     ruby: (ruby ?? undefined) as RubySpecInput,
     ruby_parts: Array.isArray(rubyParts) ? (rubyParts as Array<{ base: string; rt?: string }>) : undefined,
   });
+  if (interactive && ctx?.explain) {
+    const toks = Array.isArray(tokens) ? (tokens.filter((t) => isObj(t) && typeof t.surface === 'string') as unknown as LexToken[]) : undefined;
+    return <InteractiveJa parts={parts} className={className} ctx={ctx} tokens={toks} />;
+  }
   return <RubyText parts={parts} className={className} />;
 }
 

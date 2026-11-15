@@ -96,12 +96,31 @@ describe('Composer · tap-to-record with 取消 / 发送', () => {
     expect(m.sendMessage).toHaveBeenCalledWith('s', '', [expect.objectContaining({ object: 'media/s/voice.webm' })]);
   });
 
-  it('translator voice defaults to 【我说】', async () => {
+  it('translator voice defaults to 【我说】 (母语 → active foreign language)', async () => {
     render(<Composer sessionId="s" modeId="translator" roleName="飞鸟" />);
-    expect(screen.getByText('我说')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /我说（译外语）/ }).getAttribute('aria-pressed')).toBe('true');
     await startRecording();
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '发送语音' })));
-    expect(m.sendMessage).toHaveBeenCalledWith('s', '【我说】翻译成对方语言', expect.any(Array));
+    expect(m.sendMessage).toHaveBeenCalledWith('s', '【我说】我说简中，翻译成日语', expect.any(Array));
+  });
+
+  it('tapping 听对方说 starts recording immediately and translates into the configured 母语', async () => {
+    useStore.setState((s) => ({
+      settings: { ...s.settings, translatorNativeLang: 'zh-TW', translatorForeignLangs: ['en'] },
+      modePrefs: { s: { src_lang: 'en', dst_lang: 'zh-TW' } },
+    }));
+    render(<Composer sessionId="s" modeId="translator" roleName="飞鸟" />);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /听对方说（译母语）/ })));
+    expect(screen.getByTestId('composer-recording-bar')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /听对方说（译母语）/ }).getAttribute('aria-pressed')).toBe('true');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '发送语音' })));
+    expect(m.sendMessage).toHaveBeenCalledWith('s', '【听对方说】对方说英语，翻译成我的母语繁中', expect.any(Array));
+  });
+
+  it('tapping 我说 starts recording immediately', async () => {
+    render(<Composer sessionId="s" modeId="translator" roleName="飞鸟" />);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /我说（译外语）/ })));
+    expect(screen.getByTestId('composer-recording-bar')).toBeTruthy();
   });
 
   it('unmounting mid-recording releases the microphone without sending', async () => {

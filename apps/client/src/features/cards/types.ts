@@ -1,3 +1,4 @@
+import type { LexToken } from '@kesoku/protocol';
 import type { ReactNode } from 'react';
 
 /** Reference to a media item inside a segment / card (resolved lazily, never prefetched for audio). */
@@ -41,6 +42,10 @@ export interface CardContext {
   speak: (text: string, lang: string) => void;
   copy: (text: string) => void;
   toast: (msg: string) => void;
+  /** Tap-a-word AI breakdown (`lexical.explain`); interactive Japanese lines are plain text without it. */
+  explain?: (text: string, token: string) => Promise<LexToken | null>;
+  /** A word was explained (desktop mirrors it into the right-hand word inspector). */
+  onWord?: (token: LexToken, sentence: string) => void;
 }
 
 export interface CardProps<D = Record<string, unknown>> {

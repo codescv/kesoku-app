@@ -1,17 +1,17 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import type { Attachment, EngineToClientPayload, LexToken, MemoryProposal } from '@kesoku/protocol';
+import type { Attachment, LexToken, MemoryProposal } from '@kesoku/protocol';
 import { Avatar, ModeIcon, UiIcon, VoicePill, modeMeta } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import type { ChatItem } from '../../lib/types';
 import { SegmentList, type SegmentEnv } from '../segments/SegmentRenderer';
-import { cacheSentenceLex } from '../segments/BilingualCard';
 import { Markdown } from '../segments/Markdown';
 import { StreamingPreview, ThinkingPill } from '../stream/StreamingPreview';
 import { ProposalCard } from '../proposals/ProposalCard';
 import { useAvatarUrl } from '../persona/avatar';
 import { fallbackRoleId, roleAvatarRef, roleFallbackName } from '../persona/model';
 import { makeCardContext } from './cardContext';
+import { explainLexical } from '../../lib/lexical';
 import { overlays } from './overlays';
 import { useIsDesktop } from '../../app/useMedia';
 
@@ -179,27 +179,7 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
    */
   const byMessage = useMemo(() => anchorProposals(items, proposals), [proposals, items]);
 
-  const explain = useCallback(
-    async (text: string, token: string): Promise<LexToken | null> => {
-      try {
-        const r = await kesoku.rpc<EngineToClientPayload<'lexical.explain.result'> & { explanation_markdown?: string }>(
-          'lexical.explain',
-          { session_id: sessionId, text, token },
-          { timeoutMs: 30_000 },
-        );
-        const rawTok = (r as { token?: unknown }).token;
-        // Whole-sentence analysis: cache every 意群 so the next word of this sentence needs no request.
-        if (Array.isArray(r.tokens) && r.tokens.length > 0) cacheSentenceLex(text, r.tokens);
-        if (rawTok && typeof rawTok === 'object') return rawTok as LexToken;
-        const md = typeof r.explanation_markdown === 'string' ? r.explanation_markdown : typeof rawTok === 'string' ? rawTok : '';
-        return { surface: token, note: md };
-      } catch {
-        actions.toast('精讲暂不可用', 'error');
-        return null;
-      }
-    },
-    [sessionId],
-  );
+  const explain = useCallback((text: string, token: string): Promise<LexToken | null> => explainLexical(sessionId, text, token), [sessionId]);
   const onWord = useCallback(
     (token: LexToken, sentence: string) => {
       if (desktop) actions.setUi({ inspector: { kind: 'word', token, sentence } });

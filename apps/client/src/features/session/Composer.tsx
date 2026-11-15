@@ -4,6 +4,20 @@ import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { compressImage, HoldRecorder } from '../../lib/files';
 import { pickImages } from '../../native/camera';
+import { resolveTranslatorPair, translatorLangLabel, type TranslatorPair } from '@kesoku/hud';
+import { mergeTranslatorModePrefs } from '../../lib/translatorPrefs';
+
+/**
+ * Translator voice prompt: 【我说】 = I speak my 母语 → translate into the active foreign language;
+ * 【听对方说】 = the other person speaks the foreign language → translate into my 母语.
+ */
+export function translatorVoicePrompt(listenOther: boolean, pair: Pick<TranslatorPair, 'nativeLang' | 'foreign'>): string {
+  const native = translatorLangLabel(pair.nativeLang);
+  const foreign = translatorLangLabel(pair.foreign);
+  return listenOther ? `【听对方说】对方说${foreign}，翻译成我的母语${native}` : `【我说】我说${native}，翻译成${foreign}`;
+}
+
+const EMPTY_PREFS: Record<string, unknown> = {};
 
 function fmtSec(sec: number): string {
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
@@ -30,6 +44,9 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
   const taRef = useRef<HTMLTextAreaElement>(null);
   const recRef = useRef<HoldRecorder | null>(null);
   const meta = modeMeta(modeId);
+  const modePrefs = useStore((s) => (sessionId ? s.modePrefs[sessionId] : undefined)) ?? EMPTY_PREFS;
+  const stateFiles = useStore((s) => (sessionId ? s.stateFiles[sessionId] : undefined)) ?? EMPTY_PREFS;
+  const settings = useStore((s) => s.settings);
 
   useEffect(() => {
     if (!insert) return;
@@ -80,7 +97,9 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
         if (modeId === 'pokemon_assistant') msg = '识别画面中的宝可梦并给出弱点';
         else if (modeId === 'translator') msg = '翻译图片中的文字';
       }
-      if (!msg && all.some((f) => f.type.startsWith('audio/')) && modeId === 'translator') msg = listenOther ? '【听对方说】翻译成中文' : '【我说】翻译成对方语言';
+      if (!msg && all.some((f) => f.type.startsWith('audio/')) && modeId === 'translator') {
+        msg = translatorVoicePrompt(listenOther, resolveTranslatorPair(mergeTranslatorModePrefs(modePrefs, settings), stateFiles));
+      }
       setText('');
       setFiles([]);
       await kesoku.sendMessage(sid, msg, attachments);
@@ -141,11 +160,29 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
     <div className="k-composer" style={{ ['--mode' as string]: meta.color }}>
       {modeId === 'translator' && (
         <div className="k-composer-sub">
-          <button type="button" className={'k-pill k-pill-sm ' + (!listenOther ? 'is-active' : 'k-pill-neutral')} onClick={() => setListenOther(false)}>
-            <UiIcon name="mic" size={14} /> 我说
+          <button
+            type="button"
+            className={'k-pill k-pill-sm ' + (!listenOther ? 'is-active' : 'k-pill-neutral')}
+            aria-pressed={!listenOther}
+            title="录下我说的母语，翻译成外语"
+            onClick={() => {
+              setListenOther(false);
+              void startRecording();
+            }}
+          >
+            <UiIcon name="mic" size={14} /> 我说（译外语）
           </button>
-          <button type="button" className={'k-pill k-pill-sm ' + (listenOther ? 'is-active' : 'k-pill-neutral')} onClick={() => setListenOther(true)}>
-            <UiIcon name="volume" size={14} /> 听对方说
+          <button
+            type="button"
+            className={'k-pill k-pill-sm ' + (listenOther ? 'is-active' : 'k-pill-neutral')}
+            aria-pressed={listenOther}
+            title="录下对方说的外语，翻译成我的母语"
+            onClick={() => {
+              setListenOther(true);
+              void startRecording();
+            }}
+          >
+            <UiIcon name="volume" size={14} /> 听对方说（译母语）
           </button>
         </div>
       )}

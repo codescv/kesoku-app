@@ -155,3 +155,7 @@ button.k-hud-chip:hover { filter: brightness(0.97); }
   .k-hud-chip, .k-hud-quick { font-size: 13px; }
   .k-hud-members { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* v0.3.7 · never widen the mobile viewport */
+.k-hud { max-width: 100%; min-width: 0; overflow-x: clip; /* clip keeps the policy / version popovers visible below the HUD */ overflow-y: visible; }
+.k-hud-main { min-width: 0; flex-wrap: wrap; }

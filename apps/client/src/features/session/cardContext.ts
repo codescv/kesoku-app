@@ -4,6 +4,7 @@ import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { speak } from '../../native/tts';
 import { overlays } from './overlays';
+import { explainLexical, showWordInInspector } from '../../lib/lexical';
 
 export function makeCardContext(sessionId: string, messageId: string, modeId: string, media?: Record<string, string>): CardContext {
   return {
@@ -35,6 +36,8 @@ export function makeCardContext(sessionId: string, messageId: string, modeId: st
       );
     },
     toast: (msg) => actions.toast(msg),
+    explain: (text, token) => explainLexical(sessionId, text, token),
+    onWord: (token, sentence) => showWordInInspector(token, sentence),
   };
 }
 

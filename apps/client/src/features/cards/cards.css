@@ -288,3 +288,9 @@
 @media (prefers-reduced-motion: reduce) {
   .kc-locator-box, .kc-img-skel, .kc-grade-img img { animation: none; }
 }
+
+/* v0.3.7 · long note pills wrap instead of widening the mobile viewport */
+.kc-badge-tag, .kc-badge-neutral, .kc-tr-notes .kc-badge { white-space: normal; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+.kc-card { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.kc-tr-target .k-ruby, .kc-tr-source .k-ruby { overflow-wrap: anywhere; }
+.kc-tr-lex { margin-top: 6px; font-size: 15px; font-weight: 500; line-height: 1.5; }

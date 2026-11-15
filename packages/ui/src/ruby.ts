@@ -12,9 +12,12 @@ const KANJI = '[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF々〆ヶヵ〇]';
 const HIRA = '[\\u3041-\\u3096]';
 const KANA = '[\\u3041-\\u309F\\u30A0-\\u30FFー・\\uFF66-\\uFF9F]';
 // 漢字(かな) / 漢字（かな） (including okurigana compounds like 勘違い（かんちがい） or 木漏れ日（こもれび）) and Aozora-style ｜base《rt》 / base《rt》
+// plus HTML `<ruby>漢字<rp>(</rp><rt>かな</rt><rp>)</rp></ruby>` (groups 10/11) and brace `{漢字|かな}` (groups 12/13).
+const RUBY_HTML = '<ruby>\\s*([^<>]+?)\\s*(?:<rp>[^<]*<\\/rp>\\s*)?<rt>\\s*([^<>]*?)\\s*<\\/rt>\\s*(?:<rp>[^<]*<\\/rp>\\s*)?<\\/ruby>';
+const RUBY_BRACE = '\\{([^|{}\\n]+)\\|([^|{}\\n]+)\\}';
 const NOTATION_RE = new RegExp(
-  `[｜|]([^｜|《》()（）]+?)《(${KANA}+)》|(${KANJI}+)《(${KANA}+)》|(${KANJI}+(${HIRA}{1,3}))[(（](${KANA}+?\\6)[)）]|(${KANJI}+(?:${HIRA}{1,2}${KANJI}+)*)[(（](${KANA}+)[)）]`,
-  'gu',
+  `[｜|]([^｜|《》()（）]+?)《(${KANA}+)》|(${KANJI}+)《(${KANA}+)》|(${KANJI}+(${HIRA}{1,3}))[(（](${KANA}+?\\6)[)）]|(${KANJI}+(?:${HIRA}{1,2}${KANJI}+)*)[(（](${KANA}+)[)）]|${RUBY_HTML}|${RUBY_BRACE}`,
+  'giu',
 );
 
 function pushText(parts: RubyPart[], text: string): void {
@@ -24,17 +27,32 @@ function pushText(parts: RubyPart[], text: string): void {
   else parts.push({ base: text });
 }
 
-/** Parse inline notation: `今日(きょう)は良(よ)い天気(てんき)` → parts. Non-kana parentheses are kept as text. */
+/**
+ * Parse inline notation: `今日(きょう)は良(よ)い天気(てんき)`, `{今日|きょう}`, `<ruby>今日<rt>きょう</rt></ruby>` → parts.
+ * Non-kana parentheses are kept as text; stray `<ruby>` / `<rt>` / `<rp>` tags are dropped (never shown raw).
+ */
 export function parseRubyNotation(text: string): RubyPart[] {
   const parts: RubyPart[] = [];
   if (!text) return parts;
+  if (/<\/?(?:ruby|rt|rp|rb)\b/i.test(text)) return parseRubyNotationRaw(text).map(stripStrayTags).filter((p) => p.base);
+  return parseRubyNotationRaw(text);
+}
+
+function stripStrayTags(p: RubyPart): RubyPart {
+  const base = p.base.replace(/<rp>[^<]*<\/rp>/gi, '').replace(/<\/?(?:ruby|rt|rp|rb)\b[^>]*>/gi, '');
+  return p.rt ? { base, rt: p.rt } : { base };
+}
+
+function parseRubyNotationRaw(text: string): RubyPart[] {
+  const parts: RubyPart[] = [];
   let cursor = 0;
   const re = new RegExp(NOTATION_RE.source, NOTATION_RE.flags);
   for (let m = re.exec(text); m; m = re.exec(text)) {
     pushText(parts, text.slice(cursor, m.index));
-    const base = m[1] ?? m[3] ?? m[5] ?? m[8];
-    const rt = m[2] ?? m[4] ?? m[7] ?? m[9];
-    parts.push({ base, rt });
+    const base = (m[1] ?? m[3] ?? m[5] ?? m[8] ?? m[10] ?? m[12] ?? '').trim();
+    const rt = (m[2] ?? m[4] ?? m[7] ?? m[9] ?? m[11] ?? m[13] ?? '').trim();
+    if (rt) parts.push({ base, rt });
+    else pushText(parts, base);
     cursor = m.index + m[0].length;
   }
   pushText(parts, text.slice(cursor));
