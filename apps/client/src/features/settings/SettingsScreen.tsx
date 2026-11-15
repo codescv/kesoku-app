@@ -3,6 +3,12 @@ import { MODEL_CATALOG, MODE_IDS, type Device, type EngineToClientPayload } from
 import { ICON_STYLE_OPTIONS, ModeIcon, POLICY_BADGE, Segmented, UiIcon, modeMeta, setIconStyle, useIconStyle, type UiIconName } from '@kesoku/ui';
 import { APP_VERSION, kesoku } from '../../lib/client';
 import { getPlatform } from '../../native/platform';
+import {
+  downloadAndInstallApk,
+  installApkFile,
+  onApkDownloadProgress,
+  onApkInstallResumed,
+} from '../../native/updater';
 import { actions, useStore, type Settings } from '../../lib/store';
 import { kvSet } from '../../lib/db';
 import { logout } from '../../lib/auth';
@@ -248,33 +254,116 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const [pairHelp, setPairHelp] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState<{ version: string; url: string } | null>(null);
+  const [downloadingUpdate, setDownloadingUpdate] = useState(false);
+  const [downloadPercent, setDownloadPercent] = useState<number | null>(null);
+  const [downloadedApk, setDownloadedApk] = useState<{
+    version: string;
+    filePath: string;
+    needsPermission: boolean;
+  } | null>(null);
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
   const isAndroid = getPlatform() === 'android';
 
+  useEffect(() => {
+    if (!isAndroid) return;
+    let disposed = false;
+    let removeFn: (() => Promise<void>) | undefined;
+    void onApkInstallResumed((ev) => {
+      if (disposed || !ev.installerLaunched) return;
+      setDownloadedApk((prev) => {
+        const version = prev?.version ?? '';
+        setUpdateStatus(version ? `已下载 v${version}，正在调起系统安装…` : '正在调起系统安装…');
+        return prev ? { ...prev, filePath: ev.filePath || prev.filePath, needsPermission: false } : prev;
+      });
+    }).then((h) => {
+      if (disposed) void h.remove();
+      else removeFn = () => h.remove();
+    });
+    return () => {
+      disposed = true;
+      if (removeFn) void removeFn();
+    };
+  }, [isAndroid]);
+
   const onCheckUpdate = async () => {
-    if (checkingUpdate) return;
+    if (checkingUpdate || downloadingUpdate) return;
     setCheckingUpdate(true);
     setUpdateStatus(null);
+    let res: Awaited<ReturnType<typeof checkAndroidUpdate>>;
     try {
-      const res = await checkAndroidUpdate(APP_VERSION);
-      if (res.hasUpdate) {
-        setUpdateInfo({ version: res.latestVersion, url: res.downloadUrl });
-        setUpdateStatus(`发现新版本 v${res.latestVersion}`);
-        actions.toast(`发现新版本 v${res.latestVersion}，正在打开下载…`);
-        if (typeof window !== 'undefined' && typeof window.open === 'function') {
-          window.open(res.downloadUrl, '_blank', 'noopener,noreferrer');
-        }
-      } else {
-        setUpdateInfo(null);
-        setUpdateStatus(`当前已是最新版本 (v${APP_VERSION})`);
-        actions.toast(`当前已是最新版本 (v${APP_VERSION})`);
-      }
+      res = await checkAndroidUpdate(APP_VERSION);
     } catch {
+      setCheckingUpdate(false);
       setUpdateStatus('检查更新失败，请检查网络连接');
       actions.toast('检查更新失败，请检查网络连接', 'error');
+      return;
+    }
+    setCheckingUpdate(false);
+
+    if (!res.hasUpdate) {
+      setDownloadedApk(null);
+      setDownloadPercent(null);
+      setUpdateStatus(`当前已是最新版本 (v${APP_VERSION})`);
+      actions.toast(`当前已是最新版本 (v${APP_VERSION})`);
+      return;
+    }
+
+    setDownloadingUpdate(true);
+    setDownloadPercent(0);
+    setDownloadedApk(null);
+    setUpdateStatus(`正在下载 v${res.latestVersion}…`);
+    actions.toast(`发现新版本 v${res.latestVersion}，正在自动下载…`);
+
+    const progressHandle = await onApkDownloadProgress((ev) => {
+      const pct = typeof ev.percent === 'number' && ev.percent >= 0 ? Math.min(100, Math.round(ev.percent)) : -1;
+      setDownloadPercent(pct >= 0 ? pct : null);
+      setUpdateStatus(pct >= 0 ? `正在下载 v${res.latestVersion} (${pct}%)…` : `正在下载 v${res.latestVersion}…`);
+    });
+
+    try {
+      const installRes = await downloadAndInstallApk({
+        url: res.downloadUrl,
+        version: res.latestVersion,
+      });
+      const needsPermission = Boolean(installRes.needsPermission);
+      setDownloadPercent(100);
+      setDownloadedApk({
+        version: res.latestVersion,
+        filePath: installRes.filePath,
+        needsPermission,
+      });
+      if (needsPermission) {
+        setUpdateStatus('请开启「允许安装未知应用」权限以完成安装');
+        actions.toast('请开启「允许安装未知应用」权限以完成安装');
+      } else {
+        setUpdateStatus(`已下载 v${res.latestVersion}，正在调起系统安装…`);
+        actions.toast(`已下载 v${res.latestVersion}，正在调起系统安装…`);
+      }
+    } catch {
+      setDownloadPercent(null);
+      setUpdateStatus(`下载 v${res.latestVersion} 失败，请点击重试`);
+      actions.toast(`下载 v${res.latestVersion} 失败，请重试`, 'error');
     } finally {
-      setCheckingUpdate(false);
+      await progressHandle.remove().catch(() => {});
+      setDownloadingUpdate(false);
+    }
+  };
+
+  const onInstallCachedApk = async () => {
+    if (!downloadedApk || downloadingUpdate) return;
+    try {
+      const res = await installApkFile({ filePath: downloadedApk.filePath });
+      const needsPermission = Boolean(res.needsPermission);
+      setDownloadedApk((prev) => (prev ? { ...prev, needsPermission } : prev));
+      if (needsPermission) {
+        setUpdateStatus('请开启「允许安装未知应用」权限以完成安装');
+        actions.toast('请开启「允许安装未知应用」权限以完成安装');
+      } else {
+        setUpdateStatus(`已下载 v${downloadedApk.version}，正在调起系统安装…`);
+      }
+    } catch {
+      setUpdateStatus('调起系统安装失败，请重新检查更新');
+      actions.toast('调起系统安装失败，请重新检查更新', 'error');
     }
   };
 
@@ -384,17 +473,6 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
               ))}
             </select>
           </label>
-          <TranslatorLangFields />
-        </section>
-
-        <section className="k-set-card">
-          <h2>
-            <UiIcon name="link" size={20} /> 渠道同步
-          </h2>
-          <label className="k-kv">
-            <span>默认显示全部渠道</span>
-            <input type="checkbox" role="switch" checked={settings.allChannels} onChange={(e) => save({ allChannels: e.target.checked })} />
-          </label>
         </section>
 
         <section className="k-set-card">
@@ -430,34 +508,9 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
           </div>
         </section>
 
-        <IconStyleCard />
-
         <MemoryPolicyCard />
 
         <section className="k-set-card">
-          <button type="button" className="k-link-row" onClick={() => actions.setUi({ screen: 'studio' })}>
-            <span>
-              <UiIcon name="persona" size={18} /> 角色与形象工坊
-            </span>
-            <UiIcon name="chevron-right" size={18} />
-          </button>
-          <button
-            type="button"
-            className="k-link-row"
-            data-testid="settings-notes-btn"
-            onClick={() => actions.setUi({ screen: 'notes' })}
-          >
-            <span>
-              <UiIcon name="note" size={18} /> 简易便签 (notes.md)
-            </span>
-            <UiIcon name="chevron-right" size={18} />
-          </button>
-          <button type="button" className="k-link-row" onClick={() => actions.setUi({ screen: 'files' })}>
-            <span>
-              <UiIcon name="folder" size={18} /> 文件管理
-            </span>
-            <UiIcon name="chevron-right" size={18} />
-          </button>
           <div className="k-kv is-disabled">
             <span>版本</span>
             <b>Kesoku v{APP_VERSION}</b>
@@ -468,27 +521,39 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
                 type="button"
                 className="k-btn k-btn-ghost k-check-update-btn"
                 data-testid="check-update-btn"
-                disabled={checkingUpdate}
+                disabled={checkingUpdate || downloadingUpdate}
                 onClick={() => void onCheckUpdate()}
               >
                 <UiIcon name="refresh" size={18} />
-                {checkingUpdate ? '检查更新中…' : '检查更新'}
+                {checkingUpdate
+                  ? '检查更新中…'
+                  : downloadingUpdate
+                    ? downloadPercent != null
+                      ? `正在下载 (${downloadPercent}%)…`
+                      : '正在下载更新…'
+                    : '检查更新'}
               </button>
+              {downloadingUpdate && downloadPercent != null && (
+                <div className="k-update-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={downloadPercent}>
+                  <div className="k-update-progress-bar" style={{ width: `${downloadPercent}%` }} />
+                </div>
+              )}
               {updateStatus && (
                 <p className="k-set-note" data-testid="update-status-text">
                   {updateStatus}
                 </p>
               )}
-              {updateInfo && (
-                <a
+              {downloadedApk && !downloadingUpdate && (
+                <button
+                  type="button"
                   className="k-btn k-btn-primary k-check-update-btn"
-                  href={updateInfo.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  data-testid="download-update-link"
+                  data-testid="install-update-btn"
+                  onClick={() => void onInstallCachedApk()}
                 >
-                  下载并安装 v{updateInfo.version} APK
-                </a>
+                  {downloadedApk.needsPermission
+                    ? `继续安装 v${downloadedApk.version}`
+                    : `安装 v${downloadedApk.version}`}
+                </button>
               )}
             </div>
           )}

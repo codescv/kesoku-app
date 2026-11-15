@@ -7,7 +7,7 @@ import { __test } from '../src/lib/client';
 import type { KesokuSocket } from '../src/lib/ws';
 import { App, THEME_COLORS, applyThemeChrome, resolveTheme } from '../src/app/App';
 import { RoleModeCapsule, ModelCapsule, TopBar } from '../src/app/TopBar';
-import { SettingsScreen } from '../src/features/settings/SettingsScreen';
+import { IconStyleCard, SettingsScreen } from '../src/features/settings/SettingsScreen';
 import { SessionPanel } from '../src/features/session/SessionPanel';
 import { Launchpad } from '../src/features/session/Launchpad';
 import { MemoryPanel } from '../src/features/memory/MemoryPanel';
@@ -155,17 +155,44 @@ describe('Launchpad (Item 1)', () => {
   });
 });
 
-describe('SettingsScreen (Items 1, 9, 10)', () => {
-  it('removes the voice section, non-app row and developer jargon', () => {
+describe('SettingsScreen (Items 1, 9, 10 & v0.1.20 streamline)', () => {
+  it('removes duplicate navigation entries, channel sync, icon style, translator language fields, and developer jargon', () => {
     fakeSocket({ 'device.list': { devices: [] } });
     render(<SettingsScreen onClose={() => {}} />);
     const text = document.body.textContent ?? '';
-    for (const gone of ['语音播放', '朗读引擎', '非 app 会话发送时', 'Cloud Relay', 'asia-east1', '6位设备配对码', '120s一次性', 'WKWebView', 'Keychain', '显式缓存', '出厂默认', '各模式记忆策略', '缓存路由', 'Agent 目录', 'band']) {
+    for (const gone of [
+      '语音播放',
+      '朗读引擎',
+      '非 app 会话发送时',
+      'Cloud Relay',
+      'asia-east1',
+      '6位设备配对码',
+      '120s一次性',
+      'WKWebView',
+      'Keychain',
+      '显式缓存',
+      '出厂默认',
+      '各模式记忆策略',
+      '缓存路由',
+      'Agent 目录',
+      'band',
+      '角色与形象工坊',
+      '简易便签',
+      'notes.md',
+      '文件管理',
+      '渠道同步',
+      '默认显示全部渠道',
+      '图标风格',
+      '翻译母语',
+      '常用外语',
+    ]) {
       expect(text).not.toContain(gone);
     }
+    expect(screen.queryByTestId('settings-notes-btn')).toBeNull();
+    expect(screen.getByText('身份与设备')).toBeTruthy();
+    expect(screen.getByText('外观')).toBeTruthy();
     expect(screen.getByText('记忆策略')).toBeTruthy();
     expect(screen.getByText('模型与思考深度')).toBeTruthy();
-    expect(screen.getByText('文件管理')).toBeTruthy();
     expect(screen.getByText(/Kesoku v0\.1\./)).toBeTruthy();
     expect(document.querySelectorAll('.k-policy-row [data-mode-icon]')).toHaveLength(8);
     expect(document.querySelector('.k-screen-head')!.textContent).not.toMatch(EMOJI);
@@ -180,9 +207,16 @@ describe('SettingsScreen (Items 1, 9, 10)', () => {
     expect(document.querySelector('.k-conn-dot.is-ok')).toBeTruthy();
   });
 
-  it('图标风格 picker previews all three styles and switches app-wide', () => {
+  it('does not render 图标风格 inside SettingsScreen while IconStyleCard still switches styles app-wide', () => {
     fakeSocket({ 'device.list': { devices: [] } });
-    render(<SettingsScreen onClose={() => {}} />);
+    render(
+      <>
+        <SettingsScreen onClose={() => {}} />
+        <IconStyleCard />
+      </>,
+    );
+    // SettingsScreen itself has no 图标风格 card.
+    expect(document.querySelector('.k-settings .k-iconstyle-grid')).toBeNull();
     const group = screen.getByRole('radiogroup', { name: '图标风格' });
     const options = group.querySelectorAll('[role="radio"]');
     expect([...options].map((o) => o.querySelector('.k-iconstyle-label')!.textContent)).toEqual(['柔和双色', '极简线性', '立体徽章']);
@@ -191,7 +225,7 @@ describe('SettingsScreen (Items 1, 9, 10)', () => {
     act(() => fireEvent.click(options[2]!));
     expect(localStorage.getItem(ICON_STYLE_KEY)).toBe('badge');
     expect(options[2]!.getAttribute('aria-checked')).toBe('true');
-    // Non-preview icons elsewhere in the screen follow the new style.
+    // Non-preview icons in SettingsScreen follow the new style.
     expect(document.querySelector('.k-policy-row [data-mode-icon]')!.getAttribute('data-icon-style')).toBe('badge');
   });
 });

@@ -52,7 +52,7 @@ function SessionRow({
   s: SessionSummary;
   active: boolean;
   onOpen: () => void;
-  onEdit: (mode: EditMode, anchor?: EditAnchor) => void;
+  onEdit: (mode: EditMode, anchor?: EditAnchor, openedByTouch?: boolean) => void;
 }) {
   const touchRef = useRef<{ startX: number; startY: number; timer: ReturnType<typeof setTimeout> | null; longPressed: boolean }>({
     startX: 0,
@@ -60,6 +60,7 @@ function SessionRow({
     timer: null,
     longPressed: false,
   });
+  const lastTouchAtRef = useRef(0);
   const chan = isForeign(s) ? s.chatbot_id! : null;
   const m = modeMeta(s.mode_id || 'chat');
 
@@ -71,6 +72,7 @@ function SessionRow({
   useEffect(() => clearTimer, []);
 
   const onTouchStart = (e: ReactTouchEvent) => {
+    lastTouchAtRef.current = Date.now();
     const t = touchRef.current;
     const p = e.touches[0];
     clearTimer();
@@ -81,10 +83,11 @@ function SessionRow({
       t.timer = null;
       t.longPressed = true;
       void hapticTap();
-      onEdit('menu');
+      onEdit('menu', undefined, true);
     }, LONG_PRESS_MS);
   };
   const onTouchMove = (e: ReactTouchEvent) => {
+    lastTouchAtRef.current = Date.now();
     const t = touchRef.current;
     const p = e.touches[0];
     if (!p) return;
@@ -93,6 +96,7 @@ function SessionRow({
     if (Math.hypot(dx, dy) > 10) clearTimer();
   };
   const onTouchEnd = (e: ReactTouchEvent) => {
+    lastTouchAtRef.current = Date.now();
     clearTimer();
     const t = touchRef.current;
     if (t.longPressed) {
@@ -101,6 +105,7 @@ function SessionRow({
     }
   };
   const onTouchCancel = () => {
+    lastTouchAtRef.current = Date.now();
     clearTimer();
   };
 
@@ -130,14 +135,21 @@ function SessionRow({
           e.preventDefault();
           e.stopPropagation();
           clearTimer();
-          // A touch long-press already opened the menu; don't toggle it twice.
-          if (!touchRef.current.longPressed) {
-            onEdit('menu', {
-              x: e.clientX,
-              y: e.clientY,
-              rect: e.currentTarget.getBoundingClientRect(),
-            });
+          // A touch long-press already opened (or is opening) the menu; never pass desktop anchor or toggle twice.
+          const isTouchContextMenu = touchRef.current.longPressed || Date.now() - lastTouchAtRef.current < 1500;
+          if (isTouchContextMenu) {
+            if (!touchRef.current.longPressed) {
+              touchRef.current.longPressed = true;
+              void hapticTap();
+              onEdit('menu', undefined, true);
+            }
+            return;
           }
+          onEdit('menu', {
+            x: e.clientX,
+            y: e.clientY,
+            rect: e.currentTarget.getBoundingClientRect(),
+          });
         }}
       >
         <span className="k-srow-title">
@@ -168,25 +180,46 @@ function SessionEditMenu({
   sessionId,
   mode,
   anchor,
+  openedByTouch,
   onMode,
   onClose,
 }: {
   sessionId: string;
   mode: EditMode;
   anchor?: EditAnchor;
+  openedByTouch?: boolean;
   onMode: (m: EditMode) => void;
   onClose: () => void;
 }) {
   const s = useStore((st) => st.sessions[sessionId]);
   const desktop = useIsDesktop();
-  const isPopover = Boolean(desktop && anchor);
+  const isPopover = Boolean(desktop && anchor && !openedByTouch);
   const [title, setTitle] = useState(s?.title ?? '');
   const openedAt = useRef(Date.now());
+  const initialTouchStillDownRef = useRef(Boolean(openedByTouch));
+  const lastTouchReleaseAtRef = useRef(0);
+  const scrimPressedRef = useRef(false);
+  const cardPressedRef = useRef(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!s) onClose();
   }, [s, onClose]);
+
+  useEffect(() => {
+    const onTouchRelease = () => {
+      if (initialTouchStillDownRef.current) {
+        initialTouchStillDownRef.current = false;
+      }
+      lastTouchReleaseAtRef.current = Date.now();
+    };
+    window.addEventListener('touchend', onTouchRelease, true);
+    window.addEventListener('touchcancel', onTouchRelease, true);
+    return () => {
+      window.removeEventListener('touchend', onTouchRelease, true);
+      window.removeEventListener('touchcancel', onTouchRelease, true);
+    };
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -253,14 +286,75 @@ function SessionEditMenu({
       {!isPopover && (
         <div
           className="k-sedit-scrim"
+          onTouchStart={(e) => {
+            stop(e);
+            if (!initialTouchStillDownRef.current) {
+              scrimPressedRef.current = true;
+            }
+          }}
+          onPointerDown={(e) => {
+            stop(e);
+            if (e.pointerType === 'touch') {
+              if (!initialTouchStillDownRef.current) scrimPressedRef.current = true;
+              return;
+            }
+            if (!initialTouchStillDownRef.current && Date.now() - lastTouchReleaseAtRef.current > 350) {
+              scrimPressedRef.current = true;
+            }
+          }}
+          onMouseDown={(e) => {
+            stop(e);
+            if (!initialTouchStillDownRef.current && Date.now() - lastTouchReleaseAtRef.current > 350) {
+              scrimPressedRef.current = true;
+            }
+          }}
           onClick={(e) => {
             stop(e);
-            // Ignore the trailing synthetic click of the long-press that opened us.
-            if (Date.now() - openedAt.current > 350) onClose();
+            const now = Date.now();
+            // Never close while the opening long-press touch is still held down,
+            // or on the trailing synthetic click emitted right when the finger lifts.
+            if (initialTouchStillDownRef.current) return;
+            if (lastTouchReleaseAtRef.current > 0 && now - lastTouchReleaseAtRef.current < 400 && !scrimPressedRef.current) {
+              return;
+            }
+            if (scrimPressedRef.current) {
+              scrimPressedRef.current = false;
+              onClose();
+              return;
+            }
+            if (!openedByTouch && now - openedAt.current > 350) {
+              onClose();
+              return;
+            }
+            if (openedByTouch && lastTouchReleaseAtRef.current > 0 && now - lastTouchReleaseAtRef.current >= 400) {
+              onClose();
+            }
           }}
         />
       )}
-      <div className="k-sedit-card" ref={cardRef}>
+      <div
+        className="k-sedit-card"
+        ref={cardRef}
+        onTouchStartCapture={() => {
+          if (!initialTouchStillDownRef.current) {
+            cardPressedRef.current = true;
+          }
+        }}
+        onMouseDownCapture={() => {
+          if (!initialTouchStillDownRef.current && Date.now() - lastTouchReleaseAtRef.current > 350) {
+            cardPressedRef.current = true;
+          }
+        }}
+        onClickCapture={(e) => {
+          if (!openedByTouch || cardPressedRef.current) return;
+          if (e.clientX === 0 && e.clientY === 0) return;
+          const now = Date.now();
+          if (initialTouchStillDownRef.current || (lastTouchReleaseAtRef.current > 0 && now - lastTouchReleaseAtRef.current < 350)) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
+      >
         <div className="k-sedit-head">
           {m && (
             <span className="k-srow-mode" aria-hidden>
@@ -339,7 +433,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
   const conn = useStore((s) => s.conn);
   const [q, setQ] = useState('');
   const [allSessionsOpen, setAllSessionsOpen] = useState(false);
-  const [editing, setEditing] = useState<{ id: string; mode: EditMode; anchor?: EditAnchor } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; mode: EditMode; anchor?: EditAnchor; openedByTouch?: boolean } | null>(null);
   const closeEdit = useCallback(() => setEditing(null), []);
 
   useEffect(() => {
@@ -473,7 +567,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
                     void kesoku.openSession(s.session_id);
                     go();
                   }}
-                  onEdit={(mode, anchor) => setEditing({ id: s.session_id, mode, anchor })}
+                  onEdit={(mode, anchor, openedByTouch) => setEditing({ id: s.session_id, mode, anchor, openedByTouch })}
                 />
               ))
             ) : (
@@ -509,7 +603,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
                     void kesoku.openSession(s.session_id);
                     go();
                   }}
-                  onEdit={(mode, anchor) => setEditing({ id: s.session_id, mode, anchor })}
+                  onEdit={(mode, anchor, openedByTouch) => setEditing({ id: s.session_id, mode, anchor, openedByTouch })}
                 />
               ))
             ) : (
@@ -571,7 +665,8 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
           sessionId={editing.id}
           mode={editing.mode}
           anchor={editing.anchor}
-          onMode={(mode) => setEditing({ id: editing.id, mode, anchor: editing.anchor })}
+          openedByTouch={editing.openedByTouch}
+          onMode={(mode) => setEditing({ id: editing.id, mode, anchor: editing.anchor, openedByTouch: editing.openedByTouch })}
           onClose={closeEdit}
         />
       )}

@@ -39,6 +39,7 @@ public class MainActivity extends BridgeActivity {
         // Local plugins must be registered before super.onCreate() builds the bridge.
         registerPlugin(KesokuSecureStorePlugin.class);
         registerPlugin(KesokuTtsPlugin.class);
+        registerPlugin(KesokuUpdaterPlugin.class);
         super.onCreate(savedInstanceState);
 
         Window window = getWindow();
@@ -141,6 +142,7 @@ public class MainActivity extends BridgeActivity {
             ViewCompat.requestApplyInsets(getWindow().getDecorView());
         }
         syncSafeAreaCssVars();
+        KesokuUpdaterPlugin.resumePendingApkInstall(this);
     }
 
     @Override

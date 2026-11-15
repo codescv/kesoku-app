@@ -258,11 +258,11 @@ describe('NotesPanel interactions', () => {
     expect(useStore.getState().ui.screen).toBe('notes');
     u4();
 
-    // SettingsScreen
+    // SettingsScreen no longer duplicates the sticky notes entry (streamlined in v0.1.20)
     useStore.setState((s) => ({ ui: { ...s.ui, screen: 'settings' } }));
     const { unmount: u5 } = render(<SettingsScreen onClose={() => {}} />);
-    fireEvent.click(screen.getByTestId('settings-notes-btn'));
-    expect(useStore.getState().ui.screen).toBe('notes');
+    expect(screen.queryByTestId('settings-notes-btn')).toBeNull();
+    expect(screen.queryByText(/简易便签/)).toBeNull();
     u5();
   });
 });

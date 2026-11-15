@@ -310,6 +310,8 @@ h1, h2, h3, strong, b { font-weight: 800; }
 @media (min-width: 1024px) { .k-sedit-root:not(.is-popover) { align-items: center; } }
 .k-update-box { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 1px dashed var(--line); }
 .k-check-update-btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+.k-update-progress { width: 100%; height: 6px; border-radius: 999px; background: var(--subcard); overflow: hidden; }
+.k-update-progress-bar { height: 100%; border-radius: 999px; background: var(--primary-strong); transition: width 0.15s ease-out; }
 .k-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); display: inline-block; }
 .k-hit { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 10px 12px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--subcard); }
 .k-hit-title { font-weight: 800; }
@@ -415,10 +417,13 @@ h1, h2, h3, strong, b { font-weight: 800; }
 .k-fullscreen { position: fixed; inset: 0; z-index: 80; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; padding: calc(12px + var(--safe-t)) 16px calc(16px + var(--safe-b)); }
 .k-fullscreen-close { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; min-height: var(--hit); padding: 0 16px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--card); font-weight: 800; color: var(--ink); }
 .k-fullscreen-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; justify-content: center; font-size: var(--fs-show); font-weight: 800; }
-.k-imgview { position: fixed; inset: 0; z-index: 85; background: rgba(0, 0, 0, 0.9); display: flex; align-items: center; justify-content: center; padding: calc(16px + var(--safe-t)) calc(16px + var(--safe-r)) calc(16px + var(--safe-b)) calc(16px + var(--safe-l)); }
-.k-imgview-frame { position: relative; max-width: 100%; max-height: 100%; }
-.k-imgview-frame img { display: block; max-width: 100%; max-height: 90vh; border-radius: 12px; }
-.k-imgview-box { position: absolute; border: 3px solid #f43f5e; border-radius: 8px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35); }
+.k-imgview { position: fixed; inset: 0; z-index: 85; background: rgba(0, 0, 0, 0.92); display: flex; align-items: center; justify-content: center; overflow: hidden; padding: calc(16px + var(--safe-t)) calc(16px + var(--safe-r)) calc(16px + var(--safe-b)) calc(16px + var(--safe-l)); touch-action: none; user-select: none; -webkit-user-select: none; }
+.k-imgview-frame { position: relative; max-width: 100%; max-height: 100%; transform-origin: center center; will-change: transform; }
+.k-imgview-frame.is-animating { transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.k-imgview-frame img { display: block; max-width: 100%; max-height: 90vh; border-radius: 12px; -webkit-user-drag: none; user-select: none; }
+.k-imgview-box { position: absolute; border: 3px solid #f43f5e; border-radius: 8px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35); pointer-events: none; }
+.k-imgview-close { position: absolute; top: calc(14px + var(--safe-t)); right: calc(14px + var(--safe-r)); z-index: 2; width: 42px; height: 42px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(20, 22, 28, 0.68); backdrop-filter: blur(10px); color: #fff; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+.k-imgview-reset { position: absolute; bottom: calc(20px + var(--safe-b)); left: 50%; transform: translateX(-50%); z-index: 2; min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.24); background: rgba(20, 22, 28, 0.72); backdrop-filter: blur(10px); color: #fff; font-size: 13.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .k-toasts { position: fixed; left: 50%; bottom: calc(96px + var(--safe-b)); transform: translateX(-50%); z-index: 90; display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
 .k-toast { padding: 10px 16px; border-radius: 14px; background: var(--ink); color: var(--bg); font-weight: 800; font-size: 14px; box-shadow: var(--shadow-lg); max-width: 88vw; }
 .k-toast.is-error { background: var(--danger); color: #fff; }

@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type {
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+  TouchEvent as ReactTouchEvent,
+} from 'react';
 import type { MemoryPolicy, ModeId } from '@kesoku/protocol';
 import { ModeHud, detectActiveMode, normalizeModeId } from '@kesoku/hud';
 import { ModeIcon, Sheet, UiIcon, modeMeta } from '@kesoku/ui';
@@ -68,6 +73,516 @@ function Inspector({ panel, sessionId, modeId }: { panel: InspectorPanel; sessio
   return <ModePanel panel={panel.kind} stateFiles={stateFiles} modePrefs={prefs} ctx={makeCardContext(sessionId, '', modeId)} />;
 }
 
+const MIN_LIGHTBOX_SCALE = 1;
+const MAX_LIGHTBOX_SCALE = 5;
+const DOUBLE_TAP_SCALE = 2.5;
+const DOUBLE_TAP_MAX_MS = 300;
+const DOUBLE_TAP_MAX_DIST = 36;
+const PAN_SLOP_PX = 6;
+
+function clampScale(v: number): number {
+  return Math.min(MAX_LIGHTBOX_SCALE, Math.max(MIN_LIGHTBOX_SCALE, v));
+}
+
+export function ImageLightbox({
+  image,
+  onClose,
+}: {
+  image: { url: string; bbox?: number[] };
+  onClose: () => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState<{ scale: number; tx: number; ty: number }>({ scale: 1, tx: 0, ty: 0 });
+  const [animating, setAnimating] = useState(false);
+  const zoomRef = useRef(zoom);
+  const lastTouchTimeRef = useRef(0);
+  const suppressClickUntilRef = useRef(0);
+  const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
+  const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const touchGestureRef = useRef<{
+    mode: 'none' | 'single' | 'pinch';
+    moved: boolean;
+    hadPinch: boolean;
+    startedOnControl: boolean;
+    startScale: number;
+    startX: number;
+    startY: number;
+    baseTx: number;
+    baseTy: number;
+    pinchDist: number;
+    pinchMidX: number;
+    pinchMidY: number;
+    pinchScale: number;
+    pinchTx: number;
+    pinchTy: number;
+  }>({
+    mode: 'none',
+    moved: false,
+    hadPinch: false,
+    startedOnControl: false,
+    startScale: 1,
+    startX: 0,
+    startY: 0,
+    baseTx: 0,
+    baseTy: 0,
+    pinchDist: 1,
+    pinchMidX: 0,
+    pinchMidY: 0,
+    pinchScale: 1,
+    pinchTx: 0,
+    pinchTy: 0,
+  });
+
+  const dragRef = useRef<{
+    active: boolean;
+    source: 'pointer' | 'mouse' | null;
+    pointerId: number | null;
+    moved: boolean;
+    startX: number;
+    startY: number;
+    baseTx: number;
+    baseTy: number;
+  }>({
+    active: false,
+    source: null,
+    pointerId: null,
+    moved: false,
+    startX: 0,
+    startY: 0,
+    baseTx: 0,
+    baseTy: 0,
+  });
+
+  const clearSingleTapTimer = useCallback(() => {
+    if (singleTapTimerRef.current) {
+      clearTimeout(singleTapTimerRef.current);
+      singleTapTimerRef.current = null;
+    }
+  }, []);
+
+  const applyZoom = useCallback((next: { scale: number; tx: number; ty: number }, animate: boolean) => {
+    zoomRef.current = next;
+    setAnimating(animate);
+    setZoom(next);
+  }, []);
+
+  useEffect(() => {
+    applyZoom({ scale: 1, tx: 0, ty: 0 }, false);
+  }, [image.url, applyZoom]);
+
+  useEffect(() => () => clearSingleTapTimer(), [clearSingleTapTimer]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const getViewport = useCallback(() => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    const vw = rect && rect.width > 0 ? rect.width : typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 400;
+    const vh = rect && rect.height > 0 ? rect.height : typeof window !== 'undefined' && window.innerHeight > 0 ? window.innerHeight : 800;
+    const cx = rect && rect.width > 0 ? rect.left + rect.width / 2 : vw / 2;
+    const cy = rect && rect.height > 0 ? rect.top + rect.height / 2 : vh / 2;
+    return { vw, vh, cx, cy };
+  }, []);
+
+  const clampPan = useCallback(
+    (tx: number, ty: number, scale: number) => {
+      if (scale <= 1.01) return { tx: 0, ty: 0 };
+      const { vw, vh } = getViewport();
+      const maxX = Math.max((vw * (scale - 1)) / 2 + 48, 120);
+      const maxY = Math.max((vh * (scale - 1)) / 2 + 48, 120);
+      return {
+        tx: Math.min(maxX, Math.max(-maxX, tx)),
+        ty: Math.min(maxY, Math.max(-maxY, ty)),
+      };
+    },
+    [getViewport],
+  );
+
+  const zoomAtPoint = useCallback(
+    (targetScale: number, clientX: number, clientY: number, animate: boolean) => {
+      const nextScale = clampScale(targetScale);
+      if (nextScale <= 1.01) {
+        applyZoom({ scale: 1, tx: 0, ty: 0 }, animate);
+        return;
+      }
+      const { cx, cy } = getViewport();
+      const cur = zoomRef.current;
+      const ox = clientX - cx;
+      const oy = clientY - cy;
+      const ratio = nextScale / cur.scale;
+      const rawTx = ox - (ox - cur.tx) * ratio;
+      const rawTy = oy - (oy - cur.ty) * ratio;
+      const { tx, ty } = clampPan(rawTx, rawTy, nextScale);
+      applyZoom({ scale: nextScale, tx, ty }, animate);
+    },
+    [applyZoom, clampPan, getViewport],
+  );
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      clearSingleTapTimer();
+      const cur = zoomRef.current;
+      const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+      const nextScale = clampScale(cur.scale * factor);
+      zoomAtPoint(nextScale, e.clientX, e.clientY, false);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [clearSingleTapTimer, zoomAtPoint]);
+
+  const seedPinch = (t0: { clientX: number; clientY: number }, t1: { clientX: number; clientY: number }) => {
+    const g = touchGestureRef.current;
+    g.mode = 'pinch';
+    g.hadPinch = true;
+    g.moved = true;
+    g.pinchDist = Math.max(1, Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY));
+    g.pinchMidX = (t0.clientX + t1.clientX) / 2;
+    g.pinchMidY = (t0.clientY + t1.clientY) / 2;
+    g.pinchScale = zoomRef.current.scale;
+    g.pinchTx = zoomRef.current.tx;
+    g.pinchTy = zoomRef.current.ty;
+  };
+
+  const onTouchStart = (e: ReactTouchEvent<HTMLDivElement>) => {
+    lastTouchTimeRef.current = Date.now();
+    const g = touchGestureRef.current;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest?.('button')) {
+      g.startedOnControl = true;
+      return;
+    }
+    g.startedOnControl = false;
+
+    if (e.touches.length >= 2) {
+      clearSingleTapTimer();
+      seedPinch(e.touches[0]!, e.touches[1]!);
+    } else if (e.touches.length === 1) {
+      const t0 = e.touches[0]!;
+      g.mode = 'single';
+      g.moved = false;
+      g.hadPinch = false;
+      g.startScale = zoomRef.current.scale;
+      g.startX = t0.clientX;
+      g.startY = t0.clientY;
+      g.baseTx = zoomRef.current.tx;
+      g.baseTy = zoomRef.current.ty;
+    }
+  };
+
+  const onTouchMove = (e: ReactTouchEvent<HTMLDivElement>) => {
+    lastTouchTimeRef.current = Date.now();
+    const g = touchGestureRef.current;
+    if (g.startedOnControl) return;
+
+    if (e.touches.length >= 2) {
+      clearSingleTapTimer();
+      const t0 = e.touches[0]!;
+      const t1 = e.touches[1]!;
+      if (g.mode !== 'pinch') {
+        seedPinch(t0, t1);
+        return;
+      }
+      g.moved = true;
+      g.hadPinch = true;
+      const dist = Math.max(1, Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY));
+      const midX = (t0.clientX + t1.clientX) / 2;
+      const midY = (t0.clientY + t1.clientY) / 2;
+      const nextScale = clampScale(g.pinchScale * (dist / g.pinchDist));
+      if (nextScale <= 1.01) {
+        applyZoom({ scale: 1, tx: 0, ty: 0 }, false);
+        return;
+      }
+      const { cx, cy } = getViewport();
+      const ox0 = g.pinchMidX - cx;
+      const oy0 = g.pinchMidY - cy;
+      const ox1 = midX - cx;
+      const oy1 = midY - cy;
+      const ratio = nextScale / g.pinchScale;
+      const rawTx = ox1 - (ox0 - g.pinchTx) * ratio;
+      const rawTy = oy1 - (oy0 - g.pinchTy) * ratio;
+      const { tx, ty } = clampPan(rawTx, rawTy, nextScale);
+      applyZoom({ scale: nextScale, tx, ty }, false);
+    } else if (e.touches.length === 1 && g.mode === 'single') {
+      const t0 = e.touches[0]!;
+      const dx = t0.clientX - g.startX;
+      const dy = t0.clientY - g.startY;
+      if (Math.hypot(dx, dy) > PAN_SLOP_PX) {
+        g.moved = true;
+        clearSingleTapTimer();
+      }
+      if (zoomRef.current.scale > 1.02) {
+        const { tx, ty } = clampPan(g.baseTx + dx, g.baseTy + dy, zoomRef.current.scale);
+        applyZoom({ scale: zoomRef.current.scale, tx, ty }, false);
+      }
+    }
+  };
+
+  const onTouchEnd = (e: ReactTouchEvent<HTMLDivElement>) => {
+    const now = Date.now();
+    lastTouchTimeRef.current = now;
+    const g = touchGestureRef.current;
+    if (g.startedOnControl) {
+      if (e.touches.length === 0) g.startedOnControl = false;
+      return;
+    }
+
+    if (e.touches.length >= 2) {
+      seedPinch(e.touches[0]!, e.touches[1]!);
+      return;
+    }
+    if (e.touches.length === 1) {
+      const rem = e.touches[0]!;
+      g.mode = 'single';
+      g.hadPinch = true;
+      g.moved = true;
+      g.startX = rem.clientX;
+      g.startY = rem.clientY;
+      g.baseTx = zoomRef.current.tx;
+      g.baseTy = zoomRef.current.ty;
+      return;
+    }
+
+    g.mode = 'none';
+    if (g.hadPinch || g.moved) {
+      suppressClickUntilRef.current = now + 450;
+      if (zoomRef.current.scale <= 1.02) {
+        applyZoom({ scale: 1, tx: 0, ty: 0 }, true);
+      }
+      return;
+    }
+
+    const p = e.changedTouches[0];
+    const x = p?.clientX ?? g.startX;
+    const y = p?.clientY ?? g.startY;
+    suppressClickUntilRef.current = now + 450;
+    if (e.cancelable) e.preventDefault();
+
+    const dt = now - lastTapRef.current.time;
+    const tapDist = Math.hypot(x - lastTapRef.current.x, y - lastTapRef.current.y);
+    if (lastTapRef.current.time > 0 && dt >= 0 && dt <= DOUBLE_TAP_MAX_MS && tapDist < DOUBLE_TAP_MAX_DIST) {
+      clearSingleTapTimer();
+      lastTapRef.current = { time: 0, x: 0, y: 0 };
+      if (zoomRef.current.scale > 1.05) {
+        applyZoom({ scale: 1, tx: 0, ty: 0 }, true);
+      } else {
+        zoomAtPoint(DOUBLE_TAP_SCALE, x, y, true);
+      }
+      return;
+    }
+
+    lastTapRef.current = { time: now, x, y };
+    if (zoomRef.current.scale <= 1.02 && g.startScale <= 1.02) {
+      clearSingleTapTimer();
+      singleTapTimerRef.current = setTimeout(() => {
+        singleTapTimerRef.current = null;
+        if (zoomRef.current.scale <= 1.02) onClose();
+      }, DOUBLE_TAP_MAX_MS);
+    }
+  };
+
+  const onTouchCancel = () => {
+    const g = touchGestureRef.current;
+    g.mode = 'none';
+    g.startedOnControl = false;
+    suppressClickUntilRef.current = Date.now() + 350;
+  };
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'touch') return;
+    if ((e.target as HTMLElement | null)?.closest?.('button')) return;
+    if (zoomRef.current.scale <= 1.02) return;
+    dragRef.current = {
+      active: true,
+      source: 'pointer',
+      pointerId: e.pointerId,
+      moved: false,
+      startX: e.clientX,
+      startY: e.clientY,
+      baseTx: zoomRef.current.tx,
+      baseTy: zoomRef.current.ty,
+    };
+  };
+
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d.active || d.source !== 'pointer' || d.pointerId !== e.pointerId) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (Math.hypot(dx, dy) > PAN_SLOP_PX) d.moved = true;
+    if (zoomRef.current.scale > 1.02) {
+      const { tx, ty } = clampPan(d.baseTx + dx, d.baseTy + dy, zoomRef.current.scale);
+      applyZoom({ scale: zoomRef.current.scale, tx, ty }, false);
+    }
+  };
+
+  const onPointerUpOrCancel = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d.active || d.source !== 'pointer' || d.pointerId !== e.pointerId) return;
+    if (d.moved) suppressClickUntilRef.current = Date.now() + 350;
+    dragRef.current.active = false;
+    dragRef.current.source = null;
+    dragRef.current.pointerId = null;
+  };
+
+  const onMouseDown = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (Date.now() - lastTouchTimeRef.current < 500) return;
+    if (dragRef.current.active) return;
+    if ((e.target as HTMLElement | null)?.closest?.('button')) return;
+    if (zoomRef.current.scale <= 1.02) return;
+    dragRef.current = {
+      active: true,
+      source: 'mouse',
+      pointerId: null,
+      moved: false,
+      startX: e.clientX,
+      startY: e.clientY,
+      baseTx: zoomRef.current.tx,
+      baseTy: zoomRef.current.ty,
+    };
+  };
+
+  const onMouseMove = (e: ReactMouseEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d.active || d.source !== 'mouse') return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (Math.hypot(dx, dy) > PAN_SLOP_PX) d.moved = true;
+    if (zoomRef.current.scale > 1.02) {
+      const { tx, ty } = clampPan(d.baseTx + dx, d.baseTy + dy, zoomRef.current.scale);
+      applyZoom({ scale: zoomRef.current.scale, tx, ty }, false);
+    }
+  };
+
+  const onMouseUp = () => {
+    const d = dragRef.current;
+    if (!d.active || d.source !== 'mouse') return;
+    if (d.moved) suppressClickUntilRef.current = Date.now() + 350;
+    dragRef.current.active = false;
+    dragRef.current.source = null;
+  };
+
+  const onDoubleClick = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement | null)?.closest?.('button')) return;
+    if (Date.now() - lastTouchTimeRef.current < 500) return;
+    clearSingleTapTimer();
+    if (zoomRef.current.scale > 1.05) {
+      applyZoom({ scale: 1, tx: 0, ty: 0 }, true);
+    } else {
+      zoomAtPoint(DOUBLE_TAP_SCALE, e.clientX, e.clientY, true);
+    }
+  };
+
+  const onBackdropOrImageClick = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement | null)?.closest?.('button')) return;
+    if (Date.now() < suppressClickUntilRef.current) return;
+    if (zoomRef.current.scale > 1.02) return;
+
+    if (e.target === e.currentTarget) {
+      clearSingleTapTimer();
+      onClose();
+      return;
+    }
+
+    if (e.detail >= 2) {
+      clearSingleTapTimer();
+      return;
+    }
+
+    clearSingleTapTimer();
+    singleTapTimerRef.current = setTimeout(() => {
+      singleTapTimerRef.current = null;
+      if (zoomRef.current.scale <= 1.02) onClose();
+    }, 240);
+  };
+
+  const isZoomed = zoom.scale > 1.05;
+
+  return (
+    <div
+      ref={containerRef}
+      className="k-imgview"
+      role="dialog"
+      aria-modal="true"
+      aria-label="图片预览"
+      onClick={onBackdropOrImageClick}
+      onDoubleClick={onDoubleClick}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchCancel}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUpOrCancel}
+      onPointerCancel={onPointerUpOrCancel}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+    >
+      <button
+        type="button"
+        className="k-imgview-close"
+        data-testid="imgview-close-btn"
+        aria-label="关闭大图"
+        onClick={(e) => {
+          e.stopPropagation();
+          clearSingleTapTimer();
+          onClose();
+        }}
+      >
+        <UiIcon name="close" size={20} />
+      </button>
+      {isZoomed && (
+        <button
+          type="button"
+          className="k-imgview-reset"
+          data-testid="imgview-reset-zoom"
+          onClick={(e) => {
+            e.stopPropagation();
+            clearSingleTapTimer();
+            suppressClickUntilRef.current = 0;
+            applyZoom({ scale: 1, tx: 0, ty: 0 }, true);
+          }}
+        >
+          {Math.round(zoom.scale * 100)}% · 重置
+        </button>
+      )}
+      <div
+        className={'k-imgview-frame' + (animating ? ' is-animating' : '')}
+        data-testid="imgview-frame"
+        data-scale={zoom.scale.toFixed(2)}
+        style={{
+          transform: `translate3d(${Math.round(zoom.tx * 100) / 100}px, ${Math.round(zoom.ty * 100) / 100}px, 0) scale(${Math.round(zoom.scale * 1000) / 1000})`,
+        }}
+      >
+        <img src={image.url} alt="大图" draggable={false} />
+        {image.bbox && image.bbox.length === 4 && (
+          <span
+            className="k-imgview-box"
+            style={{
+              left: `${image.bbox[0]! * 100}%`,
+              top: `${image.bbox[1]! * 100}%`,
+              width: `${image.bbox[2]! * 100}%`,
+              height: `${image.bbox[3]! * 100}%`,
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Overlays({ sessionId, modeId }: { sessionId: string | null; modeId: ModeId }) {
   const { fullscreen, peek, image } = useOverlays();
   return (
@@ -80,16 +595,7 @@ function Overlays({ sessionId, modeId }: { sessionId: string | null; modeId: Mod
           <div className="k-fullscreen-body">{fullscreen}</div>
         </div>
       )}
-      {image && (
-        <div className="k-imgview" role="dialog" aria-modal="true" onClick={() => overlays.image(null)}>
-          <div className="k-imgview-frame">
-            <img src={image.url} alt="大图" />
-            {image.bbox && image.bbox.length === 4 && (
-              <span className="k-imgview-box" style={{ left: `${image.bbox[0] * 100}%`, top: `${image.bbox[1] * 100}%`, width: `${image.bbox[2] * 100}%`, height: `${image.bbox[3] * 100}%` }} />
-            )}
-          </div>
-        </div>
-      )}
+      {image && <ImageLightbox image={image} onClose={() => overlays.image(null)} />}
       {peek && sessionId && <PeekSheet entry={peek.entry} glossary={peek.glossary} ctx={makeCardContext(sessionId, '', modeId)} onClose={() => overlays.peek(null)} />}
     </>
   );

@@ -4,3 +4,13 @@ export { speak, stop as stopSpeaking, isTtsAvailable, type SpeakOptions, type Sp
 export { onDeepLink, parseDeepLink, type DeepLink, type DeepLinkModeId } from './deeplinks';
 export { pickImages, type PickImagesOptions } from './camera';
 export { hapticTap } from './haptics';
+export {
+  downloadAndInstallApk,
+  installApkFile,
+  onApkDownloadProgress,
+  onApkInstallResumed,
+  type ApkDownloadProgressEvent,
+  type ApkInstallResult,
+  type ApkInstallResumedEvent,
+  type KesokuUpdaterPlugin,
+} from './updater';
