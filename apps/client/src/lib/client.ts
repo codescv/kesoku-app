@@ -17,6 +17,7 @@ import { KesokuSocket, RpcError, type SocketStatus } from './ws';
 import { actions, getState, useStore } from './store';
 import type { ChatItem } from './types';
 import type { MediaRef } from '../features/cards/types';
+import { translatorStartPrefs } from './translatorPrefs';
 
 const SEQ_TYPES = new Set<string>(SEQ_EVENT_TYPES);
 const APP_VERSION = '0.1.5';
@@ -281,10 +282,13 @@ export const kesoku = {
   },
 
   async createSession(opts: { role?: string; mode?: ModeId; title?: string } = {}): Promise<string> {
-    const snap = await kesoku.rpc<EngineToClientPayload<'session.snapshot'>>('session.create', opts);
+    const tPrefs = opts.mode === 'translator' ? translatorStartPrefs(getState().settings) : null;
+    const snap = await kesoku.rpc<EngineToClientPayload<'session.snapshot'>>('session.create', tPrefs ? { ...opts, prefs: tPrefs } : opts);
     actions.applySnapshot(snap);
     const sid = snap.session.session_id;
     tracked.add(sid);
+    // 翻译模式：母语 + 常用外语 (also persisted as session mode prefs so the HUD and the engine agree).
+    if (tPrefs) void kesoku.setModePrefs(sid, tPrefs);
     useStore.setState({ currentSessionId: sid });
     actions.setUi({ launchpad: !opts.mode, screen: 'chat', drawerOpen: false });
     if (opts.mode) {
@@ -365,11 +369,15 @@ export const kesoku = {
       return;
     }
     actions.setUi({ launchpad: false, pendingMode: { sessionId: sid, modeId, at: Date.now() } });
+    let tPrefs: Record<string, unknown> | null = null;
     if (modeId === 'translator') {
       const o: LlmOverride = { llm: 'gemini', model_name: getState().settings.translatorModel, thinking_level: 'low', stream: true };
       actions.setLlmOverride(sid, o);
+      // 母语 ⇄ first 常用外语, stored before the launch prompt so the engine formats it with the user's languages.
+      tPrefs = translatorStartPrefs(getState().settings);
+      await kesoku.setModePrefs(sid, tPrefs);
     }
-    await kesoku.rpc('mode.start', { session_id: sid, mode_id: modeId }, { session_id: sid }).catch(() => {
+    await kesoku.rpc('mode.start', { session_id: sid, mode_id: modeId, ...(tPrefs ? { prefs: tPrefs } : {}) }, { session_id: sid }).catch(() => {
       actions.setUi({ pendingMode: null });
       actions.toast('模式启动失败', 'error');
     });

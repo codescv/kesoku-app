@@ -290,69 +290,250 @@ function TravelHud({ stateFiles, badge, onOpenPanel, instance }: HudCtx) {
 // ---------------------------------------------------------------------------------------------
 // translator · 日语 ⇄ 简中 + quick pills
 
-const LANG_LABELS: Record<string, string> = {
-  ja: '日语',
-  zh: '简中',
-  'zh-hans': '简中',
-  'zh-cn': '简中',
-  'zh-hant': '繁中',
-  'zh-tw': '繁中',
-  en: '英语',
-  ko: '韩语',
-  fr: '法语',
-  de: '德语',
-  es: '西语',
-  ru: '俄语',
-  th: '泰语',
-  vi: '越南语',
-};
-const QUICK_LANGS = ['ja', 'en', 'ko'] as const;
-
-function langLabel(code: string): string {
-  return LANG_LABELS[code.toLowerCase()] ?? code;
+export interface TranslatorLang {
+  /** BCP-47-ish code sent to the engine (`native_lang`, `src_lang`, ...). */
+  code: string;
+  /** Short Chinese label used on pills (`简中`, `日语`, ...). */
+  label: string;
+  /** Endonym shown in pickers (`简体中文`, `日本語`, ...). */
+  name: string;
 }
 
-function isZh(code: string): boolean {
-  const c = code.toLowerCase();
-  return c === 'zh' || c.startsWith('zh-') || c === '简中' || c === '中文';
+/** Translator language catalog (母语 / 常用外语 pickers, HUD pills). */
+export const TRANSLATOR_LANGS: ReadonlyArray<TranslatorLang> = Object.freeze([
+  { code: 'zh-CN', label: '简中', name: '简体中文' },
+  { code: 'zh-TW', label: '繁中', name: '繁體中文' },
+  { code: 'ja', label: '日语', name: '日本語' },
+  { code: 'en', label: '英语', name: 'English' },
+  { code: 'ko', label: '韩语', name: '한국어' },
+  { code: 'fr', label: '法语', name: 'Français' },
+  { code: 'de', label: '德语', name: 'Deutsch' },
+  { code: 'es', label: '西语', name: 'Español' },
+  { code: 'ru', label: '俄语', name: 'Русский' },
+  { code: 'th', label: '泰语', name: 'ไทย' },
+  { code: 'vi', label: '越南语', name: 'Tiếng Việt' },
+  { code: 'it', label: '意语', name: 'Italiano' },
+  { code: 'pt', label: '葡语', name: 'Português' },
+]);
+export const DEFAULT_NATIVE_LANG = 'zh-CN';
+export const DEFAULT_FOREIGN_LANGS: readonly string[] = Object.freeze(['ja', 'en', 'ko']);
+export const MAX_FOREIGN_LANGS = 8;
+
+const LANG_ALIASES: Record<string, string> = {
+  zh: 'zh-cn',
+  'zh-hans': 'zh-cn',
+  'zh-sg': 'zh-cn',
+  简中: 'zh-cn',
+  中文: 'zh-cn',
+  简体中文: 'zh-cn',
+  'zh-hant': 'zh-tw',
+  'zh-hk': 'zh-tw',
+  'zh-mo': 'zh-tw',
+  繁中: 'zh-tw',
+  繁體中文: 'zh-tw',
+  'ja-jp': 'ja',
+  'en-us': 'en',
+  'en-gb': 'en',
+  'ko-kr': 'ko',
+  'pt-br': 'pt',
+  'pt-pt': 'pt',
+};
+
+/** Canonical comparison key for a language code (`zh` / `zh-Hans` / `简中` → `zh-cn`). */
+export function langKey(code: string): string {
+  const c = code.trim().toLowerCase().replace(/_/g, '-');
+  return LANG_ALIASES[c] ?? c;
+}
+
+/** Whether `code` is the user's native language (alias-aware: `zh` matches `zh-CN`). */
+export function isNativeLang(code: string, nativeLang: string): boolean {
+  return langKey(code) === langKey(nativeLang);
+}
+
+/** Short pill label (`日语`) for any code; unknown codes are shown verbatim. */
+export function translatorLangLabel(code: string): string {
+  const k = langKey(code);
+  return TRANSLATOR_LANGS.find((l) => l.code.toLowerCase() === k)?.label ?? code;
+}
+
+function langLabel(code: string): string {
+  return translatorLangLabel(code);
+}
+
+/** Normalise a configured foreign-language list: known strings, deduped, never the native language. */
+export function normalizeForeignLangs(v: unknown, nativeLang: string): string[] {
+  const raw = Array.isArray(v) ? labels(v) : typeof v === 'string' ? v.split(/[,，\s]+/) : [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of raw) {
+    const c = r.trim();
+    if (!c || isNativeLang(c, nativeLang) || seen.has(langKey(c))) continue;
+    seen.add(langKey(c));
+    out.push(c);
+  }
+  return out.slice(0, MAX_FOREIGN_LANGS);
+}
+
+export interface TranslatorPair {
+  nativeLang: string;
+  foreignLangs: string[];
+  src: string;
+  dst: string;
+  /** The non-native side of the active pair (the one quick pills switch). */
+  foreign: string;
+  formality?: string;
+}
+
+/** Resolve the translator configuration from session prefs → `game/translator.json` → game slots → defaults. */
+export function resolveTranslatorPair(
+  modePrefs: Record<string, unknown> | undefined,
+  stateFiles: Record<string, unknown>,
+  instance: GameInstance | null = null,
+): TranslatorPair {
+  const tj = file(stateFiles, 'game/translator.json');
+  const nativeLang = str(modePrefs?.native_lang) ?? str(tj?.native_lang) ?? str(slot(instance, 'native_lang')) ?? DEFAULT_NATIVE_LANG;
+  let foreignLangs = normalizeForeignLangs(modePrefs?.foreign_langs ?? tj?.foreign_langs ?? slot(instance, 'foreign_langs'), nativeLang);
+  if (!foreignLangs.length) foreignLangs = DEFAULT_FOREIGN_LANGS.filter((c) => !isNativeLang(c, nativeLang));
+  // `auto` (the game slot default) means "not chosen": fall back to 常用外语[0] ⇄ 母语.
+  const lang = (v: unknown) => {
+    const x = str(v);
+    return x && x.toLowerCase() !== 'auto' ? x : undefined;
+  };
+  const src = lang(modePrefs?.src_lang) ?? lang(tj?.src_lang) ?? lang(slot(instance, 'src_lang')) ?? (foreignLangs[0] || 'ja');
+  const dst = lang(modePrefs?.dst_lang) ?? lang(tj?.dst_lang) ?? lang(slot(instance, 'dst_lang')) ?? nativeLang;
+  const foreign = isNativeLang(dst, nativeLang) ? src : isNativeLang(src, nativeLang) ? dst : src;
+  const formality = str(modePrefs?.formality) ?? str(tj?.formality) ?? str(slot(instance, 'formality'));
+  return { nativeLang, foreignLangs, src, dst, foreign, formality };
+}
+
+const FORMALITIES = [
+  { id: 'polite', label: '礼貌敬体' },
+  { id: 'casual', label: '自然口语' },
+] as const;
+
+/** Inline 母语 · 常用外语 · 语体 configurator (opened from the translator HUD's 语言设置 button). */
+function TranslatorLangSettings({ pair, onPrefsChange }: { pair: TranslatorPair; onPrefsChange(p: Record<string, unknown>): void }) {
+  const { nativeLang, foreignLangs, foreign } = pair;
+  const setNative = (code: string) => {
+    if (isNativeLang(code, nativeLang)) return;
+    let fl = foreignLangs.filter((c) => !isNativeLang(c, code));
+    // The old native language becomes a foreign one, so the user can still translate to/from it.
+    if (!fl.some((c) => isNativeLang(c, nativeLang))) fl = [...fl, nativeLang].slice(0, MAX_FOREIGN_LANGS);
+    const nextForeign = !isNativeLang(foreign, code) ? foreign : fl[0] || 'ja';
+    onPrefsChange({ native_lang: code, foreign_langs: fl, src_lang: nextForeign, dst_lang: code });
+  };
+  const toggleForeign = (code: string) => {
+    const on = foreignLangs.some((c) => langKey(c) === langKey(code));
+    if (on && foreignLangs.length <= 1) return; // keep at least one
+    const fl = on ? foreignLangs.filter((c) => langKey(c) !== langKey(code)) : [...foreignLangs, code].slice(0, MAX_FOREIGN_LANGS);
+    const patch: Record<string, unknown> = { foreign_langs: fl };
+    // Removing the active foreign language moves the pair to the first remaining one.
+    if (on && langKey(code) === langKey(foreign)) Object.assign(patch, { src_lang: fl[0], dst_lang: nativeLang });
+    onPrefsChange(patch);
+  };
+  return (
+    <div className="k-hud-langcfg" role="region" aria-label="翻译语言设置">
+      <label className="k-hud-langcfg-row">
+        <span className="k-hud-langcfg-k">母语</span>
+        <select aria-label="母语" value={TRANSLATOR_LANGS.find((l) => isNativeLang(l.code, nativeLang))?.code ?? nativeLang} onChange={(e) => setNative(e.target.value)}>
+          {TRANSLATOR_LANGS.map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.label} · {l.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="k-hud-langcfg-row" role="group" aria-label="常用外语">
+        <span className="k-hud-langcfg-k">常用外语</span>
+        <span className="k-hud-langcfg-chips">
+          {TRANSLATOR_LANGS.filter((l) => !isNativeLang(l.code, nativeLang)).map((l) => {
+            const on = foreignLangs.some((c) => langKey(c) === langKey(l.code));
+            return (
+              <button
+                key={l.code}
+                type="button"
+                className={'k-hud-quick is-sm' + (on ? ' is-on' : '')}
+                aria-pressed={on}
+                aria-label={`常用外语 ${l.label}`}
+                title={l.name}
+                onClick={() => toggleForeign(l.code)}
+              >
+                {l.label}
+              </button>
+            );
+          })}
+        </span>
+      </div>
+      <div className="k-hud-langcfg-row" role="group" aria-label="语体">
+        <span className="k-hud-langcfg-k">语体</span>
+        <span className="k-hud-langcfg-chips">
+          {FORMALITIES.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              className={'k-hud-quick is-sm' + (pair.formality === f.id ? ' is-on' : '')}
+              aria-pressed={pair.formality === f.id}
+              onClick={() => onPrefsChange({ formality: f.id })}
+            >
+              {f.label}
+            </button>
+          ))}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 function TranslatorHud({ stateFiles, modePrefs, badge, onPrefsChange, instance }: HudCtx) {
-  const tj = file(stateFiles, 'game/translator.json');
-  const src = str(modePrefs?.src_lang) ?? str(tj?.src_lang) ?? str(slot(instance, 'src_lang')) ?? 'ja';
-  const dst = str(modePrefs?.dst_lang) ?? str(tj?.dst_lang) ?? str(slot(instance, 'dst_lang')) ?? 'zh';
-  const foreign = isZh(dst) ? src : isZh(src) ? dst : src;
+  const [cfgOpen, setCfgOpen] = useState(false);
+  const pair = resolveTranslatorPair(modePrefs, stateFiles, instance);
+  const { nativeLang, foreignLangs, src, dst, foreign } = pair;
   const pick = (code: string) => {
-    if (isZh(dst)) onPrefsChange({ src_lang: code, dst_lang: dst });
-    else if (isZh(src)) onPrefsChange({ src_lang: src, dst_lang: code });
-    else onPrefsChange({ src_lang: code, dst_lang: 'zh' });
+    if (isNativeLang(dst, nativeLang)) onPrefsChange({ src_lang: code, dst_lang: dst });
+    else if (isNativeLang(src, nativeLang)) onPrefsChange({ src_lang: src, dst_lang: code });
+    else onPrefsChange({ src_lang: code, dst_lang: nativeLang });
   };
+  // The active foreign language always has a pill, even when it is not one of the user's 常用外语.
+  const pills = foreignLangs.some((c) => langKey(c) === langKey(foreign)) || isNativeLang(foreign, nativeLang) ? foreignLangs : [...foreignLangs, foreign];
   return (
-    <Row badge={badge}>
-      <span className="k-hud-pair" role="group" aria-label="语言对">
-        <span className="k-hud-pair-lang">{langLabel(src)}</span>
+    <>
+      <Row badge={badge}>
+        <span className="k-hud-pair" role="group" aria-label="语言对">
+          <span className="k-hud-pair-lang">{langLabel(src)}</span>
+          <button
+            type="button"
+            className="k-hud-swap"
+            aria-label="互换语言"
+            onClick={() => onPrefsChange({ src_lang: dst, dst_lang: src })}
+          >
+            <UiIcon name="swap" size={16} />
+          </button>
+          <span className="k-hud-pair-lang">{langLabel(dst)}</span>
+        </span>
+        {pills.map((code) => (
+          <button
+            key={code}
+            type="button"
+            className={'k-hud-quick' + (langKey(foreign) === langKey(code) ? ' is-on' : '')}
+            aria-pressed={langKey(foreign) === langKey(code)}
+            onClick={() => pick(code)}
+          >
+            {langLabel(code)}
+          </button>
+        ))}
         <button
           type="button"
-          className="k-hud-swap"
-          aria-label="互换语言"
-          onClick={() => onPrefsChange({ src_lang: dst, dst_lang: src })}
+          className={'k-hud-quick k-hud-langbtn' + (cfgOpen ? ' is-on' : '')}
+          aria-label="语言设置"
+          aria-expanded={cfgOpen}
+          title={`母语 ${langLabel(nativeLang)} · 常用外语`}
+          onClick={() => setCfgOpen((v) => !v)}
         >
-          <UiIcon name="swap" size={16} />
+          <UiIcon name="globe" size={15} /> 母语·外语
         </button>
-        <span className="k-hud-pair-lang">{langLabel(dst)}</span>
-      </span>
-      {QUICK_LANGS.map((code) => (
-        <button
-          key={code}
-          type="button"
-          className={'k-hud-quick' + (foreign.toLowerCase() === code ? ' is-on' : '')}
-          aria-pressed={foreign.toLowerCase() === code}
-          onClick={() => pick(code)}
-        >
-          {langLabel(code)}
-        </button>
-      ))}
-    </Row>
+      </Row>
+      {cfgOpen && <TranslatorLangSettings pair={pair} onPrefsChange={onPrefsChange} />}
+    </>
   );
 }
 

@@ -10,10 +10,21 @@ import { parseRubyNotation, RubyText } from '@kesoku/ui';
 
 const SAFE_URL = /^(https?:\/\/|kesoku:\/\/)/i;
 
-function renderRuby(text: string, key: string): ReactNode {
+function renderRubyLine(text: string, key: string): ReactNode {
   const parts = parseRubyNotation(text);
   if (!parts.some((p) => p.rt)) return text;
   return <RubyText key={key} parts={parts} />;
+}
+
+/** Plain text run → ruby-aware nodes; embedded `\n` become `<br />` (multi-line paragraphs / spoilers). */
+function renderRuby(text: string, key: string): ReactNode {
+  if (!text.includes('\n')) return renderRubyLine(text, key);
+  const out: ReactNode[] = [];
+  text.split('\n').forEach((line, idx) => {
+    if (idx) out.push(<br key={`${key}-br${idx}`} />);
+    if (line) out.push(<Fragment key={`${key}-l${idx}`}>{renderRubyLine(line, `${key}-r${idx}`)}</Fragment>);
+  });
+  return <Fragment key={key}>{out}</Fragment>;
 }
 
 function Spoiler({ children, block }: { children: ReactNode; block?: boolean }) {
@@ -42,7 +53,7 @@ function Spoiler({ children, block }: { children: ReactNode; block?: boolean }) 
 }
 
 const INLINE_SRC =
-  /(`[^`\n]+`)|(<spoiler>[\s\S]*?<\/spoiler>)|(\|\|[^|\n]+\|\|)|(\*\*[^*\n]+\*\*)|(__[^_\n]+__)|(~~[^~\n]+~~)|(\*[^*\n]+\*)|(\[[^\]\n]+\]\([^)\s]+\))/gi;
+  /(`[^`\n]+`)|(<spoiler>[\s\S]*?<\/spoiler>)|(\|\|[^|]+?\|\|)|(\*\*[^*\n]+\*\*)|(__[^_\n]+__)|(~~[^~\n]+~~)|(\*[^*\n]+\*)|(\[[^\]\n]+\]\([^)\s]+\))/gi;
 
 export function renderInline(text: string, keyPrefix = 'i'): ReactNode[] {
   const out: ReactNode[] = [];
@@ -57,9 +68,9 @@ export function renderInline(text: string, keyPrefix = 'i'): ReactNode[] {
     if (m[1]) out.push(<code key={k}>{tok.slice(1, -1)}</code>);
     else if (m[2]) {
       const inner = tok.replace(/^<spoiler>/i, '').replace(/<\/spoiler>$/i, '');
-      out.push(<Spoiler key={k}>{renderInline(inner, k)}</Spoiler>);
+      out.push(<Spoiler key={k}>{renderInline(inner.trim(), k)}</Spoiler>);
     } else if (m[3]) {
-      out.push(<Spoiler key={k}>{renderInline(tok.slice(2, -2), k)}</Spoiler>);
+      out.push(<Spoiler key={k}>{renderInline(tok.slice(2, -2).trim(), k)}</Spoiler>);
     } else if (m[4] || m[5]) out.push(<strong key={k}>{renderInline(tok.slice(2, -2), k)}</strong>);
     else if (m[6]) out.push(<s key={k}>{renderInline(tok.slice(2, -2), k)}</s>);
     else if (m[7]) out.push(<em key={k}>{renderInline(tok.slice(1, -1), k)}</em>);
@@ -88,7 +99,7 @@ type Block =
   | { t: 'quote'; lines: string[] }
   | { t: 'code'; lang: string; text: string }
   | { t: 'table'; headers: string[]; rows: string[][] }
-  | { t: 'spoiler'; lines: string[] }
+  | { t: 'spoiler'; lines: string[]; body: string }
   | { t: 'hr' };
 
 const TABLE_SEP_RE = /^\s*\|?(?:\s*:?-{2,}:?\s*\|)+\s*(?::?-{2,}:?\s*)?$/;
@@ -103,6 +114,37 @@ function isTableStart(lines: string[], idx: number): boolean {
   const head = lines[idx].trim();
   if (!head.includes('|')) return false;
   return TABLE_SEP_RE.test(lines[idx + 1]);
+}
+
+const SPOILER_OPEN_ALONE_RE = /^\s*<spoiler>\s*$/i;
+const SPOILER_OPEN_RE = /^\s*<spoiler>/i;
+const SPOILER_CLOSE_RE = /<\/spoiler>\s*$/i;
+
+/**
+ * Block-level spoiler starting at `lines[idx]`:
+ *  - `<spoiler>` alone on a line … `</spoiler>` alone on a later line (legacy form), or
+ *  - `<spoiler>text…` opening a line that does not close on the same line, closed by `…</spoiler>` at the end
+ *    of a later line (text may hug either tag; blank lines in between are kept).
+ * Returns the inner lines (outer tags stripped) and the index after the closing line, or null.
+ */
+function spoilerBlockAt(lines: string[], idx: number): { body: string[]; next: number } | null {
+  const first = lines[idx];
+  if (!SPOILER_OPEN_RE.test(first)) return null;
+  const alone = SPOILER_OPEN_ALONE_RE.test(first);
+  if (!alone && /<\/spoiler>/i.test(first)) return null; // single-line inline spoiler → paragraph
+  for (let j = idx + 1; j < lines.length; j++) {
+    if (/^\s*```/.test(lines[j])) return null; // never swallow a code fence
+    if (!SPOILER_CLOSE_RE.test(lines[j])) continue;
+    if (/<\/spoiler>/i.test(lines[j].replace(SPOILER_CLOSE_RE, ''))) return null; // ambiguous nesting
+    const body = lines.slice(idx, j + 1);
+    body[0] = body[0].replace(SPOILER_OPEN_RE, '');
+    body[body.length - 1] = body[body.length - 1].replace(SPOILER_CLOSE_RE, '');
+    if (alone) body.shift();
+    if (body.length && /^\s*$/.test(body[body.length - 1])) body.pop();
+    return { body, next: j + 1 };
+  }
+  // Unclosed: keep legacy behaviour for a lone `<spoiler>` (swallow to EOF), otherwise not a block.
+  return alone ? { body: lines.slice(idx + 1), next: lines.length } : null;
 }
 
 export function parseBlocks(src: string): Block[] {
@@ -124,12 +166,10 @@ export function parseBlocks(src: string): Block[] {
       blocks.push({ t: 'code', lang: fence[1], text: body.join('\n') });
       continue;
     }
-    if (/^\s*<spoiler>\s*$/i.test(line)) {
-      const body: string[] = [];
-      i++;
-      while (i < lines.length && !/^\s*<\/spoiler>\s*$/i.test(lines[i])) body.push(lines[i++]);
-      if (i < lines.length) i++;
-      blocks.push({ t: 'spoiler', lines: body });
+    const sp = spoilerBlockAt(lines, i);
+    if (sp) {
+      i = sp.next;
+      blocks.push({ t: 'spoiler', lines: sp.body, body: sp.body.join('\n') });
       continue;
     }
     if (isTableStart(lines, i)) {
@@ -177,7 +217,7 @@ export function parseBlocks(src: string): Block[] {
       i < lines.length &&
       !/^\s*$/.test(lines[i]) &&
       !/^\s*```/.test(lines[i]) &&
-      !/^\s*<spoiler>\s*$/i.test(lines[i]) &&
+      !spoilerBlockAt(lines, i) &&
       !isTableStart(lines, i) &&
       !/^#{1,4}\s/.test(lines[i]) &&
       !/^\s*[-*•]\s+/.test(lines[i]) &&
@@ -192,13 +232,9 @@ export function parseBlocks(src: string): Block[] {
   return blocks;
 }
 
+/** Render a multi-line block as ONE inline run so `<spoiler>`/`||` spanning lines still match; `\n` → `<br />`. */
 function linesWithBreaks(lines: string[], key: string): ReactNode[] {
-  const out: ReactNode[] = [];
-  lines.forEach((l, idx) => {
-    if (idx) out.push(<br key={`${key}-br${idx}`} />);
-    out.push(...renderInline(l, `${key}-${idx}`));
-  });
-  return out;
+  return renderInline(lines.join('\n'), key);
 }
 
 export function Markdown({ text, className }: { text: string; className?: string }) {

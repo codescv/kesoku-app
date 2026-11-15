@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import type { EngineToClientPayload, LexToken, MemoryProposal } from '@kesoku/protocol';
-import { Avatar, ModeIcon, UiIcon, modeMeta } from '@kesoku/ui';
+import type { Attachment, EngineToClientPayload, LexToken, MemoryProposal } from '@kesoku/protocol';
+import { Avatar, ModeIcon, UiIcon, VoicePill, modeMeta } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import type { ChatItem } from '../../lib/types';
@@ -12,6 +12,7 @@ import { ProposalCard } from '../proposals/ProposalCard';
 import { useAvatarUrl } from '../persona/avatar';
 import { fallbackRoleId, roleAvatarRef, roleFallbackName } from '../persona/model';
 import { makeCardContext } from './cardContext';
+import { overlays } from './overlays';
 import { useIsDesktop } from '../../app/useMedia';
 
 function AssistantHeader({ roleId, fallbackName }: { roleId: string; fallbackName: string }) {
@@ -82,6 +83,59 @@ function ModeEmpty({ modeId, sessionId }: { modeId: string; sessionId: string })
 }
 const EMPTY_EVENTS: never[] = [];
 
+const AUDIO_EXT_RE = /\.(m4a|webm|wav|mp3|ogg|oga|opus|aac|flac)$/i;
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|heic|heif|bmp|avif)$/i;
+
+type AttachmentLike = Pick<Attachment, 'mime'> & { object?: string; ref?: string; filename?: string; url?: string; duration_ms?: number };
+
+/** True for recorded voice / audio uploads (by MIME, or by file extension when the MIME is generic). */
+export function isAudioAttachment(a: AttachmentLike): boolean {
+  return !!a.mime?.toLowerCase().startsWith('audio/') || AUDIO_EXT_RE.test(a.filename || a.object || a.ref || '');
+}
+
+export function isImageAttachment(a: AttachmentLike): boolean {
+  if (isAudioAttachment(a)) return false;
+  return !!a.mime?.toLowerCase().startsWith('image/') || IMAGE_EXT_RE.test(a.filename || a.object || a.ref || '');
+}
+
+/** One attachment pill inside a user bubble: playable voice pill for audio, tap-to-open 图N for images. */
+export function UserAttachmentItem({ a, index, sessionId, messageId }: { a: AttachmentLike; index: number; sessionId: string; messageId?: string }) {
+  const resolve = () => kesoku.resolveMedia({ object: a.object || undefined, ref: a.ref || undefined, url: a.url || undefined }, { sessionId, messageId });
+  if (isAudioAttachment(a)) {
+    return (
+      <VoicePill
+        className="k-user-voice"
+        resolveUrl={resolve}
+        durationMs={typeof a.duration_ms === 'number' && a.duration_ms > 0 ? a.duration_ms : undefined}
+        label="语音"
+        preloadKey={a.object || a.ref || ''}
+      />
+    );
+  }
+  const canOpen = !!(a.object || a.ref || a.url);
+  if (isImageAttachment(a)) {
+    return (
+      <button
+        type="button"
+        className="k-pill k-pill-neutral k-pill-sm"
+        disabled={!canOpen}
+        aria-label={`查看图${index + 1}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          void resolve().then((url) => url && overlays.image(url), () => undefined);
+        }}
+      >
+        <UiIcon name="image" size={13} /> 图{index + 1}
+      </button>
+    );
+  }
+  return (
+    <span className="k-pill k-pill-neutral k-pill-sm" title={a.filename}>
+      📎 {a.filename || `附件${index + 1}`}
+    </span>
+  );
+}
+
 function UserBubble({ item, sessionId }: { item: ChatItem; sessionId: string }) {
   return (
     <div className={'k-row k-row-user' + (item.status === 'failed' ? ' is-failed' : '')}>
@@ -89,9 +143,7 @@ function UserBubble({ item, sessionId }: { item: ChatItem; sessionId: string }) 
         {item.attachments?.length ? (
           <div className="k-attach-row">
             {item.attachments.map((a, i) => (
-              <span key={a.object || i} className="k-pill k-pill-neutral k-pill-sm">
-                <UiIcon name="image" size={13} /> 图{i + 1}
-              </span>
+              <UserAttachmentItem key={a.object || a.ref || i} a={a} index={i} sessionId={sessionId} messageId={item.message_id} />
             ))}
           </div>
         ) : null}

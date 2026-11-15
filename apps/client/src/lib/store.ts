@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   DEFAULT_MEMORY_POLICIES,
+  type Attachment,
   type EngineToClientPayload,
   type LlmOverride,
   type MemoryPolicy,
@@ -40,6 +41,10 @@ export interface Settings {
   ttsEngine: 'native' | 'server';
   defaultModel: LlmOverride;
   translatorModel: string;
+  /** 翻译模式 · 母语 (TRANSLATOR_LANGS code). */
+  translatorNativeLang: string;
+  /** 翻译模式 · 常用外语 (quick-switch pills; at least one). */
+  translatorForeignLangs: string[];
 }
 
 export type Screen = 'chat' | 'settings' | 'memory' | 'studio' | 'files';
@@ -97,6 +102,8 @@ export const DEFAULT_SETTINGS: Settings = {
   ttsEngine: 'native',
   defaultModel: { llm: 'gemini', model_name: 'gemini-4-hydrogen', thinking_level: 'low', stream: true },
   translatorModel: 'gemini-3.8-flash',
+  translatorNativeLang: 'zh-CN',
+  translatorForeignLangs: ['ja', 'en', 'ko'],
 };
 
 export function initialState(): KesokuState {
@@ -136,20 +143,45 @@ export const useStore = create<KesokuState>(() => initialState());
 
 // ───────────────────────── pure helpers ─────────────────────────
 
+const ATTACHMENT_LISTING_RE = /\n*\s*Attachments:\n(?:\[Attachment: [^\n]*\]\n?)+\s*$/;
+const ATTACHMENT_LINE_RE = /^\[Attachment: (.*?) \(([^()\s]*)\) saved at (.+?)(?: — [^\n]*)?\]$/gm;
+
+/**
+ * Split the engine-injected `Attachments:\n[Attachment: f (mime) saved at /path …]` listing off a user message
+ * (older engines / cross-channel rows put it in `text`), returning the clean text and the attachments it named.
+ */
+export function splitAttachmentListing(text: string | undefined): { text: string | undefined; attachments: Attachment[] } {
+  if (!text) return { text, attachments: [] };
+  const m = ATTACHMENT_LISTING_RE.exec(text);
+  if (!m) return { text, attachments: [] };
+  const attachments: Attachment[] = [];
+  for (const l of m[0].matchAll(ATTACHMENT_LINE_RE)) {
+    attachments.push({ object: '', mime: l[2] || 'application/octet-stream', filename: l[1], bytes: 0, ref: l[3].trim() });
+  }
+  return { text: text.slice(0, m.index), attachments };
+}
+
 export function recordToItem(m: MessageRecord): ChatItem {
   const kind = m.role === 'user' ? 'user' : m.role === 'assistant' ? 'assistant' : 'system';
+  let text = m.text;
+  let attachments = m.attachments;
+  if (kind === 'user') {
+    const split = splitAttachmentListing(text);
+    text = split.text;
+    if (!attachments?.length && split.attachments.length) attachments = split.attachments;
+  }
   return {
     key: m.message_id,
     kind,
     message_id: m.message_id,
     turn_id: m.turn_id,
     client_msg_id: m.client_msg_id,
-    text: m.text,
+    text,
     segments: m.segments,
     raw_markdown: m.raw_markdown,
     ts: m.ts,
     seq: m.seq,
-    attachments: m.attachments,
+    attachments,
     status: kind === 'user' ? 'sent' : undefined,
     sender: m.sender as ChatItem['sender'],
   };

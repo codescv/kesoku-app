@@ -75,6 +75,16 @@ button.k-hud-chip:hover { filter: brightness(0.97); }
   background: var(--pill); color: var(--ink-2); font: 800 14px/1 var(--font-sans);
 }
 .k-hud-quick.is-on { border-color: color-mix(in srgb, var(--mode) 50%, transparent); color: var(--mode); background: color-mix(in srgb, var(--mode) 12%, transparent); }
+.k-hud-quick.is-sm { min-height: 30px; padding: 0 10px; font-size: 13px; }
+.k-hud-langbtn { display: inline-flex; align-items: center; gap: 4px; }
+.k-hud-langcfg {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 6px; padding: 10px 12px;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--card, var(--pill));
+}
+.k-hud-langcfg-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.k-hud-langcfg-k { flex: 0 0 auto; min-width: 4.5em; font: 800 13px/1.2 var(--font-sans); color: var(--ink-2); }
+.k-hud-langcfg-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.k-hud-langcfg select { min-height: 32px; border-radius: 9px; border: 1.5px solid var(--line); background: var(--pill); color: var(--ink); font: 700 14px/1 var(--font-sans); padding: 0 8px; }
 
 /* trpg */
 .k-hud-world { flex: 0 1 auto; min-width: 0; }

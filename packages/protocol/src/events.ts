@@ -49,7 +49,13 @@ export const ClientToEngine = {
     cursor: z.string().nullable().optional(),
     limit: z.number().int().min(1).max(200).default(50),
   }),
-  'session.create': z.object({ role: z.string().optional(), title: z.string().max(120).optional(), mode: ModeIdSchema.optional() }),
+  'session.create': z.object({
+    role: z.string().optional(),
+    title: z.string().max(120).optional(),
+    mode: ModeIdSchema.optional(),
+    /** Initial mode prefs (e.g. translator `native_lang` / `foreign_langs` / `src_lang` / `dst_lang`). */
+    prefs: z.record(z.unknown()).optional(),
+  }),
   'session.open': z.object({ session_id: sid }),
   'session.rename': z.object({ session_id: sid, title: z.string().min(1).max(120) }),
   'session.delete': z.object({ session_id: sid }),
@@ -70,7 +76,7 @@ export const ClientToEngine = {
   }),
   'ui.pick': z.object({ session_id: sid, question_message_id: z.string(), choices: z.array(z.string()).min(1) }),
   'turn.stop': z.object({ session_id: sid }),
-  'mode.start': z.object({ session_id: sid, mode_id: ModeIdSchema }),
+  'mode.start': z.object({ session_id: sid, mode_id: ModeIdSchema, prefs: z.record(z.unknown()).optional() }),
   'mode.stop': z.object({ session_id: sid, instance_id: z.string().optional() }),
   'mode.prefs.set': z.object({ session_id: sid, prefs: z.record(z.unknown()) }),
   'model.set': z.object({ session_id: sid, llm_override: LlmOverrideSchema.nullable() }),

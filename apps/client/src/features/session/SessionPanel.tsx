@@ -24,7 +24,7 @@ function SessionRow({ s, active }: { s: SessionSummary; active: boolean }) {
   const [title, setTitle] = useState(s.title);
   const [confirmDel, setConfirmDel] = useState(false);
   const chan = s.chatbot_id && s.chatbot_id !== 'app' ? s.chatbot_id : null;
-  const m = s.mode_id ? modeMeta(s.mode_id) : null;
+  const m = modeMeta(s.mode_id || 'chat');
   let startX = 0;
   return (
     <div
@@ -54,7 +54,7 @@ function SessionRow({ s, active }: { s: SessionSummary; active: boolean }) {
       ) : (
         <button type="button" className="k-srow-main" onClick={() => void kesoku.openSession(s.session_id)} onContextMenu={(e) => (e.preventDefault(), setMenu(true))}>
           <span className="k-srow-title">
-            {m && m.id !== 'chat' && (
+            {m && (
               <span className="k-srow-mode" aria-hidden>
                 <ModeIcon mode={m.id} size={18} />
               </span>

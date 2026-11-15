@@ -20,6 +20,8 @@ import { GalgameStage, ModePanel, PeekSheet } from '../features/modes';
 import { PersonaStudio } from '../features/persona';
 import { fallbackRoleId, roleFallbackName } from '../features/persona/model';
 import { FileBrowser } from '../features/files/FileBrowser';
+import { kvSet } from '../lib/db';
+import { mergeTranslatorModePrefs, translatorSettingsPatch } from '../lib/translatorPrefs';
 
 const EMPTY: Record<string, unknown> = {};
 const CHANNEL: Record<string, string> = { discord: 'Discord', discord_asuka: 'Discord', wechat: '微信' };
@@ -112,6 +114,7 @@ export function Shell() {
   const conn = useStore((s) => s.conn);
   const stateFiles = useStore((s) => (sid ? s.stateFiles[sid] : undefined)) ?? EMPTY;
   const modePrefs = useStore((s) => (sid ? s.modePrefs[sid] : undefined)) ?? EMPTY;
+  const settings = useStore((s) => s.settings);
   const origin = useStore((s) => (sid ? s.origin[sid] : undefined));
   const takenOver = useStore((s) => (sid ? s.takenOver[sid] : false));
   const session = useStore((s) => (sid ? s.sessions[sid] : undefined));
@@ -211,10 +214,17 @@ export function Shell() {
           <ModeHud
             modeId={modeId}
             stateFiles={stateFiles}
-            modePrefs={modePrefs}
+            modePrefs={modeId === 'translator' ? mergeTranslatorModePrefs(modePrefs, settings) : modePrefs}
             policy={policy}
             onPolicyChange={(p) => void kesoku.setPolicy(modeId, p)}
-            onPrefsChange={(prefs) => void kesoku.setModePrefs(sid, prefs)}
+            onPrefsChange={(prefs) => {
+              const patch = translatorSettingsPatch(prefs);
+              if (patch) {
+                actions.setSettings(patch);
+                void kvSet('settings', useStore.getState().settings);
+              }
+              void kesoku.setModePrefs(sid, prefs);
+            }}
             onOpenPanel={openPanel}
           />
         )}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { BilingualSegment, LexToken } from '@kesoku/protocol';
 import { RubyText, VoicePill, resolveRubyParts, type RubyPart } from '@kesoku/ui';
 import { useStore } from '../../lib/store';
@@ -66,7 +66,11 @@ export function toWordUnits(parts: RubyPart[], tokens?: LexToken[]): WordUnit[] 
     for (let i = 0; i < p.base.length; i++) {
       const ch = p.base[i];
       const abs = start + i;
-      const brk = cur && (bounds.size ? bounds.has(abs) : scriptOf(ch) !== scriptOf(cur[cur.length - 1]) || scriptOf(ch) === 'punct');
+      const prev = cur[cur.length - 1];
+      // Line breaks are always their own unit (never glued into a tappable word).
+      const brk =
+        cur &&
+        (ch === '\n' || prev === '\n' || (bounds.size ? bounds.has(abs) : scriptOf(ch) !== scriptOf(prev) || scriptOf(ch) === 'punct'));
       if (brk) {
         units.push({ base: cur, start: curStart, end: abs });
         cur = '';
@@ -298,6 +302,17 @@ export function LexCard({ token, onClose }: { token: LexToken; onClose?: () => v
   );
 }
 
+/** Multi-line translation (e.g. a `<spoiler>` spanning lines) → lines separated by `<br />`. */
+function zhWithBreaks(zh: string): ReactNode {
+  if (!zh.includes('\n')) return zh;
+  return zh.split('\n').map((line, i) => (
+    <Fragment key={i}>
+      {i ? <br /> : null}
+      {line}
+    </Fragment>
+  ));
+}
+
 /** Integrated bilingual card: real <ruby>, tap-to-play ▶ (never autoplay), tap-to-toggle 中文, tap-any-word breakdown. */
 export function BilingualCard({ seg, resolveVoice, explain, onWord, compact, inlineLex = true, preloadVoice }: BilingualCardProps) {
   const entry = useStore(
@@ -395,7 +410,7 @@ export function BilingualCard({ seg, resolveVoice, explain, onWord, compact, inl
             setShowZh((v) => !v);
           }}
         >
-          {seg.zh}
+          {zhWithBreaks(seg.zh)}
         </button>
       )}
       {lex && inlineLex && (

@@ -12,6 +12,17 @@ export interface RubyTextProps {
 
 const WORD_CHAR_RE = /[\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3005-\u3007A-Za-z0-9]/;
 
+/** Plain run → text with `\n` rendered as `<br />` (multi-line bilingual quotes). */
+function withBreaks(text: string, key: string | number): ReactNode {
+  if (!text.includes('\n')) return text;
+  const out: ReactNode[] = [];
+  text.split('\n').forEach((line, j) => {
+    if (j) out.push(<br key={`${key}-br${j}`} />);
+    if (line) out.push(line);
+  });
+  return out;
+}
+
 /** Renders parts as real <ruby>/<rt> React elements (JSX-escaped; never raw HTML injection). */
 export function RubyText({ parts, className, style, onPartClick, activeIndex }: RubyTextProps) {
   return (
@@ -23,7 +34,7 @@ export function RubyText({ parts, className, style, onPartClick, activeIndex }: 
             <rt>{p.rt}</rt>
           </ruby>
         ) : (
-          p.base
+          withBreaks(p.base, i)
         );
         if (!onPartClick || (!p.rt && !WORD_CHAR_RE.test(p.base))) return <Fragment key={i}>{inner}</Fragment>;
         return (

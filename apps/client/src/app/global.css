@@ -125,6 +125,7 @@ h1, h2, h3, strong, b { font-weight: 800; }
 .k-bi-ja { font-size: var(--fs-ja); font-weight: 800; line-height: 2.05; margin: 4px 0 6px; letter-spacing: 0.01em; }
 .k-bi-zh { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 0 0; border-top: 1px dashed var(--line); color: var(--ink-2); font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.6; }
 .k-bi-zh.is-open { white-space: normal; opacity: 1; color: var(--ink); }
+.k-bi-zh:not(.is-open) br { display: none; }
 .k-lex { margin-top: 10px; padding: 12px 14px; border-radius: 16px; background: var(--accent-soft); border: 1.5px solid var(--accent-border); }
 .k-lex-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .k-lex-surface { font-size: 22px; font-weight: 800; }
@@ -487,3 +488,12 @@ input[type='checkbox'][role='switch']:checked::after { transform: translateX(18p
 .k-memory-file-icon { color: var(--ink-2); }
 .k-memory-file .is-pinned { color: var(--warn); }
 .k-memory-new .k-btn, .k-memory-editor-actions .k-btn { gap: 6px; }
+
+/* settings · translator languages */
+.k-kv-stack { flex-direction: column; align-items: stretch; gap: 8px; }
+.k-lang-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.k-lang-chip { cursor: pointer; border: 1.5px solid var(--line); background: var(--pill); color: var(--ink-2); }
+.k-lang-chip.is-on { border-color: color-mix(in srgb, var(--accent, var(--ink)) 50%, transparent); color: var(--ink); font-weight: 800; }
+.k-lang-chip:disabled { cursor: default; opacity: 0.9; }
+/* user bubble voice attachment */
+.k-attach-row .k-voice.k-user-voice { margin: 0; }

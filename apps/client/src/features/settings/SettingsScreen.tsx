@@ -6,10 +6,64 @@ import { actions, useStore, type Settings } from '../../lib/store';
 import { kvSet } from '../../lib/db';
 import { logout } from '../../lib/auth';
 import { PolicySegmented } from '../memory/PolicySegmented';
+import { MAX_FOREIGN_LANGS, TRANSLATOR_LANGS, isNativeLang, langKey } from '@kesoku/hud';
+import { translatorLangs } from '../../lib/translatorPrefs';
 
 function save(patch: Partial<Settings>) {
   actions.setSettings(patch);
   void kvSet('settings', useStore.getState().settings);
+}
+
+/** 翻译模式 · 母语 select + 常用外语 multi-select chips (at least one foreign language is always kept). */
+export function TranslatorLangFields() {
+  const settings = useStore((s) => s.settings);
+  const { native_lang: native, foreign_langs: foreign } = translatorLangs(settings);
+  const setNative = (code: string) => {
+    if (isNativeLang(code, native)) return;
+    let fl = foreign.filter((c) => !isNativeLang(c, code));
+    if (!fl.length) fl = [native];
+    save({ translatorNativeLang: code, translatorForeignLangs: fl });
+  };
+  const toggle = (code: string) => {
+    const on = foreign.some((c) => langKey(c) === langKey(code));
+    if (on && foreign.length <= 1) return;
+    save({ translatorForeignLangs: on ? foreign.filter((c) => langKey(c) !== langKey(code)) : [...foreign, code].slice(0, MAX_FOREIGN_LANGS) });
+  };
+  return (
+    <>
+      <label className="k-kv">
+        <span>翻译母语</span>
+        <select aria-label="翻译母语" value={TRANSLATOR_LANGS.find((l) => isNativeLang(l.code, native))?.code ?? native} onChange={(e) => setNative(e.target.value)}>
+          {TRANSLATOR_LANGS.map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.label} · {l.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="k-kv k-kv-stack">
+        <span>常用外语</span>
+        <div className="k-lang-chips" role="group" aria-label="常用外语">
+          {TRANSLATOR_LANGS.filter((l) => !isNativeLang(l.code, native)).map((l) => {
+            const on = foreign.some((c) => langKey(c) === langKey(l.code));
+            return (
+              <button
+                key={l.code}
+                type="button"
+                className={'k-pill k-pill-sm k-lang-chip' + (on ? ' is-on' : '')}
+                aria-pressed={on}
+                title={l.name}
+                disabled={on && foreign.length <= 1}
+                onClick={() => toggle(l.code)}
+              >
+                {on && <UiIcon name="check" size={12} styleVariant="line" />} {l.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
 }
 
 const PREVIEW_MODES = ['chat', 'galgame', 'trpg', 'pokemon_assistant'] as const;
@@ -258,6 +312,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
               ))}
             </select>
           </label>
+          <TranslatorLangFields />
         </section>
 
         <section className="k-set-card">
