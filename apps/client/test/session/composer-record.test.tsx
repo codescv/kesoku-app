@@ -98,7 +98,7 @@ describe('Composer · tap-to-record with 取消 / 发送', () => {
 
   it('translator voice defaults to 【我说】', async () => {
     render(<Composer sessionId="s" modeId="translator" roleName="飞鸟" />);
-    expect(screen.getByText('🎙️ 我说')).toBeTruthy();
+    expect(screen.getByText('我说')).toBeTruthy();
     await startRecording();
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '发送语音' })));
     expect(m.sendMessage).toHaveBeenCalledWith('s', '【我说】翻译成对方语言', expect.any(Array));

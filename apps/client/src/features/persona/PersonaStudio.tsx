@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EngineToClientPayload } from '@kesoku/protocol';
-import { Segmented } from '@kesoku/ui';
+import { Segmented, UiIcon } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import type { AvatarSource } from './AvatarSheet';
@@ -52,7 +52,7 @@ export function PersonaStudio({ onClose, initialTab = 'roles', onOpenPolicies }:
     <div className="ps-root" role="dialog" aria-modal="true" aria-label="角色与形象工坊">
       <header className="ps-top">
         <button type="button" className="ps-back" aria-label="返回" onClick={onClose}>
-          ←
+          <UiIcon name="arrow-left" size={20} />
         </button>
         <h1 className="ps-top-title">角色与形象工坊</h1>
         <Segmented

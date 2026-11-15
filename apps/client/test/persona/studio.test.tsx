@@ -86,6 +86,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** Internal file names / paths / token jargon must never reach the persona UI. */
+const JARGON = [/intro\.md/, /preferences\.md/, /characters\//, /ref_face/, /0 token/i, /roles\//, /签名 URL/];
+function expectNoJargon() {
+  const text = document.body.textContent ?? '';
+  for (const re of JARGON) expect(text).not.toMatch(re);
+}
+
 async function openRoles() {
   render(<PersonaStudio onClose={() => {}} />);
   return (await screen.findByLabelText('角色名称')) as HTMLInputElement;
@@ -101,7 +108,8 @@ describe('PersonaStudio · Screen 15 roles', () => {
     const chips = within(strip).getAllByRole('button').map((b) => b.textContent);
     expect(chips[0]).toContain('斋藤飞鸟 Asuka');
     expect(chips[0]).toContain('当前');
-    expect(chips.at(-1)).toContain('＋ 新建角色');
+    expect(chips.at(-1)).toContain('新建角色');
+    expect(chips.at(-1)).not.toContain('＋');
   });
 
   it('builtin roles have no delete; custom roles delete via in-app two-step confirm', async () => {
@@ -124,7 +132,7 @@ describe('PersonaStudio · Screen 15 roles', () => {
 
   it('validates fields inline and blocks saving', async () => {
     const name = await openRoles();
-    const save = screen.getByRole('button', { name: '✓ 保存角色设定' }) as HTMLButtonElement;
+    const save = screen.getByRole('button', { name: '保存角色设定' }) as HTMLButtonElement;
     fireEvent.change(name, { target: { value: 'x'.repeat(33) } });
     expect(screen.getByText('最多 32 个字符')).toBeTruthy();
     expect(save.disabled).toBe(true);
@@ -145,7 +153,7 @@ describe('PersonaStudio · Screen 15 roles', () => {
 
     // role_id is editable only when creating.
     expect(screen.queryByPlaceholderText(/留空按名称自动生成/)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '＋ 新建角色' }));
+    fireEvent.click(screen.getByRole('button', { name: '新建角色' }));
     const rid = screen.getByPlaceholderText(/留空按名称自动生成/);
     fireEvent.change(rid, { target: { value: 'Bad-Id' } });
     expect(screen.getByText(/仅限小写字母/)).toBeTruthy();
@@ -158,7 +166,7 @@ describe('PersonaStudio · Screen 15 roles', () => {
     await openRoles();
     fireEvent.change(screen.getByLabelText('一句话标签'), { target: { value: '新的标签' } });
     fireEvent.change(screen.getByLabelText('语音音色'), { target: { value: 'serena' } });
-    fireEvent.click(screen.getByRole('button', { name: '✓ 保存角色设定' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存角色设定' }));
     await waitFor(() => expect(calls('persona.upsert')).toHaveLength(1));
     expect(calls('persona.upsert')[0]![1]).toEqual({
       role_id: 'asuka',
@@ -168,19 +176,19 @@ describe('PersonaStudio · Screen 15 roles', () => {
       preferences_md: 'prefs',
       voice_preset: 'serena',
     });
-    await waitFor(() => expect(useStore.getState().toasts.some((t) => t.text.includes('已保存'))).toBe(true));
+    await waitFor(() => expect(useStore.getState().toasts.some((t) => t.text === '角色设定已保存')).toBe(true));
     expect(useStore.getState().personas.find((r) => r.role_id === 'asuka')!.tagline).toBe('新的标签');
   });
 
   it('creates a role without role_id when left blank and applies a template', async () => {
     await openRoles();
-    fireEvent.click(screen.getByRole('button', { name: '＋ 新建角色' }));
+    fireEvent.click(screen.getByRole('button', { name: '新建角色' }));
     fireEvent.change(screen.getByLabelText('角色名称'), { target: { value: '旅伴 Mio' } });
-    fireEvent.click(screen.getByRole('button', { name: '模板 ▾' }));
+    fireEvent.click(screen.getByRole('button', { name: '模板' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '伴游' }));
     expect((screen.getByLabelText('性格与台词风格') as HTMLTextAreaElement).value).toContain('随身伴游');
     // Non-empty intro → replacing needs an in-app confirmation.
-    fireEvent.click(screen.getByRole('button', { name: '模板 ▾' }));
+    fireEvent.click(screen.getByRole('button', { name: '模板' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '空白' }));
     fireEvent.click(screen.getByRole('button', { name: '替换' }));
     expect((screen.getByLabelText('性格与台词风格') as HTMLTextAreaElement).value).toBe('');
@@ -189,7 +197,7 @@ describe('PersonaStudio · Screen 15 roles', () => {
         ? Promise.resolve({ ok: true, role: { role_id: 'mio', builtin: false, avatar_rev: 0, tagline: '', ...payload } })
         : defaultRpc(type, payload),
     );
-    fireEvent.click(screen.getByRole('button', { name: '✓ 创建角色' }));
+    fireEvent.click(screen.getByRole('button', { name: '创建角色' }));
     await waitFor(() => expect(calls('persona.upsert')).toHaveLength(1));
     const p = calls('persona.upsert')[0]![1];
     expect(p.role_id).toBeUndefined();
@@ -224,7 +232,7 @@ describe('PersonaStudio · Screen 15 roles', () => {
     await openRoles();
     const file = new File([new Uint8Array([1, 2, 3])], 'me.png', { type: 'image/png' });
     fireEvent.change(screen.getByLabelText('上传角色头像文件'), { target: { files: [file] } });
-    fireEvent.click(await screen.findByRole('button', { name: '✓ 使用此图' }));
+    fireEvent.click(await screen.findByRole('button', { name: '使用此图' }));
     await waitFor(() => expect(m.upload).toHaveBeenCalledWith(file, 'avatar_source'));
     await waitFor(() => expect(calls('persona.upsert')).toHaveLength(1));
     expect(calls('persona.upsert')[0]![1]).toMatchObject({ role_id: 'asuka', avatar_object: 'media/avatar/123e4567-e89b-12d3-a456-426614174000.png' });
@@ -234,9 +242,9 @@ describe('PersonaStudio · Screen 15 roles', () => {
 describe('PersonaStudio · Screen 16 avatar restyle', () => {
   it('generates 4 candidates, fades them in from store media and applies with register_reference', async () => {
     await openRoles();
-    fireEvent.click(screen.getByRole('button', { name: '✨ AI 二次生成头像' }));
+    fireEvent.click(screen.getByRole('button', { name: 'AI 二次生成头像' }));
     expect(document.querySelector('.k-sheet.ps-gen')).toBeTruthy();
-    const go = screen.getByRole('button', { name: '✨ 生成 4 张候选' }) as HTMLButtonElement;
+    const go = screen.getByRole('button', { name: '生成 4 张候选' }) as HTMLButtonElement;
     expect(go.disabled).toBe(true);
 
     const file = new File([new Uint8Array([1])], 'src.png', { type: 'image/png' });
@@ -262,7 +270,7 @@ describe('PersonaStudio · Screen 16 avatar restyle', () => {
     expect(screen.getByText(/生成中 · 约 20s/)).toBeTruthy();
     expect(useStore.getState().avatarJobs.job1).toBeTruthy();
 
-    const apply = screen.getByRole('button', { name: '✨ 应用为角色头像' }) as HTMLButtonElement;
+    const apply = screen.getByRole('button', { name: '应用为角色头像' }) as HTMLButtonElement;
     expect(apply.disabled).toBe(true);
 
     act(() => {
@@ -274,9 +282,9 @@ describe('PersonaStudio · Screen 16 avatar restyle', () => {
     expect(screen.getByRole('button', { name: '生成失败 · 重试' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '候选 #2' }));
-    expect(screen.getByText('✓ 已选中')).toBeTruthy();
+    expect(screen.getByText('已选中')).toBeTruthy();
     expect(apply.disabled).toBe(false);
-    expect(screen.getByRole('switch', { name: '同步为场景生图锁脸参考图' }).getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByRole('switch', { name: '同步为场景生图的锁脸参考' }).getAttribute('aria-checked')).toBe('false');
     fireEvent.click(apply);
     await waitFor(() => expect(calls('avatar.apply')).toHaveLength(1));
     expect(calls('avatar.apply')[0]![1]).toEqual({ job_id: 'job1', index: 1, target_type: 'role', target_id: 'asuka', register_reference: false });
@@ -288,9 +296,9 @@ describe('PersonaStudio · Screen 16 avatar restyle', () => {
 
   it('register_reference follows the toggle and 换一批 keeps a history strip', async () => {
     await openRoles();
-    fireEvent.click(screen.getByRole('button', { name: '✨ AI 二次生成头像' }));
+    fireEvent.click(screen.getByRole('button', { name: 'AI 二次生成头像' }));
     fireEvent.change(screen.getByLabelText('上传原图文件'), { target: { files: [new File([new Uint8Array([1])], 's.png', { type: 'image/png' })] } });
-    const go = screen.getByRole('button', { name: '✨ 生成 4 张候选' }) as HTMLButtonElement;
+    const go = screen.getByRole('button', { name: '生成 4 张候选' }) as HTMLButtonElement;
     await waitFor(() => expect(go.disabled).toBe(false));
     fireEvent.click(go);
     await waitFor(() => expect(screen.getAllByTestId('ps-cand')).toHaveLength(4));
@@ -300,12 +308,12 @@ describe('PersonaStudio · Screen 16 avatar restyle', () => {
     m.rpc.mockImplementation((type: string, payload: Record<string, unknown>) =>
       type === 'avatar.generate' ? Promise.resolve({ job_id: 'job2', placeholders: ['q1', 'q2', 'q3', 'q4'], eta_ms: 20000 }) : defaultRpc(type, payload),
     );
-    fireEvent.click(await screen.findByRole('button', { name: '↻ 换一批' }));
+    fireEvent.click(await screen.findByRole('button', { name: '换一批' }));
     await waitFor(() => expect(screen.getByRole('button', { name: /第 2 批/ })).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: /第 1 批/ }));
     fireEvent.click(screen.getByRole('button', { name: '候选 #4' }));
-    fireEvent.click(screen.getByRole('switch', { name: '同步为场景生图锁脸参考图' }));
-    fireEvent.click(screen.getByRole('button', { name: '✨ 应用为角色头像' }));
+    fireEvent.click(screen.getByRole('switch', { name: '同步为场景生图的锁脸参考' }));
+    fireEvent.click(screen.getByRole('button', { name: '应用为角色头像' }));
     await waitFor(() => expect(calls('avatar.apply')).toHaveLength(1));
     expect(calls('avatar.apply')[0]![1]).toEqual({ job_id: 'job1', index: 3, target_type: 'role', target_id: 'asuka', register_reference: true });
   });
@@ -316,8 +324,8 @@ describe('PersonaStudio · avatar regeneration without re-upload', () => {
     actions.setPersonas([{ ...ROLES[1]!, avatar_ref: 'roles/asuka/avatar.webp', has_source_image: true }]);
     m.resolveMedia.mockResolvedValue('https://media.example/asuka.webp');
     await openRoles();
-    fireEvent.click(screen.getByRole('button', { name: '✨ AI 二次生成头像' }));
-    const go = screen.getByRole('button', { name: '✨ 生成 4 张候选' }) as HTMLButtonElement;
+    fireEvent.click(screen.getByRole('button', { name: 'AI 二次生成头像' }));
+    const go = screen.getByRole('button', { name: '生成 4 张候选' }) as HTMLButtonElement;
     expect(go.disabled).toBe(false);
     expect(screen.getByText('当前原图')).toBeTruthy();
     expect(screen.getByText('更换原图')).toBeTruthy();
@@ -329,17 +337,17 @@ describe('PersonaStudio · avatar regeneration without re-upload', () => {
     expect(payload).toEqual({ target_type: 'role', target_id: 'asuka', style_preset: 'anime_clean', count: 4 });
     expect('source_object' in payload).toBe(false);
     await waitFor(() => expect(screen.getAllByTestId('ps-cand')).toHaveLength(4));
-    expect((screen.getByRole('button', { name: '↻ 换一批' }) as HTMLButtonElement).disabled).toBe(true); // generating
+    expect((screen.getByRole('button', { name: '换一批' }) as HTMLButtonElement).disabled).toBe(true); // generating
   });
 
   it('a fresh upload still wins over the existing original', async () => {
     actions.setPersonas([{ ...ROLES[1]!, has_source_image: true }]);
     await openRoles();
-    fireEvent.click(screen.getByRole('button', { name: '✨ AI 二次生成头像' }));
+    fireEvent.click(screen.getByRole('button', { name: 'AI 二次生成头像' }));
     fireEvent.change(screen.getByLabelText('上传原图文件'), { target: { files: [new File([new Uint8Array([1])], 's.png', { type: 'image/png' })] } });
     await waitFor(() => expect(m.upload).toHaveBeenCalled());
     await waitFor(() => expect(screen.queryByText('当前原图')).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: '✨ 生成 4 张候选' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成 4 张候选' }));
     await waitFor(() => expect(calls('avatar.generate')).toHaveLength(1));
     expect(calls('avatar.generate')[0]![1]).toMatchObject({ source_object: 'media/avatar/123e4567-e89b-12d3-a456-426614174000.png' });
   });
@@ -347,8 +355,8 @@ describe('PersonaStudio · avatar regeneration without re-upload', () => {
   it('my profile with an existing avatar regenerates without a source_object', async () => {
     useStore.setState({ profile: { ...PROFILE, avatar_ref: 'user/avatar.webp', avatar_rev: 1, has_source_image: true } });
     render(<PersonaStudio onClose={() => {}} initialTab="me" />);
-    fireEvent.click(screen.getByRole('button', { name: '✨ AI 风格化' }));
-    const go = screen.getByRole('button', { name: '✨ 生成 4 张候选' }) as HTMLButtonElement;
+    fireEvent.click(screen.getByRole('button', { name: 'AI 风格化' }));
+    const go = screen.getByRole('button', { name: '生成 4 张候选' }) as HTMLButtonElement;
     expect(go.disabled).toBe(false);
     fireEvent.click(go);
     await waitFor(() => expect(calls('avatar.generate')).toHaveLength(1));
@@ -363,7 +371,7 @@ describe('PersonaStudio · Screen 17 my profile', () => {
     useStore.setState({ profile: PROFILE });
     const { unmount } = render(<PersonaStudio onClose={() => {}} initialTab="me" onOpenPolicies={onOpen} />);
     expect(screen.getByTestId('ps-policy-summary').textContent).toBe('默认：日常聊天 [自动] · 其他模式 [确认]');
-    fireEvent.click(screen.getByRole('button', { name: '按模式单独配置 (自动/确认/忽略) ›' }));
+    fireEvent.click(screen.getByRole('button', { name: '按模式单独配置 (自动/确认/忽略)' }));
     expect(onOpen).toHaveBeenCalledTimes(1);
     unmount();
 
@@ -381,15 +389,15 @@ describe('PersonaStudio · Screen 17 my profile', () => {
     render(<PersonaStudio onClose={() => {}} initialTab="me" />);
     const cameo = screen.getByRole('switch', { name: '允许在约会与剧场插画中以二次元形象同框' }) as HTMLButtonElement;
     expect(cameo.disabled).toBe(true);
-    expect(screen.getByText('✦ 这些信息会作为长期记忆供所有角色读取')).toBeTruthy();
+    expect(screen.getByText('这些信息会作为长期记忆供所有角色读取')).toBeTruthy();
     expect(screen.queryByText(/已由上传照片 AI 生成/)).toBeNull();
 
     act(() => actions.setProfile({ ...PROFILE, avatar_ai: true, avatar_rev: 1 }));
-    expect(screen.getByRole('button', { name: '✨ 已由上传照片 AI 生成 · 重新生成' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '已由上传照片 AI 生成 · 重新生成' })).toBeTruthy();
     expect(cameo.disabled).toBe(false);
     fireEvent.click(cameo);
     fireEvent.change(screen.getByLabelText('我的昵称'), { target: { value: '阿张' } });
-    fireEvent.click(screen.getByRole('button', { name: '✓ 保存个人形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存个人形象' }));
     await waitFor(() => expect(calls('user_profile.put')).toHaveLength(1));
     expect(calls('user_profile.put')[0]![1]).toEqual({ nickname: '阿张', bio: '软件工程师', cameo_opt_in: true });
     await waitFor(() => expect(useStore.getState().profile?.nickname).toBe('阿张'));
@@ -398,15 +406,52 @@ describe('PersonaStudio · Screen 17 my profile', () => {
   it('AI 风格化 reuses the restyle sheet with target_type user', async () => {
     useStore.setState({ profile: PROFILE });
     render(<PersonaStudio onClose={() => {}} initialTab="me" />);
-    fireEvent.click(screen.getByRole('button', { name: '✨ AI 风格化' }));
+    fireEvent.click(screen.getByRole('button', { name: 'AI 风格化' }));
     fireEvent.change(screen.getByLabelText('上传原图文件'), { target: { files: [new File([new Uint8Array([1])], 's.png', { type: 'image/png' })] } });
-    const go = screen.getByRole('button', { name: '✨ 生成 4 张候选' }) as HTMLButtonElement;
+    const go = screen.getByRole('button', { name: '生成 4 张候选' }) as HTMLButtonElement;
     await waitFor(() => expect(go.disabled).toBe(false));
     fireEvent.click(go);
     await waitFor(() => expect(calls('avatar.generate')).toHaveLength(1));
     expect(calls('avatar.generate')[0]![1]).toMatchObject({ target_type: 'user', style_preset: 'anime_clean', count: 4 });
-    expect(screen.getByRole('button', { name: '✨ 应用为我的头像' })).toBeTruthy();
-    expect(screen.getByText(/characters\/me_dir\/characters\.json/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '应用为我的头像' })).toBeTruthy();
+    expect(screen.getByText('后续场景插画将保持同一张脸')).toBeTruthy();
+    expectNoJargon();
+  });
+});
+
+describe('PersonaStudio · plain-language copy', () => {
+  it('RolesPanel renders no internal paths, file names or emoji glyphs', async () => {
+    await openRoles();
+    fireEvent.click(screen.getByRole('button', { name: /偏好与规则/ }));
+    expect(screen.getByLabelText('偏好与规则')).toBeTruthy();
+    expect(screen.getByText('性格与台词风格')).toBeTruthy();
+    expect(screen.queryByText(/仅点按/)).toBeNull();
+    expectNoJargon();
+    fireEvent.click(screen.getByRole('button', { name: '新建角色' }));
+    expect(screen.getByText('角色 ID · 创建后不可改')).toBeTruthy();
+    expectNoJargon();
+    expect(document.body.textContent).not.toMatch(/[✨✓＋↻🔴🛡🔒🎙]/u);
+  });
+
+  it('ProfilePanel and AvatarSheet render no internal paths or token jargon', async () => {
+    useStore.setState({ profile: { ...PROFILE, avatar_ai: true, avatar_rev: 1, avatar_ref: 'user/avatar.webp', has_source_image: true } });
+    act(() => actions.setPolicies({ policies: { galgame: 'isolated' } }));
+    render(<PersonaStudio onClose={() => {}} initialTab="me" />);
+    expect(screen.getByText('开启后作为我的锁脸参考')).toBeTruthy();
+    expect(screen.getByText(/仅保存在你自己的主机上/)).toBeTruthy();
+    const policy = screen.getByTestId('ps-policy-summary');
+    expect(policy.querySelector('[data-mode-icon="galgame"]')).toBeTruthy();
+    expect(policy.textContent).toBe('约会 Galgame [忽略]');
+    expectNoJargon();
+    expect(document.body.textContent).not.toMatch(/[✨✓✦🔴🛡🔒🌸]/u);
+
+    fireEvent.click(screen.getByRole('button', { name: 'AI 风格化' }));
+    expect(document.querySelector('.k-sheet.ps-gen')).toBeTruthy();
+    expect(screen.getByText('同步为场景生图的锁脸参考')).toBeTruthy();
+    expect(screen.getByText(/仅参考五官与发型，自动去除话筒等无关杂物/)).toBeTruthy();
+    expect(screen.getByRole('radio', { name: '日系清透立绘' })).toBeTruthy();
+    expectNoJargon();
+    expect(document.body.textContent).not.toMatch(/[✨✓✦＋→↻]/u);
   });
 });
 

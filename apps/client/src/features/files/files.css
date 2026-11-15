@@ -1,0 +1,136 @@
+/* Agent file browser (FileBrowser.tsx). Extends the base `.k-fb-*` rules in app/global.css. */
+
+.k-fb .fb-title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.k-fb .fb-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-fb .k-icon-btn .k-ui-icon { display: block; }
+
+/* ── action buttons (icon + label) ── */
+.fb-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1.5px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.fb-act:hover:not(:disabled) { border-color: var(--accent-border, var(--accent)); background: var(--accent-soft, var(--subcard)); }
+.fb-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.fb-act:disabled { opacity: 0.5; cursor: default; }
+.fb-act .k-ui-icon { flex-shrink: 0; }
+.fb-act.is-icon { padding: 0; width: 36px; }
+.fb-act.is-primary { background: var(--primary-strong); border-color: var(--primary-strong); color: #fff; }
+.fb-act.is-primary:hover:not(:disabled) { background: var(--primary-strong); filter: brightness(1.06); }
+.fb-act.is-danger { color: var(--danger, var(--ink)); }
+.fb-act.is-danger:hover:not(:disabled) { border-color: var(--danger-border, var(--danger)); background: var(--danger-soft, var(--subcard)); }
+
+.fb-actions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+
+/* ── directory toolbar ── */
+.k-fb .fb-toolbar { flex-wrap: wrap; margin-bottom: 8px; }
+.k-fb .fb-toolbar .k-fb-search { min-width: 140px; background: var(--subcard); color: var(--ink); }
+.fb-dir-actions { margin-left: auto; }
+
+/* ── upload progress ── */
+.fb-progress { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px 12px; border-radius: 10px; background: var(--accent-soft, var(--subcard)); color: var(--ink); font-size: 13px; font-weight: 700; }
+
+/* ── inline create bar ── */
+.fb-create {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 6px 6px 12px;
+  border-radius: 12px;
+  border: 1.5px dashed var(--accent-border, var(--accent));
+  background: var(--subcard);
+  color: var(--ink-2);
+}
+.fb-create-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 9px;
+  border: 1.5px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font: 600 14px var(--font-mono);
+}
+.fb-create-input:focus { outline: none; border-color: var(--accent); }
+
+/* ── rows: main (open) button + trailing actions ── */
+.k-fb .fb-row { padding: 0 6px 0 0; gap: 4px; color: var(--ink); }
+.k-fb .fb-row:hover { border-color: var(--line-strong, var(--line)); background: var(--subcard); }
+.k-fb .fb-row.is-confirming { border-color: var(--danger-border, var(--danger)); background: var(--danger-soft, var(--subcard)); }
+.fb-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 8px 6px 8px 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.fb-row-main:hover .k-fb-name { color: var(--accent); }
+.fb-row-main:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.k-fb .k-fb-icon { display: inline-flex; color: var(--ink-2); }
+.k-fb .fb-row.is-dir .k-fb-icon { color: var(--accent); }
+.fb-row-actions { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.fb-row-actions .fb-act.is-icon { border-color: transparent; background: transparent; color: var(--ink-2); }
+.fb-row-actions .fb-act.is-icon:hover:not(:disabled) { border-color: var(--line); background: var(--card); color: var(--ink); }
+.fb-row-actions .fb-act.is-icon.is-danger:hover:not(:disabled) { color: var(--danger, var(--ink)); }
+
+/* ── two-step delete confirm ── */
+.fb-confirm { display: inline-flex; align-items: center; gap: 6px; }
+.fb-confirm-text { font-size: 13px; font-weight: 800; color: var(--danger, var(--ink)); white-space: nowrap; }
+.fb-confirm .fb-act.is-danger { background: var(--danger, var(--accent)); border-color: var(--danger, var(--accent)); color: var(--bg); }
+
+/* ── crumbs ── */
+.k-fb .k-fb-crumb { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; }
+.k-fb .k-fb-sep { display: inline-flex; align-items: center; }
+
+/* ── viewer ── */
+.k-fb .k-fb-viewer-actions { flex-wrap: wrap; justify-content: flex-end; }
+.fb-editor {
+  display: block;
+  width: 100%;
+  min-height: 52vh;
+  max-height: 72vh;
+  margin-top: 10px;
+  padding: 12px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1.5px solid var(--line);
+  background: var(--subcard);
+  color: var(--ink);
+  font: 500 13px/1.55 var(--font-mono);
+  resize: vertical;
+  tab-size: 2;
+}
+.fb-editor:focus { outline: none; border-color: var(--accent); }
+
+/* ── narrow screens: collapse labels to icons (aria-label kept) ── */
+@media (max-width: 420px) {
+  .k-fb .fb-act:not(.fb-keep-label) .fb-act-label { display: none; }
+  .k-fb .fb-act:not(.is-icon) { padding: 0; width: 38px; min-height: 38px; }
+  .k-fb .fb-toolbar .k-fb-search { flex-basis: 100%; order: 3; }
+  .k-fb .fb-time { display: none; }
+  .k-fb .fb-confirm-text { font-size: 12px; }
+}

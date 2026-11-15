@@ -6,3 +6,5 @@ export type { VoicePillProps } from './VoicePill';
 export { Pill, Capsule, Segmented, Sheet, Avatar, ProgressBar, HpBar, Skeleton } from './primitives';
 export type { SegmentOption } from './primitives';
 export * from './modes';
+export { ModeIcon, UiIcon, useIconStyle, setIconStyle, getIconStyle, fileIconName, mixColor, ICON_STYLE_OPTIONS, ICON_STYLE_KEY, ICON_STYLE_EVENT, DEFAULT_ICON_STYLE, UI_ICON_NAMES, MODE_ICON_IDS } from './icons';
+export type { IconStyle, IconStyleOption, ModeIconProps, UiIconName, UiIconProps } from './icons';

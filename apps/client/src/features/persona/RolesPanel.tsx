@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LIMITS, type EngineToClientPayload, type PersonaDetail, type PersonaSummary } from '@kesoku/protocol';
-import { Avatar, Pill, Skeleton, VoicePill } from '@kesoku/ui';
+import { Avatar, Pill, Skeleton, UiIcon, VoicePill } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { useAvatarUrl } from './avatar';
@@ -183,10 +183,10 @@ export function RolesPanel({
         setStaged(null);
         setSelected(role.role_id);
       }
-      actions.toast(isNew ? `已创建角色「${role.display_name}」` : '✓ 角色设定已保存');
+      actions.toast(isNew ? `已创建角色「${role.display_name}」` : '角色设定已保存');
     } catch (e) {
       const code = errorCode(e);
-      actions.toast(code === 'BAD_REQUEST' ? '保存失败：字段不符合要求' : code === 'ENGINE_OFFLINE' ? '🔴 引擎离线，未保存' : '保存失败，请重试', 'error');
+      actions.toast(code === 'BAD_REQUEST' ? '保存失败：字段不符合要求' : code === 'ENGINE_OFFLINE' ? '引擎离线，未保存' : '保存失败，请重试', 'error');
     } finally {
       setSaving(false);
     }
@@ -233,7 +233,7 @@ export function RolesPanel({
       });
       actions.setPersonas([res.role]);
       setSource(`role:${sel}`, { object: up.object, preview, at: Date.now() });
-      actions.toast('✓ 头像已更新');
+      actions.toast('头像已更新');
     } catch {
       actions.toast('头像上传失败，请重试', 'error');
     } finally {
@@ -242,7 +242,6 @@ export function RolesPanel({
   }
 
   const name = draft?.display_name || summary?.display_name || '';
-  const roleDir = isNew ? draft?.role_id || '…' : sel;
   const introBytes = draft ? utf8Bytes(draft.intro_md) : 0;
   const prefsBytes = draft ? utf8Bytes(draft.preferences_md) : 0;
   const voiceKnown = !draft?.voice_preset || VOICE_PRESETS.some((v) => v.id === draft.voice_preset);
@@ -256,7 +255,8 @@ export function RolesPanel({
             <RoleChip key={r.role_id} role={r} active={sel === r.role_id} current={r.role_id === currentRole} onClick={() => select(r.role_id)} />
           ))}
           <button type="button" className={'ps-chip ps-chip-add' + (isNew ? ' is-on' : '')} aria-pressed={isNew} onClick={() => select(NEW)}>
-            ＋ 新建角色
+            <UiIcon name="plus" size={16} />
+            新建角色
           </button>
         </div>
 
@@ -283,7 +283,9 @@ export function RolesPanel({
                 <div className="ps-row">
                   <span className="ps-title">{isNew ? '新角色头像' : '角色头像'}</span>
                   {summary?.builtin && <Pill size="sm" tone="primary">内置</Pill>}
-                  {summary?.avatar_ai && <Pill size="sm" tone="accent">✨ AI 生成</Pill>}
+                  {summary?.avatar_ai && <Pill size="sm" tone="accent">
+                      <UiIcon name="spark" size={13} /> AI 生成
+                    </Pill>}
                   {summary && !summary.builtin && (
                     <button type="button" className="ps-link ps-danger" onClick={() => setConfirmDelete(true)} disabled={confirmDelete}>
                       删除角色
@@ -298,7 +300,8 @@ export function RolesPanel({
                     title={isNew ? '先保存角色再生成' : undefined}
                     onClick={() => setGenOpen(true)}
                   >
-                    ✨ AI 二次生成头像
+                    <UiIcon name="spark" size={16} />
+                    AI 二次生成头像
                   </button>
                   <PickImageButton className="ps-btn-sm" onPick={setCropFile} disabled={uploading} label="上传角色头像文件">
                     {uploading ? '上传中…' : '上传图片'}
@@ -311,7 +314,7 @@ export function RolesPanel({
             {confirmDelete && summary && (
               <div className="ps-confirm" role="alertdialog" aria-label="确认删除角色">
                 <span>
-                  删除「{summary.display_name}」？目录移入回收站，引用它的会话回退默认角色。
+                  删除「{summary.display_name}」？角色资料将移入回收站，使用它的会话会回退到默认角色。
                 </span>
                 <div className="ps-row">
                   <button type="button" className="ps-btn-sm" onClick={() => setConfirmDelete(false)}>
@@ -328,8 +331,7 @@ export function RolesPanel({
               {isNew && (
                 <label className="ps-field">
                   <span className="ps-label">
-                    <span>role_id · 创建后不可改</span>
-                    <span className="ps-mono">{`roles/${roleDir}/`}</span>
+                    <span>角色 ID · 创建后不可改</span>
                   </span>
                   <input
                     className={'ps-input ps-mono' + (errors.role_id ? ' is-err' : '')}
@@ -345,7 +347,7 @@ export function RolesPanel({
               <label className="ps-field">
                 <span className="ps-label">
                   <span>角色名称</span>
-                  {isNew ? <Counter n={draft.display_name.length} max={LIMITS.DISPLAY_NAME_MAX} /> : <span className="ps-mono">{`roles/${roleDir}/`}</span>}
+                  <Counter n={draft.display_name.length} max={LIMITS.DISPLAY_NAME_MAX} />
                 </span>
                 <input
                   className={'ps-input ps-input-lg' + (errors.display_name ? ' is-err' : '')}
@@ -379,7 +381,9 @@ export function RolesPanel({
             {sel === 'coder' && (
               <section className="ps-card ps-note">
                 <div className="ps-row">
-                  <span className="ps-title">⌨ 委派说明</span>
+                  <span className="ps-title ps-icon-label">
+                    <UiIcon name="file-code" size={17} /> 委派说明
+                  </span>
                   <Pill size="sm">只读</Pill>
                 </div>
                 <div className="ps-note-text">{CODER_NOTE}</div>
@@ -390,11 +394,11 @@ export function RolesPanel({
 
             <section className="ps-card">
               <div className="ps-label">
-                <span>性格与台词风格 (intro.md)</span>
+                <span>性格与台词风格</span>
                 <span className="ps-row">
                   <span className={'ps-count' + (errors.intro_md ? ' is-err' : '')}>{fmtBytes(introBytes)}</span>
-                  <button type="button" className="ps-btn-sm" aria-expanded={tplOpen} onClick={() => setTplOpen((v) => !v)}>
-                    模板 ▾
+                  <button type="button" className="ps-btn-sm ps-btn-icon" aria-expanded={tplOpen} aria-label="模板" onClick={() => setTplOpen((v) => !v)}>
+                    模板 <UiIcon name="chevron-down" size={14} />
                   </button>
                 </span>
               </div>
@@ -443,10 +447,10 @@ export function RolesPanel({
                 aria-expanded={prefsOpen || !!errors.preferences_md}
                 onClick={() => setPrefsOpen((v) => !v)}
               >
-                <span>偏好与规则 (preferences.md)</span>
+                <span>偏好与规则</span>
                 <span className="ps-row">
                   <span className={'ps-count' + (errors.preferences_md ? ' is-err' : '')}>{fmtBytes(prefsBytes)}</span>
-                  <span aria-hidden>{prefsOpen || errors.preferences_md ? '▾' : '▸'}</span>
+                  <UiIcon name={prefsOpen || errors.preferences_md ? 'chevron-down' : 'chevron-right'} size={16} />
                 </span>
               </button>
               {(prefsOpen || !!errors.preferences_md) && (
@@ -468,10 +472,9 @@ export function RolesPanel({
             <section className="ps-card">
               <div className="ps-label">
                 <span>语音音色绑定</span>
-                <span className="ps-ok">仅点按 ▶ 播放</span>
               </div>
               <div className="ps-voice-row">
-                <span aria-hidden>🎙️</span>
+                <UiIcon name="mic" size={20} className="ps-voice-ico" />
                 <select
                   className="ps-select"
                   aria-label="语音音色"
@@ -515,7 +518,12 @@ export function RolesPanel({
             重置修改
           </button>
           <button type="button" className="ps-btn ps-btn-pri" disabled={hasErrors || saving || (!dirty && !isNew)} onClick={() => void save()}>
-            {saving ? '保存中…' : isNew ? '✓ 创建角色' : '✓ 保存角色设定'}
+            {saving ? '保存中…' : (
+              <>
+                <UiIcon name="check" size={18} />
+                {isNew ? '创建角色' : '保存角色设定'}
+              </>
+            )}
           </button>
         </div>
       )}

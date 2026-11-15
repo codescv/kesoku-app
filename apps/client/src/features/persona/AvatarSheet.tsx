@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { LIMITS, type AvatarStylePreset, type EngineToClientPayload } from '@kesoku/protocol';
-import { Sheet } from '@kesoku/ui';
+import { Sheet, UiIcon } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { SOURCE_REUSE_MS, STYLE_PRESETS, STYLE_PRESET_LABELS, errorCode, sanitizePromptHint } from './model';
@@ -29,6 +29,11 @@ interface Batch {
 }
 
 const MAX_BATCHES = 3;
+
+/** Style preset label without the decorative `✦ ` marker. */
+function presetLabel(p: AvatarStylePreset): string {
+  return STYLE_PRESET_LABELS[p].replace(/^✦\s*/, '');
+}
 
 export function isFreshSource(s: AvatarSource | null | undefined): s is AvatarSource {
   return !!s && Date.now() - s.at < SOURCE_REUSE_MS;
@@ -78,7 +83,11 @@ function Candidate({
       onClick={onSelect}
     >
       <img src={entry.url} alt={`候选头像 #${index + 1}`} draggable={false} />
-      {selected && <span className="ps-cand-check">✓ 已选中</span>}
+      {selected && (
+        <span className="ps-cand-check">
+          <UiIcon name="check" size={13} /> 已选中
+        </span>
+      )}
       <span className="ps-cand-no">#{index + 1}</span>
     </button>
   );
@@ -97,7 +106,7 @@ function BatchThumb({ batch, n, active, onClick }: { batch: Batch; n: number; ac
   );
 }
 
-/** Screen 16 · Upload → AI avatar restyle sheet (dark), shared by roles (15) and the user profile (17). */
+/** Screen 16 · Upload → AI avatar restyle sheet (follows the active theme), shared by roles (15) and the user profile (17). */
 export function AvatarSheet({
   target,
   source,
@@ -197,7 +206,7 @@ export function AvatarSheet({
       else if (code === 'AVATAR_SOURCE_INVALID') {
         actions.toast(freshNow ? '原图无效或已过期，请重新上传' : '默认原图不可用，请上传原图', 'error');
         onSource(null);
-      } else if (code === 'ENGINE_OFFLINE') actions.toast('🔴 引擎离线，无法生成', 'error');
+      } else if (code === 'ENGINE_OFFLINE') actions.toast('引擎离线，无法生成', 'error');
       else actions.toast('生成请求失败，请重试', 'error');
     } finally {
       setRequesting(false);
@@ -213,7 +222,7 @@ export function AvatarSheet({
         { job_id: pick.job_id, index: pick.index, target_type: target.type, target_id: target.id, register_reference: registerRef },
         { timeoutMs: 30_000 },
       );
-      actions.toast(target.type === 'user' ? '✨ 已应用为我的头像' : `✨ 已应用为「${target.name}」的头像`);
+      actions.toast(target.type === 'user' ? '已应用为我的头像' : `已应用为「${target.name}」的头像`);
       onApplied?.(res?.avatar_rev);
       onClose();
     } catch (e) {
@@ -225,8 +234,7 @@ export function AvatarSheet({
 
   const etaLeft = batch && !requesting ? Math.ceil((batch.startedAt + batch.eta_ms - now) / 1000) : 20;
   const progress = etaLeft > 0 ? `生成中 · 约 ${etaLeft}s` : '生成中 · 即将完成';
-  const dir = target.characterDir ?? (target.type === 'role' ? target.id : '');
-  const applyLabel = target.type === 'user' ? '✨ 应用为我的头像' : '✨ 应用为角色头像';
+  const applyLabel = target.type === 'user' ? '应用为我的头像' : '应用为角色头像';
 
   return (
     <Sheet open onClose={onClose} title="头像二次 AI 风格化" className="ps-gen" height="full">
@@ -239,12 +247,12 @@ export function AvatarSheet({
                   existingAvatarUrl ? (
                     <img src={existingAvatarUrl} alt="当前原图" />
                   ) : (
-                    <span aria-hidden>✓</span>
+                    <UiIcon name="check" size={24} />
                   )
                 ) : source?.preview ? (
                   <img src={source.preview} alt="已上传原图" />
                 ) : (
-                  <span aria-hidden>{fresh ? '✓' : '＋'}</span>
+                  <UiIcon name={fresh ? 'check' : 'plus'} size={24} />
                 )}
                 <span className="ps-gen-src-tag">{usingExisting ? '当前原图' : '原图'}</span>
               </span>
@@ -258,7 +266,7 @@ export function AvatarSheet({
               )}
             </div>
             <span className="ps-gen-arrow" aria-hidden>
-              →
+              <UiIcon name="chevron-right" size={20} />
             </span>
             <div className="ps-presets" role="radiogroup" aria-label="画风预设">
               {STYLE_PRESETS.map((p) => (
@@ -270,8 +278,8 @@ export function AvatarSheet({
                   className={'ps-preset' + (style === p ? ' is-on' : '')}
                   onClick={() => setStyle(p)}
                 >
-                  {STYLE_PRESET_LABELS[p]}
-                  {style === p ? ' ✓' : ''}
+                  {presetLabel(p)}
+                  {style === p && <UiIcon name="check" size={14} />}
                 </button>
               ))}
             </div>
@@ -296,7 +304,10 @@ export function AvatarSheet({
                 <span className="ps-ring" aria-hidden /> {progress}
               </>
             ) : (
-              '✨ 生成 4 张候选'
+              <>
+                <UiIcon name="spark" size={18} />
+                生成 4 张候选
+              </>
             )}
           </button>
         </section>
@@ -304,10 +315,13 @@ export function AvatarSheet({
         {batch ? (
           <section className="ps-gen-grid-wrap">
             <div className="ps-gen-head">
-              <span className="ps-strong">✨ AI 候选头像 · 点击择一</span>
-              <span className="ps-pill-mini">{STYLE_PRESET_LABELS[batch.style].replace('✦ ', '')}</span>
+              <span className="ps-strong ps-icon-label">
+                <UiIcon name="spark" size={16} /> AI 候选头像 · 点击择一
+              </span>
+              <span className="ps-pill-mini">{presetLabel(batch.style)}</span>
               <button type="button" className="ps-link" disabled={!canGenerate || generating || uploading} onClick={() => void generate()}>
-                ↻ 换一批
+                <UiIcon name="refresh" size={15} />
+                换一批
               </button>
             </div>
             <div className="ps-cand-grid">
@@ -332,18 +346,18 @@ export function AvatarSheet({
             )}
           </section>
         ) : (
-          <div className="ps-gen-empty">{canGenerate ? '选择画风后生成 4 张候选 · 保留脸型 / 发型 / 配饰，只改画风' : '① 上传原图 → ② 选画风 → ③ 生成 4 张候选'}</div>
+          <div className="ps-gen-empty">{canGenerate ? '选择画风后生成 4 张候选 · 仅参考五官与发型，自动去除话筒等无关杂物' : '① 上传原图 · ② 选画风 · ③ 生成 4 张候选'}</div>
         )}
 
         <div className="ps-gen-toggle">
           <div>
-            <div className="ps-strong">同步为场景生图锁脸参考图 (characters/)</div>
-            <div className="ps-sub">{dir ? `保存 ref_face.webp 并更新 characters/${dir}/characters.json` : '保存 ref_face.webp 并更新 characters.json'}</div>
+            <div className="ps-strong">同步为场景生图的锁脸参考</div>
+            <div className="ps-sub">后续场景插画将保持同一张脸</div>
           </div>
-          <Switch checked={registerRef} onChange={setRegisterRef} label="同步为场景生图锁脸参考图" />
+          <Switch checked={registerRef} onChange={setRegisterRef} label="同步为场景生图的锁脸参考" />
         </div>
       </div>
-      <div className="ps-dock ps-dock-dark">
+      <div className="ps-dock ps-dock-sheet">
         <button type="button" className="ps-btn ps-btn-sec" onClick={onClose}>
           取消
         </button>

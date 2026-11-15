@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { EngineToClientPayload, LexToken, MemoryProposal } from '@kesoku/protocol';
-import { Avatar, modeMeta } from '@kesoku/ui';
+import { Avatar, ModeIcon, UiIcon, modeMeta } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import type { ChatItem } from '../../lib/types';
@@ -52,7 +52,7 @@ export function anchorProposals(items: ChatItem[], proposals: MemoryProposal[]):
 const STARTERS: Record<string, string[]> = {
   chat: ['今天过得怎么样？', '教我一句地道的日语'],
   galgame: ['我们去江之岛海边吧', '约你去看烟花大会'],
-  travel_companion: ['📷 拍菜单照，帮我排雷', '帮我做一张问路大字卡'],
+  travel_companion: ['拍菜单照，帮我排雷', '帮我做一张问路大字卡'],
   translator: ['すみません、お会計お願いします', '我对荞麦过敏'],
   jp_classroom: ['开始今天的课程', '复习我的错题'],
   trpg: ['开一局赛博朋克跑团', '克苏鲁 · 阿卡姆调查'],
@@ -65,13 +65,13 @@ function ModeEmpty({ modeId, sessionId }: { modeId: string; sessionId: string })
   return (
     <div className="k-mode-empty" style={{ ['--mode' as string]: m.color }}>
       <span className="k-mode-empty-icon" aria-hidden>
-        {m.icon}
+        <ModeIcon mode={m.id} size={56} />
       </span>
       <h2>{m.title}</h2>
       <p>{m.subtitle}</p>
       <div className="k-mode-empty-chips">
         {(STARTERS[modeId] ?? STARTERS.chat).map((t) => (
-          <button key={t} type="button" className="k-choice" onClick={() => void kesoku.sendMessage(sessionId, t.replace(/^📷 /, ''))}>
+          <button key={t} type="button" className="k-choice" onClick={() => void kesoku.sendMessage(sessionId, t)}>
             {t}
           </button>
         ))}
@@ -89,7 +89,7 @@ function UserBubble({ item, sessionId }: { item: ChatItem; sessionId: string }) 
           <div className="k-attach-row">
             {item.attachments.map((a, i) => (
               <span key={a.object || i} className="k-pill k-pill-neutral k-pill-sm">
-                🖼 图{i + 1}
+                <UiIcon name="image" size={13} /> 图{i + 1}
               </span>
             ))}
           </div>

@@ -9,6 +9,8 @@ afterEach(() => {
 // jsdom lacks these.
 if (typeof window.matchMedia !== 'function') {
   Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
     value: (q: string) => ({
       matches: false,
       media: q,

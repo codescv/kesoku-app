@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { pickImages } from '../../native/camera';
 import { decodeQrFromBlob, decodeQrFromSource } from '../../native/qr';
+import { UiIcon } from '@kesoku/ui';
 
 export function QrScannerModal({
   onDetect,
@@ -99,9 +100,11 @@ export function QrScannerModal({
     <div className="k-modal-backdrop" role="dialog" aria-modal="true" aria-label="扫描配对二维码" onClick={onClose}>
       <div className="k-modal k-qr-modal" onClick={(e) => e.stopPropagation()}>
         <div className="k-qr-head">
-          <strong>📷 扫描配对二维码</strong>
+          <strong className="k-ico-label">
+            <UiIcon name="qr" size={20} /> 扫描配对二维码
+          </strong>
           <button type="button" className="k-icon-btn" aria-label="关闭扫码" onClick={onClose}>
-            ✕
+            <UiIcon name="close" size={20} />
           </button>
         </div>
 
@@ -140,7 +143,13 @@ export function QrScannerModal({
             disabled={picking}
             onClick={() => void handlePickImage()}
           >
-            {picking ? '识别中…' : '🖼️ 从相册 / 拍照识别二维码'}
+            {picking ? (
+              '识别中…'
+            ) : (
+              <>
+                <UiIcon name="image" size={18} /> 从相册 / 拍照识别二维码
+              </>
+            )}
           </button>
         </div>
       </div>

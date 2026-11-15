@@ -206,3 +206,26 @@ describe('device token format', () => {
     expect(splitDeviceToken(`kdt1.${'A'.repeat(800)}.B`)).toBeNull();
   });
 });
+
+describe('workspace CRUD frames', () => {
+  it('validates write/mkdir/delete/download requests (path, not rel_path)', () => {
+    expect(ClientToEngine['workspace.write'].safeParse({ path: 'a.md', content: '' }).success).toBe(true);
+    expect(ClientToEngine['workspace.write'].safeParse({ path: 'b.bin', base64: 'AAAA', overwrite: true }).success).toBe(true);
+    expect(ClientToEngine['workspace.write'].safeParse({ path: '' }).success).toBe(false);
+    expect(ClientToEngine['workspace.write'].safeParse({ path: 'x'.repeat(401) }).success).toBe(false);
+    expect(ClientToEngine['workspace.write'].safeParse({ path: 'b.bin', base64: 'AAAA', append: true }).success).toBe(true);
+    expect(ClientToEngine['workspace.mkdir'].safeParse({ path: 'dir' }).success).toBe(true);
+    expect(ClientToEngine['workspace.delete'].safeParse({ rel_path: 'dir' }).success).toBe(false);
+    expect(ClientToEngine['workspace.download'].safeParse({ path: 'a.png' }).success).toBe(true);
+  });
+
+  it('parses CRUD results and the optional writable flag', () => {
+    expect(EngineToClient['workspace.write.result'].safeParse({ path: 'a.md', name: 'a.md', size: 0, mtime: 1, kind: 'text' }).success).toBe(true);
+    expect(EngineToClient['workspace.mkdir.result'].safeParse({ path: 'd', name: 'd', kind: 'dir' }).success).toBe(true);
+    expect(EngineToClient['workspace.delete.result'].safeParse({ path: 'd', deleted: true }).success).toBe(true);
+    expect(EngineToClient['workspace.download.result'].safeParse({ path: 'a', name: 'a', size: 1, mime_type: 'text/plain', base64: 'YQ==' }).success).toBe(true);
+    expect(EngineToClient['workspace.download.result'].safeParse({ path: 'a', name: 'a', size: 9e5, mime_type: 'image/png', url: 'https://x/y', object: 'o', expires_at: 1 }).success).toBe(true);
+    const read = EngineToClient['workspace.read.result'].parse({ rel_path: 'a', name: 'a', kind: 'text', size: 1, updated_at: 0, mime: 'text/plain', writable: true });
+    expect(read.writable).toBe(true);
+  });
+});

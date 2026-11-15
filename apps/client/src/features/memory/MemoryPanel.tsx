@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MODE_IDS, type EngineToClientPayload, type MemoryFile } from '@kesoku/protocol';
-import { modeMeta, POLICY_BADGE } from '@kesoku/ui';
+import { modeMeta, POLICY_BADGE, UiIcon, fileIconName } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { ProposalCard } from '../proposals/ProposalCard';
@@ -15,7 +15,7 @@ export function policySummary(policies: Record<string, string>, defaults: Record
   return dev.map((m) => `${modeMeta(m).title}[${POLICY_BADGE[policies[m] as 'full'].label}]`).join(' · ');
 }
 
-/** `$MEMORY_DIR` manager: pending proposals, PINNED-first file list, inline editor (memory.put). */
+/** Memory library: pending proposals, pinned-first file list, inline editor (memory.put). */
 export function MemoryPanel({ embedded }: { embedded?: boolean }) {
   const current = useStore((s) => s.currentSessionId);
   const sessionRole = useStore((s) => (current ? s.sessions[current]?.role : undefined));
@@ -66,7 +66,7 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
       if (open?.rel_path === f.rel_path) setOpen({ ...open, pinned: !f.pinned });
       load();
     } catch {
-      actions.toast('置顶失败', 'error');
+      actions.toast('设置常驻失败', 'error');
     }
   }
 
@@ -75,7 +75,9 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
   return (
     <div className={'k-memory' + (embedded ? ' is-embedded' : '')}>
       <div className="k-memory-head">
-        <h2>$MEMORY_DIR 记忆库</h2>
+        <h2>
+          <UiIcon name="brain" size={20} /> 记忆库
+        </h2>
         <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="角色">
           {roles.map((r) => (
             <option key={r.id} value={r.id}>
@@ -87,7 +89,7 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
 
       <section className="k-memory-pending">
         <div className="k-memory-pending-head">
-          <b>⏳ 待确认提案 ({pending.length})</b>
+          <b>待确认提案 ({pending.length})</b>
           {pending.length > 1 && (
             <span className="k-memory-batch">
               <button type="button" className="k-btn k-btn-sm k-btn-ghost" onClick={() => pending.forEach((p) => void kesoku.resolveProposal(p.proposal_id, 'dismiss').catch(() => {}))}>
@@ -106,17 +108,17 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
         <section className="k-memory-editor">
           <div className="k-memory-editor-head">
             <button type="button" className="k-icon-btn" aria-label="返回列表" onClick={() => setOpen(null)}>
-              ←
+              <UiIcon name="arrow-left" size={20} />
             </button>
             <b className="k-memory-path">{open.rel_path}</b>
             <button type="button" className={'k-pill k-pill-sm ' + (open.pinned ? 'k-pill-warn' : 'k-pill-neutral')} onClick={() => void togglePin(open)}>
-              {open.pinned ? '📌 PINNED' : '置顶'}
+              <UiIcon name="pin" size={13} /> {open.pinned ? '常驻记忆' : '设为常驻'}
             </button>
           </div>
           <textarea className="k-memory-text" value={open.content} spellCheck={false} onChange={(e) => setOpen({ ...open, content: e.target.value, dirty: true })} aria-label="记忆内容" />
           <div className="k-memory-editor-actions">
             <button type="button" className="k-btn k-btn-primary" disabled={!open.dirty} onClick={() => void saveFile()}>
-              保存
+              <UiIcon name="save" size={18} /> 保存
             </button>
           </div>
         </section>
@@ -126,7 +128,8 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
           {files?.map((f) => (
             <div key={f.rel_path} className="k-memory-file">
               <button type="button" className="k-memory-file-main" onClick={() => void openFile(f.rel_path)}>
-                {f.pinned && <span className="k-pill k-pill-warn k-pill-sm">[PINNED]</span>}
+                <UiIcon name={fileIconName(f.rel_path)} size={18} className="k-memory-file-icon" />
+                {f.pinned && <span className="k-pill k-pill-warn k-pill-sm">常驻记忆</span>}
                 <span className="k-memory-path">{f.rel_path}</span>
                 {f.tags?.map((t) => (
                   <span key={t} className="k-pill k-pill-accent k-pill-sm">
@@ -134,8 +137,8 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
                   </span>
                 ))}
               </button>
-              <button type="button" className="k-btn k-btn-sm k-btn-ghost" onClick={() => void togglePin(f)} aria-label={f.pinned ? '取消置顶' : '置顶'}>
-                {f.pinned ? '📌' : '📍'}
+              <button type="button" className="k-btn k-btn-sm k-btn-ghost" onClick={() => void togglePin(f)} aria-label={f.pinned ? '取消常驻' : '设为常驻'} aria-pressed={f.pinned}>
+                <UiIcon name="pin" size={18} styleVariant={f.pinned ? 'duotone' : 'line'} className={f.pinned ? 'is-pinned' : undefined} />
               </button>
             </div>
           ))}
@@ -151,14 +154,15 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
           >
             <input value={newPath} onChange={(e) => setNewPath(e.target.value)} placeholder="topics/new_note.md" aria-label="新建记忆文件路径" />
             <button type="submit" className="k-btn k-btn-sm">
-              ＋ 新建
+              <UiIcon name="file-plus" size={16} /> 新建
             </button>
           </form>
         </section>
       )}
 
       <button type="button" className="k-memory-foot" onClick={() => actions.setUi({ screen: 'settings' })}>
-        {policySummary(policies.policies, policies.defaults)} ›
+        <span>{policySummary(policies.policies, policies.defaults)}</span>
+        <UiIcon name="chevron-right" size={16} />
       </button>
     </div>
   );

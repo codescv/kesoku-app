@@ -142,6 +142,18 @@ export const ClientToEngine = {
   'lexical.explain': z.object({ session_id: sid, text: z.string().max(2000), token: z.string().max(100) }),
   'workspace.list': z.object({ rel_path: z.string().max(400).default('') }),
   'workspace.read': z.object({ rel_path: z.string().min(1).max(400) }),
+  /** Create/overwrite a file: `content` (utf-8 text) or `base64` (binary upload). Uses `path`, not `rel_path`. */
+  'workspace.write': z.object({
+    path: z.string().min(1).max(400),
+    content: z.string().optional(),
+    base64: z.string().optional(),
+    overwrite: z.boolean().optional(),
+    /** Append this chunk to an existing file (chunked uploads; ≤512 KiB raw per chunk). */
+    append: z.boolean().optional(),
+  }),
+  'workspace.mkdir': z.object({ path: z.string().min(1).max(400) }),
+  'workspace.delete': z.object({ path: z.string().min(1).max(400) }),
+  'workspace.download': z.object({ path: z.string().min(1).max(400) }),
   'device.list': empty,
   'device.revoke': z.object({ device_id: z.string() }),
 } as const;
@@ -323,6 +335,25 @@ export const EngineToClient = {
       content: z.string().optional(),
       truncated: z.boolean().optional(),
       ref: z.string().optional(),
+      writable: z.boolean().optional(),
+    })
+    .passthrough(),
+  'workspace.write.result': z
+    .object({ path: z.string(), name: z.string(), size: z.number().int().nonnegative(), mtime: z.number().optional(), kind: z.string().optional() })
+    .passthrough(),
+  'workspace.mkdir.result': z.object({ path: z.string(), name: z.string(), kind: z.literal('dir') }).passthrough(),
+  'workspace.delete.result': z.object({ path: z.string(), deleted: z.boolean() }).passthrough(),
+  'workspace.download.result': z
+    .object({
+      path: z.string(),
+      name: z.string(),
+      size: z.number().int().nonnegative(),
+      mime_type: z.string(),
+      /** Inlined only for files ≤ 640 KiB; larger files come back as a signed `url` instead. */
+      base64: z.string().optional(),
+      url: z.string().optional(),
+      object: z.string().optional(),
+      expires_at: z.number().optional(),
     })
     .passthrough(),
   'device.list.result': z.object({ devices: z.array(DeviceSchema) }).passthrough(),

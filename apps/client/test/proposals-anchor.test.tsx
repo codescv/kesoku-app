@@ -48,7 +48,7 @@ describe('proposal anchoring (live engine uses the triggering user message_id)',
       sessions: { [S]: { session_id: S, title: '', role: 'asuka', chatbot_id: 'app', updated_at: 1 } },
     });
     render(<MessageList sessionId={S} modeId="jp_classroom" />);
-    expect(screen.getByText('💡 发现可记录的现实记忆 · 需你确认')).toBeTruthy();
+    expect(screen.getByText('发现可记录的现实记忆 · 需你确认')).toBeTruthy();
     expect(screen.getByText(/11 月大阪出差/)).toBeTruthy();
   });
   it('renders right after the user bubble before the reply exists', () => {

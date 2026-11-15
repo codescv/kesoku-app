@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SessionSummary } from '@kesoku/protocol';
-import { Avatar, modeMeta } from '@kesoku/ui';
+import { Avatar, ModeIcon, UiIcon, modeMeta } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { kvSet } from '../../lib/db';
@@ -55,8 +55,8 @@ function SessionRow({ s, active }: { s: SessionSummary; active: boolean }) {
         <button type="button" className="k-srow-main" onClick={() => void kesoku.openSession(s.session_id)} onContextMenu={(e) => (e.preventDefault(), setMenu(true))}>
           <span className="k-srow-title">
             {m && m.id !== 'chat' && (
-              <span className="k-srow-mode" style={{ color: m.color }} aria-hidden>
-                {m.icon}
+              <span className="k-srow-mode" aria-hidden>
+                <ModeIcon mode={m.id} size={18} />
               </span>
             )}
             {s.title || '未命名会话'}
@@ -84,7 +84,7 @@ function SessionRow({ s, active }: { s: SessionSummary; active: boolean }) {
             </button>
           )}
           <button type="button" className="k-btn k-btn-sm k-btn-ghost" aria-label="收起" onClick={() => (setMenu(false), setConfirmDel(false))}>
-            ✕
+            <UiIcon name="close" size={16} />
           </button>
         </span>
       )}
@@ -137,7 +137,8 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav className="k-spanel" aria-label="会话">
       <div className="k-spanel-search">
-        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 搜索历史对话 (FTS5)..." aria-label="搜索历史对话" id="k-search" />
+        <UiIcon name="search" size={18} className="k-search-icon" />
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索历史对话" aria-label="搜索历史对话" id="k-search" />
       </div>
       <button
         type="button"
@@ -148,7 +149,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
           go();
         }}
       >
-        ＋ 新会话
+        <UiIcon name="plus" size={18} /> 新会话
       </button>
       <div className="k-chips" role="tablist" aria-label="角色筛选">
         {roles.map((r) => (
@@ -208,24 +209,25 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
             </div>
           ))
         ) : (
-          <div className="k-empty">还没有会话 · 点 ＋ 新会话 开始</div>
+          <div className="k-empty">还没有会话 · 点「新会话」开始</div>
         )}
       </div>
       <div className="k-spanel-foot">
         <button type="button" className="k-foot-btn" onClick={() => (actions.setUi({ screen: 'memory', drawerOpen: false }), go())}>
-          🧠 记忆库{pending > 0 && <span className="k-badge-dot" aria-label={`${pending} 条待确认`}>{pending}</span>}
+          <UiIcon name="brain" size={20} /> 记忆库{pending > 0 && <span className="k-badge-dot" aria-label={`${pending} 条待确认`}>{pending}</span>}
         </button>
         <button type="button" className="k-foot-btn" onClick={() => (actions.setUi({ screen: 'studio', drawerOpen: false }), go())}>
-          <Avatar src={activeAvatarSrc} name={activePersona?.display_name ?? '飞鸟'} size={22} ai={activePersona?.avatar_ai} /> 🎭 角色与形象工坊
+          <Avatar src={activeAvatarSrc} name={activePersona?.display_name ?? '飞鸟'} size={22} ai={activePersona?.avatar_ai} /> 角色与形象工坊
         </button>
         <button type="button" className="k-foot-btn" onClick={() => (actions.setUi({ screen: 'files', drawerOpen: false }), go())}>
-          📁 Agent 目录 (band)
+          <UiIcon name="folder" size={20} /> 文件管理
         </button>
         <button type="button" className="k-foot-btn" onClick={() => (actions.setUi({ screen: 'settings', drawerOpen: false }), go())}>
-          ⚙ 设置
+          <UiIcon name="sliders" size={20} /> 设置
         </button>
         <div className="k-conn-line">
-          {conn.status === 'online' ? (conn.engineOnline ? `🟢 引擎已直连${conn.latencyMs != null ? ` · ${conn.latencyMs}ms` : ''}` : '🔴 引擎离线') : conn.status === 'reconnecting' ? '🟡 重连中…' : '⚪ 未连接'}
+          <span className={'k-conn-dot' + (conn.status === 'online' ? (conn.engineOnline ? ' is-ok' : ' is-bad') : conn.status === 'reconnecting' ? ' is-warn' : '')} aria-hidden />
+          {conn.status === 'online' ? (conn.engineOnline ? `已连接${conn.latencyMs != null ? ` · ${conn.latencyMs}ms` : ''}` : '引擎离线') : conn.status === 'reconnecting' ? '重连中…' : '未连接'}
         </div>
       </div>
     </nav>

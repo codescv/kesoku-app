@@ -81,30 +81,30 @@ describe('ProposalCard (confirm_only)', () => {
 
   it('renders title, target file and both actions', () => {
     render(<ProposalCard proposal={proposal} />);
-    expect(screen.getByText('💡 发现可记录的现实记忆 · 需你确认')).toBeTruthy();
+    expect(screen.getByText('发现可记录的现实记忆 · 需你确认')).toBeTruthy();
     expect(screen.getByText('user/profile.md')).toBeTruthy();
-    expect(screen.getByText('✕ 忽略')).toBeTruthy();
-    expect(screen.getByText('✓ 记录到记忆库')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '忽略' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '记录到记忆库' })).toBeTruthy();
   });
 
   it('confirm without edits sends no edited_ops; with edits sends them', async () => {
     const rpc = fakeSocket();
     useStore.setState({ proposals: { p1: proposal } });
     const { unmount } = render(<ProposalCard proposal={proposal} />);
-    await act(async () => fireEvent.click(screen.getByText('✓ 记录到记忆库')));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '记录到记忆库' })));
     expect(rpc).toHaveBeenLastCalledWith('memory.proposal.resolve', { proposal_id: 'p1', action: 'confirm' }, {});
     unmount();
     render(<ProposalCard proposal={proposal} />);
     fireEvent.click(screen.getByTitle('轻点编辑'));
     fireEvent.change(screen.getByDisplayValue('11 月大阪出差，想练商务敬语'), { target: { value: '12 月大阪出差' } });
-    await act(async () => fireEvent.click(screen.getByText('✓ 记录到记忆库')));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '记录到记忆库' })));
     expect(rpc.mock.calls.at(-1)?.[1]).toMatchObject({ action: 'confirm', edited_ops: [{ file: 'user/profile.md', text: '12 月大阪出差' }] });
   });
 
   it('dismiss sends dismiss', async () => {
     const rpc = fakeSocket();
     render(<ProposalCard proposal={proposal} />);
-    await act(async () => fireEvent.click(screen.getByText('✕ 忽略')));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '忽略' })));
     expect(rpc).toHaveBeenLastCalledWith('memory.proposal.resolve', { proposal_id: 'p1', action: 'dismiss' }, {});
   });
 

@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { MODEL_CATALOG, MODE_IDS, type Device, type EngineToClientPayload } from '@kesoku/protocol';
-import { POLICY_BADGE, Segmented, modeMeta } from '@kesoku/ui';
+import { ICON_STYLE_OPTIONS, ModeIcon, POLICY_BADGE, Segmented, UiIcon, modeMeta, setIconStyle, useIconStyle, type UiIconName } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore, type Settings } from '../../lib/store';
 import { kvSet } from '../../lib/db';
 import { logout } from '../../lib/auth';
-import { getPlatform } from '../../native/platform';
 import { PolicySegmented } from '../memory/PolicySegmented';
 
 function save(patch: Partial<Settings>) {
@@ -13,11 +12,45 @@ function save(patch: Partial<Settings>) {
   void kvSet('settings', useStore.getState().settings);
 }
 
-const PLATFORM_LABEL = {
-  ios: 'iOS WKWebView 原生桥 · Keychain 安全存储',
-  android: 'Android · EncryptedSharedPreferences',
-  web: 'Web · IndexedDB',
-};
+const PREVIEW_MODES = ['chat', 'galgame', 'trpg', 'pokemon_assistant'] as const;
+
+/** 图标风格 picker with a live preview of each rendering. */
+export function IconStyleCard() {
+  const current = useIconStyle();
+  return (
+    <section className="k-set-card" aria-labelledby="k-iconstyle-title">
+      <h2 id="k-iconstyle-title">
+        <UiIcon name="spark" size={20} /> 图标风格
+      </h2>
+      <div className="k-iconstyle-grid" role="radiogroup" aria-label="图标风格">
+        {ICON_STYLE_OPTIONS.map((o) => {
+          const on = current === o.value;
+          return (
+            <button key={o.value} type="button" role="radio" aria-checked={on} className={'k-iconstyle' + (on ? ' is-on' : '')} data-style={o.value} onClick={() => setIconStyle(o.value)}>
+              <span className="k-iconstyle-preview" aria-hidden>
+                {PREVIEW_MODES.map((m) => (
+                  <ModeIcon key={m} mode={m} size={26} styleVariant={o.value} />
+                ))}
+              </span>
+              <span className="k-iconstyle-text">
+                <span className="k-iconstyle-label">
+                  {o.label}
+                  {on && <UiIcon name="check" size={16} styleVariant="line" />}
+                </span>
+                <small>{o.desc}</small>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function deviceIcon(d: Device): UiIconName {
+  if (d.kind === 'google') return 'globe';
+  return /web|mac|win|linux|desktop|chrome|safari|firefox/i.test(d.platform ?? '') ? 'laptop' : 'smartphone';
+}
 
 export function MemoryPolicyCard() {
   const policies = useStore((s) => s.policies);
@@ -25,7 +58,9 @@ export function MemoryPolicyCard() {
   return (
     <section className="k-set-card" id="memory-policies">
       <div className="k-set-card-head">
-        <h2>🧠 各模式记忆策略 (支持单独配置)</h2>
+        <h2>
+          <UiIcon name="brain" size={20} /> 记忆策略
+        </h2>
         <button type="button" className="k-btn k-btn-sm k-btn-ghost" disabled={!differs} onClick={() => void kesoku.resetPolicies()}>
           恢复默认
         </button>
@@ -36,7 +71,7 @@ export function MemoryPolicyCard() {
           return (
             <div key={id} className="k-policy-row" data-mode={id}>
               <span className="k-policy-mode">
-                <span aria-hidden>{m.icon}</span> {m.title}
+                <ModeIcon mode={id} size={22} /> {m.title}
               </span>
               <PolicySegmented modeId={id} size="sm" />
             </div>
@@ -46,11 +81,10 @@ export function MemoryPolicyCard() {
       <div className="k-policy-legend">
         {(['full', 'confirm_only', 'isolated'] as const).map((p) => (
           <span key={p} className="k-pill k-pill-sm k-pill-neutral">
-            {POLICY_BADGE[p].label} = {POLICY_BADGE[p].explain}
+            <UiIcon name={POLICY_BADGE[p].iconName} size={13} /> {POLICY_BADGE[p].label} = {POLICY_BADGE[p].explain}
           </span>
         ))}
       </div>
-      <p className="k-set-note">无需重启会话，下一回合即按新策略执行 · 出厂默认：日常聊天 = 自动 · 其余 7 模式 = 确认</p>
     </section>
   );
 }
@@ -74,7 +108,7 @@ function Devices() {
         <div key={d.device_id} className={'k-device' + (d.revoked_at ? ' is-revoked' : '')}>
           <span className="k-device-main">
             <b>
-              {d.kind === 'google' ? '🔑' : '📱'} {d.name}
+              <UiIcon name={deviceIcon(d)} size={18} /> {d.name}
               {(d.current || d.device_id === me) && <span className="k-pill k-pill-sm k-pill-primary">本机</span>}
             </b>
             <small>
@@ -117,29 +151,31 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const [showConn, setShowConn] = useState(false);
   const [pairHelp, setPairHelp] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
-  const platform = getPlatform();
 
+  const tone = conn.status === 'online' ? (conn.engineOnline ? 'is-ok' : 'is-bad') : conn.status === 'reconnecting' ? 'is-warn' : 'is-bad';
   const status =
     conn.status === 'online'
       ? conn.engineOnline
-        ? `🟢 Kesoku 引擎已连接${conn.latencyMs != null ? ` · ${conn.latencyMs}ms` : ''}`
-        : '🔴 引擎离线'
+        ? `已连接${conn.latencyMs != null ? ` · ${conn.latencyMs}ms` : ''}`
+        : '离线'
       : conn.status === 'reconnecting'
-        ? `🟡 重连中 (${Math.round((conn.retryInMs ?? 0) / 1000)}s)`
-        : '⚪ 未连接';
+        ? `重连中 (${Math.round((conn.retryInMs ?? 0) / 1000)}s)`
+        : '离线';
 
   return (
     <div className="k-screen k-settings">
       <header className="k-screen-head">
         <button type="button" className="k-icon-btn" aria-label="返回" onClick={onClose}>
-          ←
+          <UiIcon name="arrow-left" size={22} />
         </button>
         <h1>设置</h1>
       </header>
       <div className="k-screen-body">
         <section className="k-set-card k-conn-card" onClick={() => setShowConn((v) => !v)} role="button" tabIndex={0}>
-          <div className="k-conn-status">{status}</div>
-          <small>Cloud Relay · 单实例内存桥接 · asia-east1</small>
+          <div className="k-conn-status">
+            <span className={'k-conn-dot ' + tone} aria-hidden />
+            {status}
+          </div>
           {showConn && (
             <div className="k-conn-detail">
               <span>设备：{conn.deviceId ?? '—'}</span>
@@ -150,20 +186,18 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
         </section>
 
         <section className="k-set-card">
-          <h2>🔐 身份与设备</h2>
+          <h2>
+            <UiIcon name="shield" size={20} /> 身份与设备
+          </h2>
           {authKind === 'google' && email && (
             <div className="k-kv">
               <span>Google 白名单</span>
               <span className="k-pill k-pill-ok k-pill-sm">{email}</span>
             </div>
           )}
-          <div className="k-kv">
-            <span>6位设备配对码已绑定</span>
-            <b>120s一次性 · 5次错误即销毁</b>
-          </div>
           <Devices />
           <button type="button" className="k-btn k-btn-ghost k-btn-block" onClick={() => setPairHelp((v) => !v)}>
-            ＋ 配对新设备
+            <UiIcon name="qr" size={18} /> 配对新设备
           </button>
           {pairHelp && (
             <ol className="k-pair-help">
@@ -195,7 +229,9 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
         </section>
 
         <section className="k-set-card">
-          <h2>🤖 模型与缓存路由</h2>
+          <h2>
+            <UiIcon name="spark" size={20} /> 模型与思考深度
+          </h2>
           <label className="k-kv">
             <span>默认模型</span>
             <select
@@ -222,23 +258,22 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
               ))}
             </select>
           </label>
-          <p className="k-set-note">gemini-3.8-flash (Low · 极速直连 0.9s) · gemini-4-hydrogen 不支持显式缓存（只读信息）</p>
         </section>
 
         <section className="k-set-card">
-          <h2>🔗 渠道同步</h2>
+          <h2>
+            <UiIcon name="link" size={20} /> 渠道同步
+          </h2>
           <label className="k-kv">
             <span>默认显示全部渠道</span>
             <input type="checkbox" role="switch" checked={settings.allChannels} onChange={(e) => save({ allChannels: e.target.checked })} />
           </label>
-          <div className="k-kv is-disabled">
-            <span>非 app 会话发送时</span>
-            <b>以普通聊天继续（固定）</b>
-          </div>
         </section>
 
         <section className="k-set-card">
-          <h2>🎨 外观</h2>
+          <h2>
+            <UiIcon name="palette" size={20} /> 外观
+          </h2>
           <div className="k-kv">
             <span>主题</span>
             <Segmented
@@ -268,39 +303,26 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
           </div>
         </section>
 
-        <section className="k-set-card">
-          <h2>🔊 语音</h2>
-          <div className="k-kv is-disabled">
-            <span>语音播放</span>
-            <b>语音：点击才播放（设计承诺，不可关闭）</b>
-          </div>
-          <div className="k-kv">
-            <span>朗读引擎 (通用翻译 ▶ 朗读)</span>
-            <Segmented
-              ariaLabel="朗读引擎"
-              size="sm"
-              value={settings.ttsEngine}
-              onChange={(v) => save({ ttsEngine: v })}
-              options={[
-                { value: 'native', label: '系统原生' },
-                { value: 'server', label: '服务端 qwen-tts' },
-              ]}
-            />
-          </div>
-        </section>
+        <IconStyleCard />
 
         <MemoryPolicyCard />
 
         <section className="k-set-card">
           <button type="button" className="k-link-row" onClick={() => actions.setUi({ screen: 'studio' })}>
-            🎭 角色与形象工坊 ›
+            <span>
+              <UiIcon name="persona" size={18} /> 角色与形象工坊
+            </span>
+            <UiIcon name="chevron-right" size={18} />
           </button>
           <button type="button" className="k-link-row" onClick={() => actions.setUi({ screen: 'files' })}>
-            📁 Agent 目录 (band) ›
+            <span>
+              <UiIcon name="folder" size={18} /> 文件管理
+            </span>
+            <UiIcon name="chevron-right" size={18} />
           </button>
           <div className="k-kv is-disabled">
-            <span>平台</span>
-            <b>{PLATFORM_LABEL[platform]}</b>
+            <span>版本</span>
+            <b>Kesoku v0.1.8</b>
           </div>
         </section>
       </div>

@@ -203,7 +203,7 @@ describe('<SegmentList>', () => {
     const { container } = render(<SegmentList segments={segs} env={env({ ctx: ctx({ resolveMedia }) })} />);
     expect(container.querySelector('details')?.hasAttribute('open')).toBe(false);
     expect(resolveMedia).not.toHaveBeenCalled();
-    expect(screen.getByText('🖼 点开查看图片')).toBeTruthy();
+    expect(screen.getByText('点开查看图片')).toBeTruthy();
   });
   it('voice segments buffer in the background but never play before the tap', async () => {
     const resolveMedia = vi.fn(async () => 'u');

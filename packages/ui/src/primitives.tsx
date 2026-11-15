@@ -1,4 +1,5 @@
 import { useEffect, type CSSProperties, type ReactNode } from 'react';
+import { UiIcon } from './icons';
 
 type Tone = 'neutral' | 'primary' | 'accent' | 'ok' | 'warn' | 'danger' | 'mode';
 
@@ -132,12 +133,12 @@ export function Sheet({
           <div className="k-sheet-head">
             {onBack && (
               <button type="button" className="k-icon-btn" aria-label="返回" onClick={onBack}>
-                ←
+                <UiIcon name="arrow-left" size={20} />
               </button>
             )}
             <div className="k-sheet-title">{title}</div>
             <button type="button" className="k-icon-btn" aria-label="关闭" onClick={onClose}>
-              ✕
+              <UiIcon name="close" size={20} />
             </button>
           </div>
         )}
@@ -154,7 +155,7 @@ export function Avatar({ src, name, size = 34, ai, className }: { src?: string |
       {src ? <img src={src} alt={name} draggable={false} /> : <span aria-hidden>{letter}</span>}
       {ai && (
         <span className="k-avatar-ai" title="AI 风格化生成">
-          ✨
+          <UiIcon name="spark" size={Math.max(10, Math.round(size * 0.36))} styleVariant="duotone" />
         </span>
       )}
     </span>

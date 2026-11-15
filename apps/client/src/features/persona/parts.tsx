@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { Sheet } from '@kesoku/ui';
+import { Sheet, UiIcon } from '@kesoku/ui';
 import { checkAvatarFile } from './model';
 import { actions } from '../../lib/store';
 
@@ -211,7 +211,8 @@ export function CropSheet({ file, onCancel, onConfirm }: { file: File; onCancel:
             取消
           </button>
           <button type="button" className="ps-btn ps-btn-pri" onClick={() => void confirm()}>
-            ✓ 使用此图
+            <UiIcon name="check" size={18} />
+            使用此图
           </button>
         </div>
       </div>

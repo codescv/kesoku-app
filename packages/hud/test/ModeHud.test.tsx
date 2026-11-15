@@ -44,7 +44,8 @@ describe('ModeHud', () => {
   it('memory policy badge toggles an inline segmented control', () => {
     const { onPolicyChange } = setup('translator');
     const badge = screen.getByRole('button', { name: /记忆：确认/ });
-    expect(badge.textContent).toContain('💡');
+    expect(badge.querySelector('[data-ui-icon="policy-confirm"]')).toBeTruthy();
+    expect(badge.textContent).not.toMatch(/[💡✅🔕]/u);
     expect(screen.queryByRole('radiogroup')).toBeNull();
     fireEvent.click(badge);
     const radios = screen.getAllByRole('radio');
@@ -57,9 +58,11 @@ describe('ModeHud', () => {
   it('badge label follows the policy', () => {
     const fn = vi.fn();
     const { rerender } = render(<PolicyBadge policy="full" onPolicyChange={fn} />);
-    expect(screen.getByRole('button').textContent).toContain('✅记忆：自动');
+    expect(screen.getByRole('button').textContent).toContain('记忆：自动');
+    expect(screen.getByRole('button').querySelector('[data-ui-icon="policy-full"]')).toBeTruthy();
     rerender(<PolicyBadge policy="isolated" onPolicyChange={fn} />);
-    expect(screen.getByRole('button').textContent).toContain('🔕记忆：忽略');
+    expect(screen.getByRole('button').textContent).toContain('记忆：忽略');
+    expect(screen.getByRole('button').querySelector('[data-ui-icon="policy-isolated"]')).toBeTruthy();
     fireEvent.click(screen.getByRole('button'));
     fireEvent.click(screen.getByRole('radio', { name: '忽略' }));
     expect(fn).not.toHaveBeenCalled(); // re-picking the current policy is a no-op
@@ -118,7 +121,8 @@ describe('ModeHud', () => {
   it('translator: swap and quick pills write mode prefs', () => {
     const { onPrefsChange } = setup('translator', {}, { modePrefs: { src_lang: 'ja', dst_lang: 'zh' } });
     const pair = screen.getByRole('group', { name: '语言对' });
-    expect(pair.textContent).toBe('日语⇄简中');
+    expect(pair.textContent).toBe('日语简中');
+    expect(pair.querySelector('[data-ui-icon="swap"]')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '互换语言' }));
     expect(onPrefsChange).toHaveBeenLastCalledWith({ src_lang: 'zh', dst_lang: 'ja' });
     fireEvent.click(screen.getByRole('button', { name: '英语' }));

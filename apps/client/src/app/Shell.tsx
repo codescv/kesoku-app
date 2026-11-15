@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MemoryPolicy, ModeId } from '@kesoku/protocol';
 import { ModeHud, detectActiveMode } from '@kesoku/hud';
-import { Sheet, modeMeta } from '@kesoku/ui';
+import { ModeIcon, Sheet, UiIcon, modeMeta } from '@kesoku/ui';
 import { kesoku } from '../lib/client';
 import { actions, useStore } from '../lib/store';
 import type { InspectorPanel } from '../lib/types';
@@ -47,7 +47,7 @@ function Inspector({ panel, sessionId, modeId }: { panel: InspectorPanel; sessio
   if (panel.kind === 'word')
     return (
       <div className="k-inspector-word">
-        <h2>Word Breakdown 词汇 / 语法拆解</h2>
+        <h2>词汇与语法解析</h2>
         {panel.sentence && (
           <p className="k-inspector-sentence" lang="ja">
             {panel.sentence}
@@ -70,7 +70,7 @@ function Overlays({ sessionId, modeId }: { sessionId: string | null; modeId: Mod
       {fullscreen && (
         <div className="k-fullscreen" role="dialog" aria-modal="true">
           <button type="button" className="k-fullscreen-close" onClick={() => overlays.fullscreen(null)}>
-            ✕ 返回对话
+            <UiIcon name="close" size={18} /> 返回对话
           </button>
           <div className="k-fullscreen-body">{fullscreen}</div>
         </div>
@@ -170,9 +170,9 @@ export function Shell() {
         <div className="k-screen">
           <header className="k-screen-head">
             <button type="button" className="k-icon-btn" aria-label="返回" onClick={() => actions.setUi({ screen: 'chat' })}>
-              ←
+              <UiIcon name="arrow-left" size={22} />
             </button>
-            <h1>🧠 记忆库</h1>
+            <h1>记忆库</h1>
           </header>
           <div className="k-screen-body">
             <MemoryPanel />
@@ -197,7 +197,7 @@ export function Shell() {
             {conn.status === 'reconnecting' || conn.status === 'connecting' || conn.status === 'authenticating' ? '重连中…' : conn.status === 'suspended' ? '已暂停（回到前台自动恢复）' : '未连接'}
           </div>
         )}
-        {conn.status === 'online' && !conn.engineOnline && <div className="k-connbar is-offline">🔴 引擎离线 · 消息将在引擎恢复后送达</div>}
+        {conn.status === 'online' && !conn.engineOnline && <div className="k-connbar is-offline">引擎离线 · 消息将在引擎恢复后送达</div>}
         {foreign && (
           <div className={'k-banner' + (takenOver ? ' is-taken' : '')}>
             {takenOver ? '已由 App 接管 (普通聊天)' : `此会话来自 ${CHANNEL[origin!] ?? origin} · 发送消息将以普通聊天模式继续`}
@@ -234,7 +234,7 @@ export function Shell() {
           )}
           {modeId === 'galgame' && !galStage && !showLaunchpad && sid && (
             <button type="button" className="k-stage-toggle" onClick={() => actions.setUi({ stageView: 'stage' })}>
-              🌸 回到 CG 舞台
+              <ModeIcon mode="galgame" size={18} /> 回到 CG 舞台
             </button>
           )}
         </main>
@@ -252,7 +252,7 @@ export function Shell() {
         <aside className="k-col-left">
           {tablet && !desktop && (
             <button type="button" className="k-collapse" aria-label="收起会话栏" onClick={() => setLeftCollapsed(true)}>
-              ⟨
+              <UiIcon name="chevron-left" size={18} />
             </button>
           )}
           <SessionPanel />
@@ -267,12 +267,12 @@ export function Shell() {
       {!desktop && !tablet && ui.drawerOpen && (
         <div className="k-drawer-root">
           <div className="k-scrim" onClick={() => actions.setUi({ drawerOpen: false })} />
-          <div className="k-drawer" data-theme-local="dark">
+          <div className="k-drawer">
             <SessionPanel onNavigate={() => actions.setUi({ drawerOpen: false })} />
           </div>
         </div>
       )}
-      <Sheet open={!!panelSheet} onClose={() => setPanelSheet(null)} height="half" title={panelSheet === 'mistakes' ? '📕 待复习错题本' : panelSheet === 'roster' ? '🎭 演员定妆表' : panelSheet === 'memory' ? '🧠 记忆库' : undefined}>
+      <Sheet open={!!panelSheet} onClose={() => setPanelSheet(null)} height="half" title={panelSheet === 'mistakes' ? '待复习错题本' : panelSheet === 'roster' ? '演员定妆表' : panelSheet === 'memory' ? '记忆库' : undefined}>
         {panelSheet && <Inspector panel={{ kind: panelSheet } as InspectorPanel} sessionId={sid} modeId={modeId} />}
       </Sheet>
       <Overlays sessionId={sid} modeId={modeId} />

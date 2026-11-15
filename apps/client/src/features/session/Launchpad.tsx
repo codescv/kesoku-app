@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { MemoryPolicy, ModeId } from '@kesoku/protocol';
-import { MODE_LIST, POLICY_BADGE, Sheet, type ModeMeta } from '@kesoku/ui';
+import { MODE_LIST, ModeIcon, POLICY_BADGE, Sheet, UiIcon, type ModeMeta } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { useStore } from '../../lib/store';
 import { PolicySegmented } from '../memory/PolicySegmented';
@@ -35,11 +35,11 @@ function ModeTile({ m, onOpen, onInfo }: { m: ModeMeta; onOpen: () => void; onIn
     >
       <span className="k-mode-top">
         <span className="k-mode-icon" aria-hidden>
-          {m.icon}
+          <ModeIcon mode={m.id} size={26} />
         </span>
         {m.badge && <span className="k-mode-badge">{m.badge}</span>}
         <span className="k-mode-policy" title={`记忆：${b.label}`}>
-          {b.icon} {b.label}
+          <UiIcon name={b.iconName} size={13} /> {b.label}
         </span>
       </span>
       <span className="k-mode-title">{m.title}</span>
@@ -72,13 +72,23 @@ export function Launchpad() {
         <div className="k-resume">
           {recent.map((s) => (
             <button key={s.session_id} type="button" className="k-resume-row" onClick={() => void kesoku.openSession(s.session_id)}>
-              <span className="k-resume-title">↩ {s.title || '未命名会话'}</span>
+              <span className="k-resume-title">
+                <UiIcon name="refresh" size={14} /> {s.title || '未命名会话'}
+              </span>
               <span className="k-resume-meta">{new Date(s.updated_at * 1000).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
             </button>
           ))}
         </div>
       )}
-      <Sheet open={!!info} onClose={() => setInfo(null)} title={info ? `${info.icon} ${info.title}` : ''}>
+      <Sheet open={!!info} onClose={() => setInfo(null)} title={
+          info ? (
+            <span className="k-ico-label">
+              <ModeIcon mode={info.id} size={22} /> {info.title}
+            </span>
+          ) : (
+            ''
+          )
+        }>
         {info && (
           <div className="k-mode-info">
             <p className="k-mode-info-sub">{info.subtitle}</p>

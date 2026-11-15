@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { modeMeta } from '@kesoku/ui';
+import { UiIcon, modeMeta } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { compressImage, HoldRecorder } from '../../lib/files';
@@ -142,10 +142,10 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
       {modeId === 'translator' && (
         <div className="k-composer-sub">
           <button type="button" className={'k-pill k-pill-sm ' + (!listenOther ? 'is-active' : 'k-pill-neutral')} onClick={() => setListenOther(false)}>
-            🎙️ 我说
+            <UiIcon name="mic" size={14} /> 我说
           </button>
           <button type="button" className={'k-pill k-pill-sm ' + (listenOther ? 'is-active' : 'k-pill-neutral')} onClick={() => setListenOther(true)}>
-            👂 听对方说
+            <UiIcon name="volume" size={14} /> 听对方说
           </button>
         </div>
       )}
@@ -156,7 +156,7 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
               <img src={f.preview} alt={`图${i + 1}`} />
               <span className="k-thumb-label">图{i + 1}</span>
               <button type="button" aria-label="移除" onClick={() => setFiles((x) => x.filter((_, j) => j !== i))}>
-                ✕
+                <UiIcon name="close" size={12} />
               </button>
             </span>
           ))}
@@ -165,13 +165,13 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
       {recording ? (
         <div className="k-composer-row k-rec-bar" data-testid="composer-recording-bar">
           <button type="button" className="k-rec-cancel" aria-label="取消录音" onClick={cancelRecording}>
-            ✕ 取消
+            <UiIcon name="close" size={18} /> 取消
           </button>
           <div className="k-rec-status" role="status">
             <span className="k-rec-dot" aria-hidden /> <span>录音中 {fmtSec(recordSec)}</span>
           </div>
           <button type="button" className="k-rec-send" aria-label="发送语音" disabled={busy} onClick={() => void confirmRecording()}>
-            ✓ 发送
+            <UiIcon name="check" size={18} /> 发送
           </button>
         </div>
       ) : (
@@ -193,13 +193,13 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
             aria-label="消息输入框"
           />
           <button type="button" className="k-composer-btn" aria-label="拍照或选图" onClick={() => void onPick()} disabled={busy}>
-            📷
+            <UiIcon name="camera" size={22} />
           </button>
           <button type="button" className="k-composer-btn" aria-label="开始语音输入" onClick={() => void startRecording()} disabled={busy || !online}>
-            🎙️
+            <UiIcon name="mic" size={22} />
           </button>
           <button type="button" className="k-composer-send" aria-label="发送" disabled={!canSend} onClick={() => void send()}>
-            ↑
+            <UiIcon name="send" size={22} />
           </button>
         </div>
       )}

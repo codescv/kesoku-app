@@ -2,10 +2,11 @@ import { useState } from 'react';
 import type { MemoryProposal, ProposalOp } from '@kesoku/protocol';
 import { kesoku } from '../../lib/client';
 import { actions } from '../../lib/store';
+import { UiIcon } from '@kesoku/ui';
 
 /**
  * Inline `confirm_only` memory confirmation card (UI doc §5.1). Not a modal, never steals focus.
- * `$MEMORY_DIR` changes only after [✓ 记录到记忆库].
+ * The memory library changes only after [记录到记忆库].
  */
 export function ProposalCard({ proposal, compact }: { proposal: MemoryProposal; compact?: boolean }) {
   const [ops, setOps] = useState<ProposalOp[]>(proposal.ops);
@@ -32,16 +33,30 @@ export function ProposalCard({ proposal, compact }: { proposal: MemoryProposal; 
     const files = proposal.applied_files?.length ? proposal.applied_files : [...new Set(proposal.ops.map((o) => o.file))];
     return (
       <div className={`k-proposal is-${status}`} role="status">
-        {status === 'applied' && <>✓ 已记录 · {files.join('、')}</>}
-        {status === 'dismissed' && <>✕ 已忽略 · 同一事实不再提示</>}
-        {status === 'expired' && <>⌛ 已过期 · 需在对话中重新提及</>}
+        {status === 'applied' && (
+          <>
+            <UiIcon name="check" size={16} /> 已记录 · {files.join('、')}
+          </>
+        )}
+        {status === 'dismissed' && (
+          <>
+            <UiIcon name="close" size={16} /> 已忽略 · 同一事实不再提示
+          </>
+        )}
+        {status === 'expired' && (
+          <>
+            <UiIcon name="clock" size={16} /> 已过期 · 需在对话中重新提及
+          </>
+        )}
       </div>
     );
   }
 
   return (
     <div className={'k-proposal' + (compact ? ' is-compact' : '')} role="group" aria-label="记忆确认">
-      <div className="k-proposal-title">💡 发现可记录的现实记忆 · 需你确认</div>
+      <div className="k-proposal-title">
+        <UiIcon name="brain" size={18} /> 发现可记录的现实记忆 · 需你确认
+      </div>
       <ul className="k-proposal-ops">
         {ops.map((op, i) => (
           <li key={i} className={checked[i] ? '' : 'is-off'}>
@@ -78,10 +93,10 @@ export function ProposalCard({ proposal, compact }: { proposal: MemoryProposal; 
       </ul>
       <div className="k-proposal-actions">
         <button type="button" className="k-btn k-btn-ghost" disabled={busy} onClick={() => resolve('dismiss')}>
-          ✕ 忽略
+          <UiIcon name="close" size={16} /> 忽略
         </button>
         <button type="button" className="k-btn k-btn-primary" disabled={busy || !checked.some(Boolean)} onClick={() => resolve('confirm')}>
-          ✓ 记录到记忆库
+          <UiIcon name="check" size={16} /> 记录到记忆库
         </button>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { MODEL_CATALOG, THINKING_LEVELS, type LlmOverride, type ModeId, type ThinkingLevel } from '@kesoku/protocol';
-import { Avatar, Capsule, Sheet, modeMeta } from '@kesoku/ui';
+import { Avatar, Capsule, ModeIcon, Sheet, UiIcon, modeMeta } from '@kesoku/ui';
 import { kesoku } from '../lib/client';
 import { actions, useStore } from '../lib/store';
 import { PolicySegmented } from '../features/memory/PolicySegmented';
@@ -22,7 +22,10 @@ export function ModelCapsule({ sessionId }: { sessionId: string | null }) {
   return (
     <>
       <Capsule className="k-model-capsule" onClick={() => setOpen(true)} label="模型与思考档位">
-        <span className="k-model-label">{modelLabel(cur)}</span>
+        <span className="k-model-label">
+          <UiIcon name="spark" size={15} />
+          {modelLabel(cur)}
+        </span>
       </Capsule>
       <Sheet open={open} onClose={() => setOpen(false)} title="模型 × 思考档位">
         <div className="k-model-grid" role="grid">
@@ -55,14 +58,13 @@ export function ModelCapsule({ sessionId }: { sessionId: string | null }) {
                       actions.toast(`下一条消息使用 ${m.label} · ${LEVEL_LABEL[l]}`);
                     }}
                   >
-                    {on ? '✓' : ''}
+                    {on ? <UiIcon name="check" size={18} /> : null}
                   </button>
                 );
               })}
             </div>
           ))}
         </div>
-        <p className="k-sheet-note">一次点击即生效于下一条消息 · Hydrogen 不支持显式缓存</p>
       </Sheet>
     </>
   );
@@ -130,15 +132,24 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
             ))}
           </div>
           <button type="button" className="k-link-row" onClick={() => (setOpen(false), actions.setUi({ screen: 'studio' }))}>
-            🎭 管理角色与形象 ›
+            <span>
+              <UiIcon name="persona" size={18} /> 角色与形象工坊
+            </span>
+            <UiIcon name="chevron-right" size={18} />
           </button>
-          <button type="button" className="k-link-row" onClick={() => (setOpen(false), actions.setUi({ screen: 'files' }))}>
-            📁 Agent 目录 (band) ›
+          <button type="button" className="k-link-row" onClick={() => (setOpen(false), actions.setUi({ screen: 'memory' }))}>
+            <span>
+              <UiIcon name="brain" size={18} /> 记忆库
+            </span>
+            <UiIcon name="chevron-right" size={18} />
           </button>
         </section>
         <section className="k-rm-section">
           <h3>
-            当前模式 · <span style={{ color: meta.color }}>{meta.icon} {meta.title}</span>
+            当前模式 ·{' '}
+            <span style={{ color: meta.color }}>
+              <ModeIcon mode={effectiveMode} size={20} /> {meta.title}
+            </span>
           </h3>
           <div className="k-rm-actions">
             {effectiveMode !== 'chat' && sessionId && (
@@ -154,7 +165,7 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
             <span>当前模式记忆：</span>
             <PolicySegmented modeId={effectiveMode} size="sm" />
           </div>
-          <p className="k-sheet-note">仅改当前模式 · 其余模式去 设置 → 各模式记忆策略</p>
+          <p className="k-sheet-note">仅改当前模式 · 其余模式可在 设置 → 记忆策略 中调整</p>
         </section>
       </Sheet>
     </>
@@ -166,7 +177,7 @@ export function TopBar({ sessionId, modeId, nestedTitle, onMenu, showMenu }: { s
     <header className="k-topbar" style={{ ['--mode' as string]: modeMeta(modeId).color }}>
       {showMenu ? (
         <button type="button" className="k-icon-btn" aria-label="打开会话抽屉" onClick={onMenu}>
-          ☰
+          <UiIcon name="menu" size={22} />
         </button>
       ) : (
         <span className="k-topbar-spacer" />

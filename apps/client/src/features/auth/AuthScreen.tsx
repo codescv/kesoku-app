@@ -4,6 +4,7 @@ import { isNative } from '../../native/platform';
 import { tryNativeQrScan } from '../../native/qr';
 import { AuthError, getAuthConfig, getRelayBase, googleLogin, pair, preloadGoogleAuth, setRelayBase, type AuthConfig } from '../../lib/auth';
 import { QrScannerModal } from './QrScannerModal';
+import { UiIcon } from '@kesoku/ui';
 
 export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () => void; initialCode?: string; initialRelay?: string }) {
   const native = isNative();
@@ -156,7 +157,7 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
               disabled={busy}
               onClick={() => void handleStartQrScan()}
             >
-              📷 扫码配对
+              <UiIcon name="qr" size={22} /> 扫码配对
             </button>
             <div className="k-auth-or">或手动输入配对码</div>
             <form onSubmit={submitPair} className="k-auth-form">

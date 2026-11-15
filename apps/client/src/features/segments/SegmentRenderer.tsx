@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CardSegment, DetailsSegment, FileSegment, LexToken, QuestionSegment, Segment } from '@kesoku/protocol';
-import { Skeleton, VoicePill } from '@kesoku/ui';
+import { Skeleton, UiIcon, VoicePill } from '@kesoku/ui';
 import { BilingualCard } from './BilingualCard';
 import { Markdown, renderInline } from './Markdown';
 import { GenericCardSafe, getCard } from '../cards';
@@ -163,7 +163,9 @@ export function MediaImage({ seg, ctx, className, autoHydrate }: { seg: FileSegm
     const canRetry = Boolean(seg.ref || seg.object || entry?.object || seg.placeholder_id);
     return (
       <div className="k-media k-media-failed">
-        <span>⚠️ 附件生成失败{entry?.reason ? ` · ${entry.reason}` : ''}</span>
+        <span className="k-ico-label">
+          <UiIcon name="image" size={16} /> 附件生成失败{entry?.reason ? ` · ${entry.reason}` : ''}
+        </span>
         {canRetry && (
           <button
             type="button"
@@ -221,10 +223,20 @@ export function MediaImage({ seg, ctx, className, autoHydrate }: { seg: FileSegm
           ctx.resolveMedia({ ref: seg.ref }).then((u) => (u ? setUrl(u) : setState('failed')), () => setState('failed'));
         }}
       >
-        {state === 'loading' ? '载入中…' : sticker ? '🙂 表情' : '🖼 点开查看图片'}
+        {state === 'loading' ? (
+          '载入中…'
+        ) : (
+          <span className="k-ico-label">
+            <UiIcon name={sticker ? 'sticker' : 'image'} size={16} /> {sticker ? '表情' : '点开查看图片'}
+          </span>
+        )}
       </button>
     );
-  return <div className={['k-media', 'k-media-pending', sticker && 'is-sticker', className].filter(Boolean).join(' ')}>⏳ {entry?.label || (sticker ? '表情' : '附件生成中…')}</div>;
+  return <div className={['k-media', 'k-media-pending', sticker && 'is-sticker', className].filter(Boolean).join(' ')}>
+      <span className="k-ico-label">
+        <UiIcon name="clock" size={16} /> {entry?.label || (sticker ? '表情' : '附件生成中…')}
+      </span>
+    </div>;
 }
 
 /** Compact inline sticker for narrative flows (galgame dialogue box). */

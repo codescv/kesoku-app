@@ -23,6 +23,9 @@
   flex-shrink: 0;
 }
 .ps-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: var(--hit);
   height: var(--hit);
   border-radius: 13px;
@@ -275,6 +278,15 @@
   border: 1.5px solid var(--line-strong);
   color: var(--ink);
 }
+.ps-btn-sm,
+.ps-link,
+.ps-link-btn,
+.ps-chip-add,
+.ps-ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
 .ps-btn-sm {
   min-height: 38px;
   padding: 6px 12px;
@@ -461,6 +473,7 @@
 .ps-policy-pill {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   padding: 4px 10px;
   border-radius: var(--r-pill);
   font-size: 13px;
@@ -487,6 +500,22 @@
   color: var(--ok);
   font-size: 13px;
   font-weight: 800;
+}
+
+.ps-icon-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ps-privacy.ps-icon-label {
+  display: flex;
+}
+.ps-privacy .k-ui-icon {
+  flex-shrink: 0;
+}
+.ps-voice-ico {
+  flex-shrink: 0;
+  color: var(--ink-2);
 }
 
 /* ── switch ── */
@@ -605,26 +634,8 @@
   width: 100%;
 }
 
-/* ── Screen 16 · dark restyle sheet (always dark) ── */
+/* ── Screen 16 · restyle sheet (follows the active theme tokens) ── */
 .k-sheet.ps-gen {
-  --bg: #15171c;
-  --card: #1e2128;
-  --subcard: #262a34;
-  --pill: #2d323f;
-  --ink: #f3f4f6;
-  --ink-2: #a3a9b8;
-  --line: #323846;
-  --line-strong: #454e62;
-  --primary: #60a5fa;
-  --primary-strong: #3b82f6;
-  --primary-soft: #172b4d;
-  --primary-border: #2e4c80;
-  --accent: #8b78e6;
-  --accent-soft: #2a2344;
-  --danger: #f87171;
-  --danger-soft: #3a1d22;
-  --warn: #fbbf24;
-  color-scheme: dark;
   background: var(--bg);
   color: var(--ink);
 }
@@ -698,6 +709,7 @@
   border-radius: 6px;
 }
 .ps-gen-arrow {
+  display: inline-flex;
   font-size: 18px;
   font-weight: 900;
   color: var(--primary);
@@ -709,6 +721,10 @@
   gap: 7px;
 }
 .ps-preset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   min-height: var(--hit);
   padding: 6px 8px;
   border-radius: 12px;
@@ -726,7 +742,7 @@
 .ps-preset.is-on {
   background: var(--primary-soft);
   border: 2px solid var(--primary-strong);
-  color: #93c5fd;
+  color: var(--primary-strong);
 }
 .ps-hint {
   display: flex;
@@ -821,6 +837,9 @@
   animation: ps-pulse 1.2s ease-in-out infinite;
 }
 .ps-cand-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   position: absolute;
   top: 8px;
   right: 8px;
@@ -925,11 +944,12 @@
   gap: 12px;
   padding: 12px 14px;
   border-radius: 18px;
-  background: #1a2230;
-  border: 1.5px solid var(--primary-border);
+  background: var(--subcard);
+  border: 1.5px solid var(--line);
+  color: var(--ink);
   margin-top: auto;
 }
-.ps-dock-dark {
+.ps-dock-sheet {
   position: sticky;
   bottom: 0;
   margin: 10px -18px 0;

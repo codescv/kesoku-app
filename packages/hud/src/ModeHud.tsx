@@ -1,6 +1,6 @@
 import { Component, useEffect, useState, type CSSProperties, type ErrorInfo, type ReactNode } from 'react';
 import type { MemoryPolicy, ModeId } from '@kesoku/protocol';
-import { HpBar, ProgressBar } from '@kesoku/ui';
+import { HpBar, ModeIcon, ProgressBar, UiIcon } from '@kesoku/ui';
 import { detectActiveMode, normalizeModeId, type GameInstance } from './activeMode';
 import { PolicyBadge } from './PolicyBadge';
 import { arr, entries, file, label, labels, num, obj, str, type Obj } from './safe';
@@ -174,7 +174,7 @@ export function SceneChips({ scene, glass }: { scene: unknown; glass?: boolean }
     <>
       {(location || clock) && (
         <Chip className={tone}>
-          <span aria-hidden>📍</span>
+          <UiIcon name="location" size={15} />
           <span className="k-hud-ellipsis">{[location, clock].filter(Boolean).join(' · ')}</span>
         </Chip>
       )}
@@ -192,7 +192,7 @@ export function SceneChips({ scene, glass }: { scene: unknown; glass?: boolean }
         }
         return (
           <Chip key={m.key} tone="danger" className={['k-hud-mark', tone].filter(Boolean).join(' ')}>
-            <span aria-hidden>{m.icon ?? '⏳'}</span>
+            {m.icon && !/\p{Extended_Pictographic}/u.test(m.icon) ? <span aria-hidden>{m.icon}</span> : <UiIcon name="clock" size={15} />}
             <span className="k-hud-ellipsis">{m.text}</span>
             {tail && <b className="k-hud-num">{tail}</b>}
           </Chip>
@@ -248,7 +248,7 @@ function LessonHud({ stateFiles, badge, onOpenPanel }: HudCtx) {
         </button>
       )}
       <Chip tone="danger" onClick={() => onOpenPanel('mistakes')} className="k-hud-mistakes">
-        <span aria-hidden>📕</span>
+        <UiIcon name="book" size={15} />
         <span>错题{count !== undefined ? ` ${count}` : ''}</span>
       </Chip>
     </Row>
@@ -266,20 +266,20 @@ function TravelHud({ stateFiles, badge, onOpenPanel, instance }: HudCtx) {
   return (
     <Row badge={badge}>
       {dietary.length > 0 && (
-        <Chip tone="primary" onClick={() => onOpenPanel('memory')} className="k-hud-dietary" title="记忆库 · user/profile.md">
-          <span aria-hidden>🛡️</span>
+        <Chip tone="primary" onClick={() => onOpenPanel('memory')} className="k-hud-dietary" title="记忆库 · 个人档案">
+          <UiIcon name="shield" size={15} />
           <span className="k-hud-ellipsis">已启用忌口：{dietary.join(' · ')}</span>
         </Chip>
       )}
       {city && (
         <Chip>
-          <span aria-hidden>📍</span>
+          <UiIcon name="location" size={15} />
           <span className="k-hud-ellipsis">{city}</span>
         </Chip>
       )}
       {order.length > 0 && (
         <Chip tone="mode" onClick={() => onOpenPanel('travel')}>
-          <span aria-hidden>🧾</span>
+          <UiIcon name="receipt" size={15} />
           <span>点单 {order.length}</span>
         </Chip>
       )}
@@ -337,7 +337,7 @@ function TranslatorHud({ stateFiles, modePrefs, badge, onPrefsChange, instance }
           aria-label="互换语言"
           onClick={() => onPrefsChange({ src_lang: dst, dst_lang: src })}
         >
-          ⇄
+          <UiIcon name="swap" size={16} />
         </button>
         <span className="k-hud-pair-lang">{langLabel(dst)}</span>
       </span>
@@ -419,7 +419,7 @@ function TrpgHud({ stateFiles, badge, onOpenPanel, instance }: HudCtx) {
       <Row badge={badge}>
         {(world || scenario) && (
           <Chip tone="mode" className="k-hud-world">
-            <span aria-hidden>🎲</span>
+            <ModeIcon mode="trpg" size={16} styleVariant="line" color="currentColor" />
             <span className="k-hud-ellipsis">{[world, scenario].filter(Boolean).join(' · ')}</span>
           </Chip>
         )}
@@ -450,7 +450,7 @@ function TrpgHud({ stateFiles, badge, onOpenPanel, instance }: HudCtx) {
           {shownEnemies.map((e) => (
             <button type="button" key={`e:${e.key}`} className="k-hud-boss" onClick={() => onOpenPanel('party')}>
               <span className="k-hud-fname">
-                <span aria-hidden>👹</span> {e.name}
+                <UiIcon name="target" size={14} /> {e.name}
               </span>
               {e.status.map((s) => (
                 <span key={s} className="k-hud-status is-danger">
@@ -553,10 +553,10 @@ function PokemonHud({ stateFiles, modePrefs, badge, onPrefsChange, onOpenPanel }
       {pinned && (
         <span className="k-hud-pin">
           <button type="button" className="k-hud-pin-body" onClick={() => onOpenPanel('dex')} title="展开图鉴">
-            <span aria-hidden>📌</span> {pinned}
+            <UiIcon name="pin" size={14} /> {pinned}
           </button>
           <button type="button" className="k-hud-pin-x" aria-label={`解除锁定 ${pinned}`} onClick={() => onPrefsChange({ pinned_context: null })}>
-            ×
+            <UiIcon name="close" size={13} />
           </button>
         </span>
       )}
@@ -584,7 +584,7 @@ function StoryHud({ stateFiles, badge, onOpenPanel, instance }: HudCtx) {
       {head && (
         <span className="k-hud-chapter">
           <span className="k-hud-ellipsis">
-            <span aria-hidden>📖</span> {head}
+            <UiIcon name="book" size={14} /> {head}
             {chunks ? <b className="k-hud-num"> (片段 {pos}/{chunks})</b> : null}
           </span>
           {chunks > 0 && (
@@ -595,7 +595,7 @@ function StoryHud({ stateFiles, badge, onOpenPanel, instance }: HudCtx) {
         </span>
       )}
       <Chip tone="mode" onClick={() => onOpenPanel('roster')} className="k-hud-roster">
-        <span aria-hidden>🎭</span>
+        <ModeIcon mode="story_theater" size={15} styleVariant="line" color="currentColor" />
         <span>定妆表{rosterN !== undefined ? ` (${rosterN})` : ''}</span>
       </Chip>
     </Row>

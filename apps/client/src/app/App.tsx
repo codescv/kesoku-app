@@ -8,13 +8,53 @@ import { onDeepLink } from '../native/deeplinks';
 import { isNative } from '../native/platform';
 import { Shell } from './Shell';
 
+export const THEME_COLORS = { light: '#FAF8F5', dark: '#15171C' } as const;
+
+export function resolveTheme(theme: Settings['theme']): 'light' | 'dark' {
+  if (theme === 'light' || theme === 'dark') return theme;
+  try {
+    return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
+}
+
+/** Keep the browser / PWA / native status bar in step with the resolved chat theme. */
+export function applyThemeChrome(theme: Settings['theme']): 'light' | 'dark' {
+  const resolved = resolveTheme(theme);
+  const root = document.documentElement;
+  root.dataset.theme = theme;
+  root.dataset.resolvedTheme = resolved;
+  root.style.colorScheme = resolved;
+  const metas = Array.from(document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'));
+  if (!metas.length) {
+    const m = document.createElement('meta');
+    m.name = 'theme-color';
+    document.head.appendChild(m);
+    metas.push(m);
+  }
+  for (const m of metas) {
+    // A user-chosen theme overrides any media-scoped tags from index.html.
+    m.removeAttribute('media');
+    m.content = THEME_COLORS[resolved];
+  }
+  return resolved;
+}
+
 function useTheme() {
   const theme = useStore((s) => s.settings.theme);
   const fontSize = useStore((s) => s.settings.fontSize);
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.fontsize = fontSize;
-  }, [theme, fontSize]);
+  }, [fontSize]);
+  useEffect(() => {
+    applyThemeChrome(theme);
+    if (theme !== 'system' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => applyThemeChrome('system');
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, [theme]);
 }
 
 async function restoreLocal() {

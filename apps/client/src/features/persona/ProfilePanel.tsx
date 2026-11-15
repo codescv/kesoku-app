@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { LIMITS, type EngineToClientPayload, type UserProfile } from '@kesoku/protocol';
-import { Avatar, MODES, POLICY_BADGE, Pill, Skeleton } from '@kesoku/ui';
+import { Avatar, MODES, ModeIcon, POLICY_BADGE, Pill, Skeleton, UiIcon } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { useAvatarUrl } from './avatar';
@@ -27,7 +27,9 @@ export function PolicySummary({ onOpenPolicies }: { onOpenPolicies?: () => void 
   return (
     <section className="ps-card">
       <div className="ps-label">
-        <span>🛡️ 跨模式记忆沉淀策略</span>
+        <span className="ps-icon-label">
+          <UiIcon name="shield" size={16} /> 跨模式记忆沉淀策略
+        </span>
         <Pill size="sm" tone="primary">8 模式可独立配置</Pill>
       </div>
       <div className="ps-policy" data-testid="ps-policy-summary">
@@ -36,13 +38,15 @@ export function PolicySummary({ onOpenPolicies }: { onOpenPolicies?: () => void 
         ) : (
           dev.map((d) => (
             <span key={d.mode} className={`ps-policy-pill is-${d.policy}`}>
-              {`${MODES[d.mode].icon} ${MODES[d.mode].title} [${POLICY_BADGE[d.policy].label}]`}
+              <ModeIcon mode={d.mode} size={16} />
+              {`${MODES[d.mode].title} [${POLICY_BADGE[d.policy].label}]`}
             </span>
           ))
         )}
       </div>
       <button type="button" className="ps-link-btn" disabled={!onOpenPolicies} onClick={onOpenPolicies}>
-        按模式单独配置 (自动/确认/忽略) ›
+        按模式单独配置 (自动/确认/忽略)
+        <UiIcon name="chevron-right" size={14} />
       </button>
       <span className="ps-sub">个人介绍写入的是长期档案，不受各模式记忆策略影响</span>
     </section>
@@ -133,9 +137,9 @@ export function ProfilePanel({
       });
       if (res?.profile) actions.setProfile(res.profile);
       setDraft(null);
-      actions.toast('✓ 个人形象已保存 · 下一条消息生效');
+      actions.toast('个人形象已保存 · 下一条消息生效');
     } catch (e) {
-      actions.toast(errorCode(e) === 'ENGINE_OFFLINE' ? '🔴 引擎离线，未保存' : '保存失败，请重试', 'error');
+      actions.toast(errorCode(e) === 'ENGINE_OFFLINE' ? '引擎离线，未保存' : '保存失败，请重试', 'error');
     } finally {
       setSaving(false);
     }
@@ -154,7 +158,7 @@ export function ProfilePanel({
       });
       if (res?.profile) actions.setProfile(res.profile);
       setSource(USER_KEY, { object: up.object, preview: makePreviewUrl(file), at: Date.now() });
-      actions.toast('✓ 头像已更新');
+      actions.toast('头像已更新');
     } catch {
       actions.toast('照片上传失败，请重试', 'error');
     } finally {
@@ -175,7 +179,7 @@ export function ProfilePanel({
             </div>
             {hasAi && (
               <button type="button" className="ps-ai-badge" onClick={() => setGenOpen(true)}>
-                ✨ 已由上传照片 AI 生成 · 重新生成
+                <UiIcon name="spark" size={14} /> 已由上传照片 AI 生成 · 重新生成
               </button>
             )}
             <div className="ps-row ps-actions">
@@ -183,7 +187,8 @@ export function ProfilePanel({
                 {uploading ? '上传中…' : '上传照片'}
               </PickImageButton>
               <button type="button" className="ps-btn-sm ps-btn-sm-pri" onClick={() => setGenOpen(true)}>
-                ✨ AI 风格化
+                <UiIcon name="spark" size={16} />
+                AI 风格化
               </button>
             </div>
           </div>
@@ -220,7 +225,9 @@ export function ProfilePanel({
               onChange={(e) => patch({ bio: e.target.value })}
             />
             <FieldError id="ps-err-bio" text={errors.bio} />
-            <span className="ps-sub">✦ 这些信息会作为长期记忆供所有角色读取</span>
+            <span className="ps-sub ps-icon-label">
+              <UiIcon name="brain" size={14} /> 这些信息会作为长期记忆供所有角色读取
+            </span>
           </label>
         </section>
 
@@ -229,9 +236,7 @@ export function ProfilePanel({
             <div>
               <div className="ps-strong">允许在约会与剧场插画中以二次元形象同框</div>
               <div className="ps-sub">
-                {hasAi
-                  ? `开启后 characters/${dir ?? '<我的目录>'}/images/ref_face.webp 作为我的锁脸参考`
-                  : '需先生成 AI 头像'}
+                {hasAi ? '开启后作为我的锁脸参考' : '需先生成 AI 头像'}
               </div>
             </div>
             <Switch
@@ -245,8 +250,9 @@ export function ProfilePanel({
 
         <PolicySummary onOpenPolicies={onOpenPolicies} />
 
-        <div className="ps-privacy">
-          <span>🔒 头像与原照片只保存在你的引擎主机；云端中继仅中转签名 URL（15 分钟过期）</span>
+        <div className="ps-privacy ps-icon-label">
+          <UiIcon name="shield" size={16} />
+          <span>头像与原照片仅保存在你自己的主机上，不会在云端留存。</span>
         </div>
       </div>
 
@@ -255,7 +261,12 @@ export function ProfilePanel({
           重置修改
         </button>
         <button type="button" className="ps-btn ps-btn-pri" disabled={!dirty || hasErrors || saving} onClick={() => void save()}>
-          {saving ? '保存中…' : '✓ 保存个人形象'}
+          {saving ? '保存中…' : (
+            <>
+              <UiIcon name="check" size={18} />
+              保存个人形象
+            </>
+          )}
         </button>
       </div>
 

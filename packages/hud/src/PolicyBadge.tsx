@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { MEMORY_POLICIES, type MemoryPolicy, type ModeId } from '@kesoku/protocol';
-import { POLICY_BADGE, Segmented } from '@kesoku/ui';
+import { POLICY_BADGE, Segmented, UiIcon } from '@kesoku/ui';
 
 export interface PolicyBadgeProps {
   /** Used only for the segmented control's accent colour (`--m-<mode_id>`). */
@@ -19,7 +19,7 @@ function isPolicy(v: unknown): v is MemoryPolicy {
 }
 
 /**
- * Memory-policy badge `💡 记忆：确认 ▾`. Tapping it reveals an inline `[自动 | 确认 | 忽略]`
+ * Memory-policy badge `[icon] 记忆：确认 ▾`. Tapping it reveals an inline `[自动 | 确认 | 忽略]`
  * segmented control; picking a segment calls `onPolicyChange` (zero LLM turn) and collapses it.
  */
 export function PolicyBadge({ modeId, policy, onPolicyChange, glass, className }: PolicyBadgeProps) {
@@ -57,11 +57,9 @@ export function PolicyBadge({ modeId, policy, onPolicyChange, glass, className }
         title={meta.explain}
         onClick={() => setOpen((o) => !o)}
       >
-        <span aria-hidden>{meta.icon}</span>
+        <UiIcon name={meta.iconName} size={15} className="k-hud-policy-icon" />
         <span>记忆：{meta.label}</span>
-        <span className="k-caret" aria-hidden>
-          ▾
-        </span>
+        <UiIcon name="chevron-down" size={13} className="k-caret" />
       </button>
       {open && (
         <span className="k-hud-policy-pop" role="group" aria-label="当前模式记忆">
