@@ -14,6 +14,7 @@ import { Launchpad } from '../features/session/Launchpad';
 import { makeCardContext } from '../features/session/cardContext';
 import { overlays, useOverlays } from '../features/session/overlays';
 import { MemoryPanel } from '../features/memory/MemoryPanel';
+import { NotesPanel } from '../features/notes/NotesPanel';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { LexCard } from '../features/segments/BilingualCard';
 import { GalgameStage, ModePanel, PeekSheet } from '../features/modes';
@@ -46,6 +47,7 @@ function defaultInspector(mode: ModeId): InspectorPanel {
 function Inspector({ panel, sessionId, modeId }: { panel: InspectorPanel; sessionId: string | null; modeId: ModeId }) {
   const stateFiles = useStore((s) => (sessionId ? s.stateFiles[sessionId] : undefined)) ?? EMPTY;
   const prefs = useStore((s) => (sessionId ? s.modePrefs[sessionId] : undefined)) ?? EMPTY;
+  if (panel.kind === 'notes') return <NotesPanel embedded />;
   if (panel.kind === 'memory' || panel.kind === 'persona') return <MemoryPanel embedded />;
   if (panel.kind === 'word')
     return (
@@ -180,6 +182,7 @@ export function Shell() {
   const center = (() => {
     if (ui.screen === 'settings') return <SettingsScreen onClose={() => actions.setUi({ screen: 'chat' })} />;
     if (ui.screen === 'files') return <FileBrowser onClose={() => actions.setUi({ screen: 'chat' })} />;
+    if (ui.screen === 'notes') return <NotesPanel onClose={() => actions.setUi({ screen: 'chat' })} />;
     if (ui.screen === 'memory')
       return (
         <div className="k-screen">
@@ -294,7 +297,22 @@ export function Shell() {
           </div>
         </div>
       )}
-      <Sheet open={!!panelSheet} onClose={() => setPanelSheet(null)} height="half" title={panelSheet === 'mistakes' ? '待复习错题本' : panelSheet === 'roster' ? '演员定妆表' : panelSheet === 'memory' ? '记忆库' : undefined}>
+      <Sheet
+        open={!!panelSheet}
+        onClose={() => setPanelSheet(null)}
+        height="half"
+        title={
+          panelSheet === 'notes'
+            ? '简易便签'
+            : panelSheet === 'mistakes'
+              ? '待复习错题本'
+              : panelSheet === 'roster'
+                ? '演员定妆表'
+                : panelSheet === 'memory'
+                  ? '记忆库'
+                  : undefined
+        }
+      >
         {panelSheet && <Inspector panel={{ kind: panelSheet } as InspectorPanel} sessionId={sid} modeId={modeId} />}
       </Sheet>
       <Overlays sessionId={sid} modeId={modeId} />

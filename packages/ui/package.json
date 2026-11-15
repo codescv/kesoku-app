@@ -1,6 +1,6 @@
 {
   "name": "@kesoku/ui",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "private": true,
   "type": "module",
   "description": "Kesoku design tokens (Warm Washi Light × Frosted Night Dark) and atomic React components.",

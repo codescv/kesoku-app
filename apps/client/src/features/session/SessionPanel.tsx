@@ -332,6 +332,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
   const current = useStore((s) => s.currentSessionId);
   const allChannels = useStore((s) => s.settings.allChannels);
   const roleFilter = useStore((s) => s.ui.roleFilter);
+  const screen = useStore((s) => s.ui.screen);
   const personas = useStore((s) => s.personas);
   const hits = useStore((s) => s.searchHits);
   const proposals = useStore((s) => s.proposals);
@@ -527,9 +528,27 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
             <UiIcon name="chevron-right" size={16} />
           </button>
           <div className="k-spanel-foot">
-            <button type="button" className="k-foot-btn" onClick={() => (actions.setUi({ screen: 'memory', drawerOpen: false }), go())}>
-              <UiIcon name="brain" size={20} /> 记忆库{pending > 0 && <span className="k-badge-dot" aria-label={`${pending} 条待确认`}>{pending}</span>}
-            </button>
+            <div className="k-spanel-foot-row">
+              <button
+                type="button"
+                className={'k-foot-btn' + (screen === 'memory' ? ' is-active' : '')}
+                onClick={() => (actions.setUi({ screen: 'memory', drawerOpen: false }), go())}
+              >
+                <UiIcon name="brain" size={18} />
+                <span>记忆库</span>
+                {pending > 0 && <span className="k-badge-dot" aria-label={`${pending} 条待确认`}>{pending}</span>}
+              </button>
+              <button
+                type="button"
+                className={'k-foot-btn' + (screen === 'notes' ? ' is-active' : '')}
+                data-testid="sidebar-notes-btn"
+                aria-current={screen === 'notes' ? 'page' : undefined}
+                onClick={() => (actions.setUi({ screen: 'notes', drawerOpen: false }), go())}
+              >
+                <UiIcon name="note" size={14} />
+                <span>便签</span>
+              </button>
+            </div>
             <button type="button" className="k-foot-btn" onClick={() => (actions.setUi({ screen: 'studio', drawerOpen: false }), go())}>
               <Avatar src={activeAvatarSrc} name={activePersona?.display_name ?? roleFallbackName(activeRole)} size={22} ai={activePersona?.avatar_ai} /> 角色与形象工坊
             </button>

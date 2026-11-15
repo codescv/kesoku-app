@@ -21,7 +21,7 @@ import { translatorStartPrefs } from './translatorPrefs';
 import { fallbackRoleId } from '../features/persona/model';
 
 const SEQ_TYPES = new Set<string>(SEQ_EVENT_TYPES);
-export const APP_VERSION = '0.1.17';
+export const APP_VERSION = '0.1.18';
 
 type Payload = Record<string, unknown>;
 

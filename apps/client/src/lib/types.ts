@@ -37,6 +37,7 @@ export interface StreamPreview {
 
 export type InspectorPanel =
   | { kind: 'memory' }
+  | { kind: 'notes' }
   | { kind: 'word'; token: import('@kesoku/protocol').LexToken; sentence?: string }
   | { kind: 'dex' }
   | { kind: 'party' }

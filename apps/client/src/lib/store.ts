@@ -50,7 +50,7 @@ export interface Settings {
   translatorForeignLangs: string[];
 }
 
-export type Screen = 'chat' | 'settings' | 'memory' | 'studio' | 'files';
+export type Screen = 'chat' | 'settings' | 'memory' | 'notes' | 'studio' | 'files';
 
 export interface Toast {
   id: number;

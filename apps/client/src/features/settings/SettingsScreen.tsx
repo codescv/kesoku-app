@@ -441,6 +441,17 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
             </span>
             <UiIcon name="chevron-right" size={18} />
           </button>
+          <button
+            type="button"
+            className="k-link-row"
+            data-testid="settings-notes-btn"
+            onClick={() => actions.setUi({ screen: 'notes' })}
+          >
+            <span>
+              <UiIcon name="note" size={18} /> 简易便签 (notes.md)
+            </span>
+            <UiIcon name="chevron-right" size={18} />
+          </button>
           <button type="button" className="k-link-row" onClick={() => actions.setUi({ screen: 'files' })}>
             <span>
               <UiIcon name="folder" size={18} /> 文件管理

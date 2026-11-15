@@ -122,6 +122,32 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
 
   return (
     <div className={'k-memory' + (embedded ? ' is-embedded' : '')}>
+      {embedded && (
+        <div className="k-inspector-tabs" role="tablist" aria-label="检视器切换">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={true}
+            className="k-inspector-tab is-active"
+            data-testid="inspector-tab-memory"
+            onClick={() => actions.setUi({ inspector: { kind: 'memory' } })}
+          >
+            <UiIcon name="brain" size={15} />
+            <span>记忆库</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={false}
+            className="k-inspector-tab"
+            data-testid="inspector-tab-notes"
+            onClick={() => actions.setUi({ inspector: { kind: 'notes' } })}
+          >
+            <UiIcon name="note" size={15} />
+            <span>便签</span>
+          </button>
+        </div>
+      )}
       <div className="k-memory-head">
         <h2>
           <UiIcon name="brain" size={20} /> 记忆库

@@ -144,6 +144,17 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
             </span>
             <UiIcon name="chevron-right" size={18} />
           </button>
+          <button
+            type="button"
+            className="k-link-row"
+            data-testid="topbar-notes-btn"
+            onClick={() => (setOpen(false), actions.setUi({ screen: 'notes' }))}
+          >
+            <span>
+              <UiIcon name="note" size={18} /> 简易便签 (notes.md)
+            </span>
+            <UiIcon name="chevron-right" size={18} />
+          </button>
         </section>
         <section className="k-rm-section">
           <h3>

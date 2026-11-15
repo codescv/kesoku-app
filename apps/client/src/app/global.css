@@ -584,3 +584,79 @@ html, body, #root { width: 100%; max-width: 100vw; overflow-x: hidden; }
 .k-md table, .k-table-wrap { max-width: 100%; }
 .k-table-wrap { overflow-x: auto; }
 .k-md img, .k-segs img { max-width: 100%; height: auto; }
+
+/* ── v0.1.18 · Sticky Notes (简易便签 · $AWD/notes.md) & Inspector switcher ── */
+.k-spanel-foot-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.k-spanel-foot-row .k-foot-btn { padding: 0 10px; min-width: 0; font-size: 14.5px; }
+.k-spanel-foot-row .k-foot-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-foot-btn.is-active { background: var(--primary-soft); border-color: var(--primary-border); color: var(--primary-strong); }
+.k-foot-btn.is-active .k-icon { color: var(--primary-strong); }
+
+.k-inspector-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: 12px; background: var(--subcard, var(--bg-elev)); border: 1px solid var(--line, var(--border)); }
+.k-inspector-tab { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 0 10px; border-radius: 9px; border: 0; background: transparent; color: var(--ink-2); font-weight: 800; font-size: 13.5px; transition: background 0.14s, color 0.14s; }
+.k-inspector-tab:hover { color: var(--ink); }
+.k-inspector-tab.is-active { background: var(--card, var(--bg-card)); color: var(--ink); box-shadow: var(--shadow); }
+.k-inspector-tab.is-active .k-icon { color: var(--accent); }
+
+.k-notes { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+.k-notes-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; min-height: 62px; padding: 10px 16px; border-bottom: 1px solid var(--line, var(--border)); background: var(--bg); flex-shrink: 0; }
+.k-notes-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.k-notes-title { margin: 0; font-size: 20px; display: inline-flex; align-items: center; gap: 8px; }
+.k-notes-title .k-icon { color: var(--accent); }
+.k-notes-badge { font-family: var(--font-mono); font-size: 12px; }
+.k-notes-saved { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 800; color: var(--ok); padding: 2px 8px; border-radius: 999px; background: var(--ok-soft); border: 1px solid var(--ok-border); }
+.k-notes-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.k-notes-refresh { gap: 5px; }
+.k-notes-error { margin: 10px 16px 0; padding: 10px 14px; border-radius: 12px; background: var(--danger-soft); border: 1px solid var(--danger-border); color: var(--danger); font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.k-notes-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 16px calc(24px + var(--safe-b)); max-width: 860px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+.k-notes.is-embedded { flex: none; overflow: visible; background: transparent; padding: calc(14px + var(--safe-t)) 14px 16px; gap: 10px; }
+.k-notes.is-embedded .k-notes-head { min-height: 0; padding: 0; border-bottom: 0; background: transparent; gap: 8px; }
+.k-notes.is-embedded .k-notes-title { font-size: 17px; }
+.k-notes.is-embedded .k-notes-body { padding: 0; max-width: none; overflow: visible; gap: 10px; }
+.k-notes.is-embedded .k-notes-error { margin: 0; }
+
+.k-notes-composer { padding: 12px 14px; border-radius: 18px; background: var(--card, var(--bg-card)); border: 1.5px solid var(--line, var(--border)); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px; }
+.k-notes-input { width: 100%; min-height: 76px; resize: vertical; padding: 10px 12px; border-radius: 12px; border: 1.5px solid var(--line, var(--border)); background: var(--subcard, var(--bg-elev)); color: var(--ink); font: 600 15px/1.5 var(--font-sans); }
+.k-notes-input::placeholder { color: var(--ink-2); font-weight: 500; }
+.k-notes-composer-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.k-notes-pin-toggle { cursor: pointer; font-weight: 800; }
+.k-notes-hint { flex: 1; min-width: 140px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+
+.k-notes-search-wrap { position: relative; display: flex; align-items: center; }
+.k-notes-search-icon { position: absolute; left: 12px; color: var(--ink-2); pointer-events: none; }
+.k-notes-search { width: 100%; min-height: 40px; padding: 0 12px 0 36px; border-radius: 12px; border: 1.5px solid var(--line, var(--border)); background: var(--card, var(--bg-card)); font-weight: 600; font-size: 14px; }
+
+.k-notes-empty { padding: 34px 18px; border-radius: 18px; border: 1.5px dashed var(--line-strong); background: var(--card, var(--bg-card)); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--ink-2); }
+.k-notes-empty-icon { width: 64px; height: 64px; border-radius: 20px; background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; }
+.k-notes-empty p { margin: 0; max-width: 360px; font-weight: 700; font-size: 14px; line-height: 1.5; }
+
+.k-notes-list { display: flex; flex-direction: column; gap: 10px; }
+@media (min-width: 720px) {
+  .k-notes:not(.is-embedded) .k-notes-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+}
+
+.k-note-card { padding: 12px 14px; border-radius: 16px; background: var(--card, var(--bg-card)); border: 1.5px solid var(--line, var(--border)); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.k-note-card.is-pinned { border-color: var(--accent-border, var(--accent)); background: linear-gradient(165deg, var(--accent-soft) 0%, var(--card, var(--bg-card)) 62%); }
+.k-note-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 6px; border-bottom: 1px dashed var(--line, var(--border)); }
+.k-note-meta { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.k-note-pin-badge { font-size: 13px; line-height: 1; }
+.k-note-time { font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-note-card.is-pinned .k-note-time { color: var(--accent); }
+.k-note-actions { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.k-note-act { width: 30px; height: 30px; border-radius: 8px; border: 0; background: transparent; color: var(--ink-2); display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+.k-note-act:hover { background: var(--subcard, var(--bg-elev)); color: var(--ink); }
+.k-note-act.is-on { color: var(--accent); background: var(--accent-soft); }
+.k-note-act.is-danger:hover { background: var(--danger-soft); color: var(--danger); }
+
+.k-note-body { font-size: 15px; line-height: 1.55; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+.k-note-blank { color: var(--ink-2); font-size: 13.5px; font-style: italic; }
+.k-note-editor { display: flex; flex-direction: column; gap: 8px; }
+.k-note-edit-input { width: 100%; min-height: 88px; resize: vertical; padding: 8px 10px; border-radius: 10px; border: 1.5px solid var(--accent); background: var(--subcard, var(--bg-elev)); color: var(--ink); font: 600 14.5px/1.5 var(--font-sans); }
+.k-note-edit-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+.k-notes-raw-wrap { flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 300px; }
+.k-notes-raw-editor { width: 100%; min-height: 320px; flex: 1; resize: vertical; padding: 14px; border-radius: 16px; border: 1.5px solid var(--line-strong); background: var(--card, var(--bg-card)); color: var(--ink); font: 500 14px/1.6 var(--font-mono); }
+.k-notes.is-embedded .k-notes-raw-editor { min-height: 260px; }
+.k-notes-raw-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
