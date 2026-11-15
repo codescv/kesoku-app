@@ -117,13 +117,15 @@ describe('SessionPanel (Items 1, 6, 7)', () => {
   it('search placeholder is plain, toolbar uses icons and 文件管理 replaces Agent 目录 (band)', () => {
     useStore.setState({ sessions: { s1: { session_id: 's1', title: '跑团夜', mode_id: 'trpg', updated_at: Date.now() / 1000, role: 'asuka' } as never } });
     render(<SessionPanel />);
-    const input = screen.getByRole('searchbox', { name: '搜索历史对话' }) as HTMLInputElement;
-    expect(input.placeholder).toBe('搜索历史对话');
     expect(document.body.textContent).not.toMatch(/FTS5|band|Agent 目录/);
     expect(screen.getByText('文件管理')).toBeTruthy();
     expect(document.querySelector('.k-srow [data-mode-icon="trpg"]')).toBeTruthy();
-    for (const n of ['search', 'plus', 'brain', 'folder', 'sliders']) expect(document.querySelector(`[data-ui-icon="${n}"]`)).toBeTruthy();
+    for (const n of ['plus', 'brain', 'folder', 'sliders']) expect(document.querySelector(`[data-ui-icon="${n}"]`)).toBeTruthy();
     expect(document.querySelector('.k-spanel-foot')!.textContent).not.toMatch(EMOJI);
+    fireEvent.click(screen.getByTestId('all-sessions-btn'));
+    const input = screen.getByRole('searchbox', { name: '搜索历史对话' }) as HTMLInputElement;
+    expect(input.placeholder).toBe('搜索历史对话');
+    expect(document.querySelector('[data-ui-icon="search"]')).toBeTruthy();
   });
 
   it('renders a ModeIcon for chat sessions and sessions without mode_id', () => {
@@ -164,7 +166,7 @@ describe('SettingsScreen (Items 1, 9, 10)', () => {
     expect(screen.getByText('记忆策略')).toBeTruthy();
     expect(screen.getByText('模型与思考深度')).toBeTruthy();
     expect(screen.getByText('文件管理')).toBeTruthy();
-    expect(screen.getByText('Kesoku v0.1.8')).toBeTruthy();
+    expect(screen.getByText(/Kesoku v0\.1\./)).toBeTruthy();
     expect(document.querySelectorAll('.k-policy-row [data-mode-icon]')).toHaveLength(8);
     expect(document.querySelector('.k-screen-head')!.textContent).not.toMatch(EMOJI);
     for (const h of document.querySelectorAll('.k-set-card h2')) expect(h.textContent).not.toMatch(EMOJI);

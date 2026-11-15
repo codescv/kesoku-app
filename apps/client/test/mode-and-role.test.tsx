@@ -204,9 +204,32 @@ describe('v0.1.14 · role selection on New Session', () => {
     fireEvent.click(screen.getByTestId('new-session'));
     expect(useStore.getState().currentSessionId).toBeNull();
     expect(useStore.getState().ui.draftRole).toBe('coder');
-    // Role filter chip on the New Session screen also picks the draft role.
+    // Role filter chip inside the 全部会话 sub-view also picks the draft role when on New Session.
+    fireEvent.click(screen.getByTestId('all-sessions-btn'));
     fireEvent.click(screen.getByRole('tab', { name: 'Kesoku Agent' }));
     expect(useStore.getState().ui.draftRole).toBe('default');
+  });
+
+  it('clicking a mode on New Session (or empty session) does not auto-send a message or start a rollback timer', async () => {
+    seedNewSession();
+    const rpc = fakeSocket();
+    render(<Launchpad />);
+    fireEvent.click(screen.getByRole('button', { name: CLASSROOM }));
+    await flush();
+    expect(callsOf(rpc, 'session.create')).toHaveLength(1);
+    expect(callsOf(rpc, 'message.send')).toHaveLength(0);
+    expect(callsOf(rpc, 'mode.start')).toHaveLength(0);
+    expect(useStore.getState().ui.pendingMode).toBeNull();
+    expect(useStore.getState().previews.new1).toBeUndefined();
+    expect(useStore.getState().sessions.new1?.mode_id).toBe('jp_classroom');
+
+    // Switching mode again while the session still has 0 messages calls mode.start with defer: true and no typing preview.
+    await act(async () => {
+      await kesoku.startMode('trpg');
+    });
+    expect(callsOf(rpc, 'mode.start')).toEqual([{ session_id: 'new1', mode_id: 'trpg', defer: true }]);
+    expect(useStore.getState().sessions.new1?.mode_id).toBe('trpg');
+    expect(useStore.getState().previews.new1).toBeUndefined();
   });
 
   it('opening an existing session drops the draft role (its own role wins)', async () => {

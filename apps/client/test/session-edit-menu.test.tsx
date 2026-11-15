@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { makeEnvelope } from '@kesoku/protocol';
 import { initialState, useStore } from '../src/lib/store';
-import { __test, kesoku } from '../src/lib/client';
+import { APP_VERSION, __test, kesoku } from '../src/lib/client';
 import type { KesokuSocket } from '../src/lib/ws';
-import { SessionPanel } from '../src/features/session/SessionPanel';
+import { RECENT_SESSIONS_LIMIT, SessionPanel } from '../src/features/session/SessionPanel';
+import { SettingsScreen, compareSemver } from '../src/features/settings/SettingsScreen';
+import * as platformMod from '../src/native/platform';
 
 function fakeSocket(fail: string[] = []) {
   const rpc = vi.fn(async (type: string, _payload?: unknown, _opts?: unknown) => {
@@ -51,7 +53,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('session long-press edit menu (v0.1.13)', () => {
+describe('session long-press & right-click edit menu (v0.1.17)', () => {
+  it('removes ⋯ button and horizontal swipe inline actions, keeping only long-press and right-click', () => {
+    fakeSocket();
+    render(<SessionPanel onNavigate={() => {}} />);
+    const row = rowOf('跑团夜');
+    expect(within(row).queryByTestId('session-more')).toBeNull();
+    fireEvent.touchStart(row, { touches: [{ clientX: 200, clientY: 50 }] });
+    fireEvent.touchMove(row, { touches: [{ clientX: 150, clientY: 52 }] });
+    fireEvent.touchEnd(row, { changedTouches: [{ clientX: 100, clientY: 52 }] });
+    expect(row.querySelector('.k-srow-actions')).toBeNull();
+    expect(within(row).queryByTestId('session-swipe-rename')).toBeNull();
+    expect(within(row).queryByTestId('session-swipe-delete')).toBeNull();
+  });
+
   it('long-press (touch held 450ms) opens the edit menu without opening the session or closing the drawer', () => {
     vi.useFakeTimers();
     const rpc = fakeSocket();
@@ -100,6 +115,33 @@ describe('session long-press edit menu (v0.1.13)', () => {
     fireEvent.click(screen.getByTestId('session-action-cancel'));
     expect(screen.queryByTestId('session-edit-menu')).toBeNull();
     expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it('on desktop large screens, right-click renders an anchored popover near the pointer without a full-screen scrim', () => {
+    fakeSocket();
+    const origMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('1024px'),
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
+    try {
+      render(<SessionPanel onNavigate={() => {}} />);
+      const btn = rowOf('跑团夜').querySelector('.k-srow-main')!;
+      fireEvent.contextMenu(btn, { clientX: 160, clientY: 210 });
+      const menu = screen.getByTestId('session-edit-menu');
+      expect(menu.getAttribute('data-popover')).toBe('true');
+      expect(menu.className).toContain('is-popover');
+      expect(menu.querySelector('.k-sedit-scrim')).toBeNull();
+      expect(menu.style.left).toBe('160px');
+      expect(menu.style.top).toBe('210px');
+      // Clicking outside closes the popover.
+      fireEvent.mouseDown(document.body);
+      expect(screen.queryByTestId('session-edit-menu')).toBeNull();
+    } finally {
+      window.matchMedia = origMatchMedia;
+    }
   });
 
   it('renames via the menu: optimistic title, session.rename RPC, toast, drawer stays open', async () => {
@@ -151,79 +193,81 @@ describe('session long-press edit menu (v0.1.13)', () => {
     expect((screen.getByTestId('session-action-delete') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText('外部渠道会话不可在 App 内删除')).toBeTruthy();
   });
+});
 
-  it('the ⋯ button opens the menu without navigating', () => {
+describe('sidebar 10 recent sessions cap & 全部会话 sub-view (v0.1.17)', () => {
+  it('shows at most 10 recent sessions on the main sidebar and moves search, role filter, and all-channels toggle into 全部会话', () => {
     fakeSocket();
-    const onNavigate = vi.fn();
-    render(<SessionPanel onNavigate={onNavigate} />);
-    fireEvent.click(within(rowOf('跑团夜')).getByTestId('session-more'));
-    expect(screen.getByTestId('session-edit-menu')).toBeTruthy();
-    expect(onNavigate).not.toHaveBeenCalled();
+    const many: Record<string, unknown> = {};
+    for (let i = 1; i <= 14; i++) {
+      many[`s${i}`] = {
+        session_id: `s${i}`,
+        title: `会话 #${i}`,
+        mode_id: 'chat',
+        chatbot_id: 'app',
+        role: i % 2 === 0 ? 'coder' : 'asuka',
+        updated_at: now() - i * 10,
+      };
+    }
+    useStore.setState({
+      personas: [
+        { role_id: 'asuka', display_name: '飞鸟', tagline: '', builtin: true },
+        { role_id: 'coder', display_name: 'Coder', tagline: '', builtin: true },
+      ] as never,
+      sessions: many as never,
+    });
+    render(<SessionPanel onNavigate={() => {}} />);
+    expect(RECENT_SESSIONS_LIMIT).toBe(10);
+    expect(document.querySelectorAll('.k-srow')).toHaveLength(10);
+    expect(screen.queryByLabelText('搜索历史对话')).toBeNull();
+    expect(screen.queryByRole('tablist', { name: '角色筛选' })).toBeNull();
+    expect(screen.queryByText('显示全部渠道 (Discord / 微信)')).toBeNull();
+
+    const allBtn = screen.getByTestId('all-sessions-btn');
+    expect(allBtn.textContent).toContain('全部会话');
+    expect(allBtn.textContent).toContain('14');
+    fireEvent.click(allBtn);
+
+    expect(screen.getByTestId('all-sessions-view')).toBeTruthy();
+    expect(screen.getByLabelText('搜索历史对话')).toBeTruthy();
+    expect(screen.getByRole('tablist', { name: '角色筛选' })).toBeTruthy();
+    expect(screen.getByText('显示全部渠道 (Discord / 微信)')).toBeTruthy();
+    expect(document.querySelectorAll('.k-srow')).toHaveLength(14);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Coder' }));
+    expect(document.querySelectorAll('.k-srow')).toHaveLength(7);
+
+    fireEvent.click(screen.getByTestId('all-sessions-back'));
+    expect(screen.queryByTestId('all-sessions-view')).toBeNull();
   });
 });
 
-describe('swipe-left inline actions (v0.1.13)', () => {
-  function swipeLeft(row: HTMLElement) {
-    fireEvent.touchStart(row, { touches: [{ clientX: 200, clientY: 50 }] });
-    fireEvent.touchMove(row, { touches: [{ clientX: 150, clientY: 52 }] });
-    fireEvent.touchEnd(row, { changedTouches: [{ clientX: 100, clientY: 52 }] });
-  }
+describe('Android 检查更新 button in SettingsScreen (v0.1.17)', () => {
+  it('compares semver accurately and checks GitHub releases on Android', async () => {
+    expect(compareSemver('0.1.18', '0.1.17')).toBe(1);
+    expect(compareSemver('v0.1.17', '0.1.17')).toBe(0);
+    expect(compareSemver('0.1.16', '0.1.17')).toBe(-1);
 
-  it('swipe reveals actions; 重命名 → 保存 renames without closing the drawer', async () => {
-    const rpc = fakeSocket();
-    const onNavigate = vi.fn();
-    render(<SessionPanel onNavigate={onNavigate} />);
-    const row = rowOf('跑团夜');
-    swipeLeft(row);
-    // The synthetic click after a swipe must not open the session.
-    fireEvent.click(row.querySelector('.k-srow-main')!);
-    const actionsBar = row.querySelector('.k-srow-actions') as HTMLElement;
-    expect(actionsBar).toBeTruthy();
-    fireEvent.click(within(actionsBar).getByText('重命名'));
-    const input = within(row).getByTestId('session-rename-input') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: '周五跑团' } });
-    fireEvent.click(within(row).getByTestId('session-rename-save'));
-    expect(useStore.getState().sessions.s2!.title).toBe('周五跑团');
+    vi.spyOn(platformMod, 'getPlatform').mockReturnValue('android');
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        tag_name: 'v9.9.9',
+        html_url: 'https://github.com/codescv/kesoku-app/releases/tag/v9.9.9',
+        assets: [{ name: 'kesoku-v9.9.9.apk', browser_download_url: 'https://github.com/codescv/kesoku-app/releases/download/v9.9.9/kesoku-v9.9.9.apk' }],
+      }),
+    } as Response);
+
+    render(<SettingsScreen onClose={() => {}} />);
+    expect(screen.getByText(`Kesoku v${APP_VERSION}`)).toBeTruthy();
+    const btn = screen.getByTestId('check-update-btn');
+    fireEvent.click(btn);
     await flush();
-    expect(rpc).toHaveBeenCalledWith('session.rename', { session_id: 's2', title: '周五跑团' }, {});
-    expect(rpcTypes(rpc)).not.toContain('session.open');
-    expect(onNavigate).not.toHaveBeenCalled();
-  });
-
-  it('swipe reveals actions; 删除 deletes in one tap without closing the drawer', async () => {
-    const rpc = fakeSocket();
-    const onNavigate = vi.fn();
-    render(<SessionPanel onNavigate={onNavigate} />);
-    const row = rowOf('跑团夜');
-    swipeLeft(row);
-    fireEvent.click(within(row.querySelector('.k-srow-actions') as HTMLElement).getByText('删除'));
-    expect(useStore.getState().sessions.s2).toBeUndefined();
-    await flush();
-    expect(rpcTypes(rpc)).toContain('session.delete');
-    expect(onNavigate).not.toHaveBeenCalled();
-    expect(screen.queryByText('跑团夜')).toBeNull();
-    expect(screen.getByText('Interactive Japanese Classroom')).toBeTruthy();
-  });
-
-  it('a re-render mid-gesture (conn latency tick) does not break the swipe', () => {
-    fakeSocket();
-    render(<SessionPanel onNavigate={() => {}} />);
-    const row = rowOf('跑团夜');
-    fireEvent.touchStart(row, { touches: [{ clientX: 200, clientY: 50 }] });
-    act(() => useStore.setState({ conn: { ...useStore.getState().conn, latencyMs: 77 } }));
-    fireEvent.touchEnd(row, { changedTouches: [{ clientX: 100, clientY: 50 }] });
-    expect(row.querySelector('.k-srow-actions')).toBeTruthy();
-  });
-
-  it('swipe right closes the actions', () => {
-    fakeSocket();
-    render(<SessionPanel onNavigate={() => {}} />);
-    const row = rowOf('跑团夜');
-    swipeLeft(row);
-    expect(row.querySelector('.k-srow-actions')).toBeTruthy();
-    fireEvent.touchStart(row, { touches: [{ clientX: 100, clientY: 50 }] });
-    fireEvent.touchEnd(row, { changedTouches: [{ clientX: 200, clientY: 50 }] });
-    expect(row.querySelector('.k-srow-actions')).toBeNull();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('update-status-text').textContent).toContain('发现新版本 v9.9.9');
+    expect((screen.getByTestId('download-update-link') as HTMLAnchorElement).href).toContain('kesoku-v9.9.9.apk');
+    expect(openSpy).toHaveBeenCalled();
   });
 });
 
@@ -249,15 +293,5 @@ describe('kesoku.renameSession / deleteSession rollback (v0.1.13)', () => {
     expect(useStore.getState().sessions.s1?.title).toBe('Interactive Japanese Classroom');
     expect(useStore.getState().currentSessionId).toBe('s1');
     expect(useStore.getState().toasts.find((t) => t.text === '删除对话失败')?.tone).toBe('error');
-  });
-});
-
-describe('iOS callout guard CSS (v0.1.13)', () => {
-  it('long-pressing panel chrome (新会话 / footer buttons) suppresses the native context menu', () => {
-    fakeSocket();
-    render(<SessionPanel onNavigate={() => {}} />);
-    expect(fireEvent.contextMenu(screen.getByText('新会话'))).toBe(false);
-    expect(fireEvent.contextMenu(screen.getByText('设置'))).toBe(false);
-    expect(fireEvent.contextMenu(screen.getByRole('searchbox', { name: '搜索历史对话' }))).toBe(true);
   });
 });

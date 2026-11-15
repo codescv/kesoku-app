@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { MODEL_CATALOG, MODE_IDS, type Device, type EngineToClientPayload } from '@kesoku/protocol';
 import { ICON_STYLE_OPTIONS, ModeIcon, POLICY_BADGE, Segmented, UiIcon, modeMeta, setIconStyle, useIconStyle, type UiIconName } from '@kesoku/ui';
-import { kesoku } from '../../lib/client';
+import { APP_VERSION, kesoku } from '../../lib/client';
+import { getPlatform } from '../../native/platform';
 import { actions, useStore, type Settings } from '../../lib/store';
 import { kvSet } from '../../lib/db';
 import { logout } from '../../lib/auth';
@@ -195,6 +196,47 @@ function Devices() {
   );
 }
 
+const GITHUB_LATEST_RELEASE_URL = 'https://api.github.com/repos/codescv/kesoku-app/releases/latest';
+const GITHUB_RELEASES_PAGE_URL = 'https://github.com/codescv/kesoku-app/releases/latest';
+
+export function compareSemver(a: string, b: string): number {
+  const pa = a.replace(/^v/i, '').trim().split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = b.replace(/^v/i, '').trim().split('.').map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length, 3);
+  for (let i = 0; i < len; i++) {
+    const da = pa[i] ?? 0;
+    const db = pb[i] ?? 0;
+    if (da !== db) return da > db ? 1 : -1;
+  }
+  return 0;
+}
+
+export async function checkAndroidUpdate(currentVersion = APP_VERSION): Promise<{
+  hasUpdate: boolean;
+  latestVersion: string;
+  downloadUrl: string;
+}> {
+  const res = await fetch(GITHUB_LATEST_RELEASE_URL, {
+    headers: { Accept: 'application/vnd.github+json' },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = (await res.json()) as {
+    tag_name?: string;
+    html_url?: string;
+    assets?: Array<{ name?: string; browser_download_url?: string }>;
+  };
+  const latestVersion = String(data.tag_name ?? '').replace(/^v/i, '').trim() || currentVersion;
+  const apkAsset = Array.isArray(data.assets)
+    ? data.assets.find((a) => typeof a?.name === 'string' && a.name.endsWith('.apk') && a.browser_download_url)
+    : undefined;
+  const downloadUrl = apkAsset?.browser_download_url || data.html_url || GITHUB_RELEASES_PAGE_URL;
+  return {
+    hasUpdate: compareSemver(latestVersion, currentVersion) > 0,
+    latestVersion,
+    downloadUrl,
+  };
+}
+
 /** Screen 14 · 安全配对与模型设置 */
 export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const conn = useStore((s) => s.conn);
@@ -205,6 +247,36 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const [showConn, setShowConn] = useState(false);
   const [pairHelp, setPairHelp] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<{ version: string; url: string } | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null);
+  const isAndroid = getPlatform() === 'android';
+
+  const onCheckUpdate = async () => {
+    if (checkingUpdate) return;
+    setCheckingUpdate(true);
+    setUpdateStatus(null);
+    try {
+      const res = await checkAndroidUpdate(APP_VERSION);
+      if (res.hasUpdate) {
+        setUpdateInfo({ version: res.latestVersion, url: res.downloadUrl });
+        setUpdateStatus(`发现新版本 v${res.latestVersion}`);
+        actions.toast(`发现新版本 v${res.latestVersion}，正在打开下载…`);
+        if (typeof window !== 'undefined' && typeof window.open === 'function') {
+          window.open(res.downloadUrl, '_blank', 'noopener,noreferrer');
+        }
+      } else {
+        setUpdateInfo(null);
+        setUpdateStatus(`当前已是最新版本 (v${APP_VERSION})`);
+        actions.toast(`当前已是最新版本 (v${APP_VERSION})`);
+      }
+    } catch {
+      setUpdateStatus('检查更新失败，请检查网络连接');
+      actions.toast('检查更新失败，请检查网络连接', 'error');
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
 
   const tone = conn.status === 'online' ? (conn.engineOnline ? 'is-ok' : 'is-bad') : conn.status === 'reconnecting' ? 'is-warn' : 'is-bad';
   const status =
@@ -377,8 +449,38 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
           </button>
           <div className="k-kv is-disabled">
             <span>版本</span>
-            <b>Kesoku v0.1.8</b>
+            <b>Kesoku v{APP_VERSION}</b>
           </div>
+          {isAndroid && (
+            <div className="k-update-box" data-testid="android-update-section">
+              <button
+                type="button"
+                className="k-btn k-btn-ghost k-check-update-btn"
+                data-testid="check-update-btn"
+                disabled={checkingUpdate}
+                onClick={() => void onCheckUpdate()}
+              >
+                <UiIcon name="refresh" size={18} />
+                {checkingUpdate ? '检查更新中…' : '检查更新'}
+              </button>
+              {updateStatus && (
+                <p className="k-set-note" data-testid="update-status-text">
+                  {updateStatus}
+                </p>
+              )}
+              {updateInfo && (
+                <a
+                  className="k-btn k-btn-primary k-check-update-btn"
+                  href={updateInfo.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="download-update-link"
+                >
+                  下载并安装 v{updateInfo.version} APK
+                </a>
+              )}
+            </div>
+          )}
         </section>
       </div>
     </div>

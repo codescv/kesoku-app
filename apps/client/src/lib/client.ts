@@ -21,7 +21,7 @@ import { translatorStartPrefs } from './translatorPrefs';
 import { fallbackRoleId } from '../features/persona/model';
 
 const SEQ_TYPES = new Set<string>(SEQ_EVENT_TYPES);
-const APP_VERSION = '0.1.5';
+export const APP_VERSION = '0.1.17';
 
 type Payload = Record<string, unknown>;
 
@@ -334,12 +334,20 @@ export const kesoku = {
     tracked.add(sid);
     // 翻译模式：母语 + 常用外语 (also persisted as session mode prefs so the HUD and the engine agree).
     if (tPrefs) void kesoku.setModePrefs(sid, tPrefs);
-    useStore.setState({ currentSessionId: sid });
-    actions.setUi({ launchpad: !opts.mode, screen: 'chat', drawerOpen: false, draftRole: null });
-    if (opts.mode) {
-      actions.setUi({ pendingMode: { sessionId: sid, modeId: opts.mode, at: Date.now() } });
-      watchPendingMode(sid, opts.mode);
+    if (opts.mode && opts.mode !== 'chat') {
+      useStore.setState((st) => ({
+        sessions: st.sessions[sid] ? { ...st.sessions, [sid]: { ...st.sessions[sid]!, mode_id: opts.mode! } } : st.sessions,
+      }));
     }
+    useStore.setState({ currentSessionId: sid });
+    actions.setUi({
+      launchpad: !opts.mode,
+      screen: 'chat',
+      drawerOpen: false,
+      draftRole: null,
+      pendingMode: null,
+      stageView: opts.mode === 'galgame' ? 'stage' : getState().ui.stageView,
+    });
     return sid;
   },
 
@@ -438,7 +446,6 @@ export const kesoku = {
     const wantRole = opts.role ?? getState().ui.draftRole;
     const curRole = getState().sessions[sid]?.role;
     if (wantRole && curRole && wantRole !== curRole) await kesoku.setRole(sid, wantRole).catch(() => actions.toast('切换角色失败', 'error'));
-    actions.setUi({ launchpad: false, pendingMode: { sessionId: sid, modeId, at: Date.now() } });
     let tPrefs: Record<string, unknown> | null = null;
     if (modeId === 'translator') {
       const o: LlmOverride = { llm: 'gemini', model_name: getState().settings.translatorModel, thinking_level: 'low', stream: true };
@@ -447,6 +454,23 @@ export const kesoku = {
       tPrefs = translatorStartPrefs(getState().settings);
       await kesoku.setModePrefs(sid, tPrefs);
     }
+    const rawItems = getState().items[sid];
+    const isEmpty = Array.isArray(rawItems) && rawItems.length === 0 && !getState().previews[sid];
+    if (isEmpty) {
+      useStore.setState((st) => ({
+        sessions: st.sessions[sid] ? { ...st.sessions, [sid]: { ...st.sessions[sid]!, mode_id: modeId } } : st.sessions,
+      }));
+      actions.setUi({
+        launchpad: false,
+        pendingMode: null,
+        stageView: modeId === 'galgame' ? 'stage' : 'bubbles',
+      });
+      await kesoku
+        .rpc('mode.start', { session_id: sid, mode_id: modeId, defer: true, ...(tPrefs ? { prefs: tPrefs } : {}) }, { session_id: sid })
+        .catch(() => actions.toast('模式切换失败', 'error'));
+      return;
+    }
+    actions.setUi({ launchpad: false, pendingMode: { sessionId: sid, modeId, at: Date.now() } });
     const typing = actions.startTyping(sid);
     await kesoku.rpc('mode.start', { session_id: sid, mode_id: modeId, ...(tPrefs ? { prefs: tPrefs } : {}) }, { session_id: sid }).catch(() => {
       actions.clearTyping(sid, typing);
@@ -457,6 +481,16 @@ export const kesoku = {
   },
 
   async stopMode(sessionId: string): Promise<void> {
+    const rawItems = getState().items[sessionId];
+    const isEmpty = Array.isArray(rawItems) && rawItems.length === 0 && !getState().previews[sessionId];
+    if (isEmpty) {
+      useStore.setState((st) => ({
+        sessions: st.sessions[sessionId] ? { ...st.sessions, [sessionId]: { ...st.sessions[sessionId]!, mode_id: 'chat' } } : st.sessions,
+      }));
+      actions.setUi({ pendingMode: null, stageView: 'bubbles' });
+      await kesoku.rpc('mode.stop', { session_id: sessionId, defer: true }, { session_id: sessionId }).catch(() => actions.toast('退出模式失败', 'error'));
+      return;
+    }
     const typing = actions.startTyping(sessionId);
     await kesoku.rpc('mode.stop', { session_id: sessionId }, { session_id: sessionId }).catch(() => {
       actions.clearTyping(sessionId, typing);

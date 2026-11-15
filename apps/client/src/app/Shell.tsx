@@ -140,7 +140,8 @@ export function Shell() {
   const fullRoleName = rolePersona?.display_name || roleFallbackName(roleId);
   const roleName = fullRoleName.split(' ')[0] || fullRoleName;
   const showLaunchpad = ui.screen === 'chat' && (ui.launchpad || !sid);
-  const galStage = modeId === 'galgame' && ui.stageView === 'stage' && !showLaunchpad && !!sid;
+  const hasTurnActivity = Boolean((items && items.length > 0) || preview);
+  const galStage = modeId === 'galgame' && ui.stageView === 'stage' && !showLaunchpad && !!sid && hasTurnActivity;
 
   // Right column follows the mode: reset any pinned panel when the mode changes.
   useEffect(() => {
@@ -154,6 +155,7 @@ export function Shell() {
       if (mod && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         if (!desktop) actions.setUi({ drawerOpen: true });
+        window.dispatchEvent(new CustomEvent('kesoku:open-all-sessions'));
         setTimeout(() => document.getElementById('k-search')?.focus(), 50);
       } else if (mod && e.key.toLowerCase() === 'n') {
         e.preventDefault();

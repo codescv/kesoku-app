@@ -1,9 +1,9 @@
 {
   "name": "@kesoku/ui",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "private": true,
   "type": "module",
-  "description": "Kesoku design tokens (Warm Washi Light \u00d7 Frosted Night Dark) and atomic React components.",
+  "description": "Kesoku design tokens (Warm Washi Light × Frosted Night Dark) and atomic React components.",
   "exports": {
     ".": "./src/index.ts",
     "./tokens.css": "./src/tokens.css",
