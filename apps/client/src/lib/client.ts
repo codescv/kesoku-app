@@ -11,7 +11,7 @@ import {
 } from '@kesoku/protocol';
 import { getPlatform } from '../native/platform';
 import { getDeviceToken, wsUrl } from './auth';
-import { allCursors, db, kvSet, saveMessages, setCursor } from './db';
+import { allCursors, db, kvSet, purgeSessionFromDb, reconcileSessionsInDb, saveMessages, setCursor } from './db';
 import { createFrameBatcher } from '../features/stream/previewBuffer';
 import { KesokuSocket, RpcError, type SocketStatus } from './ws';
 import { actions, getState, useStore } from './store';
@@ -125,6 +125,16 @@ function onEnvelope(env: Envelope) {
       // Non-seq'd variant (should not happen, but be lenient).
       if (env.session_id) actions.applySessionEvent(env.session_id, env.type, p);
       return;
+    case 'session.deleted': {
+      const sid = (p as { session_id?: string })?.session_id ?? env.session_id;
+      if (sid) {
+        const wasCurrent = getState().currentSessionId === sid;
+        actions.removeSession(sid);
+        if (wasCurrent) actions.setUi({ launchpad: true });
+        void purgeSessionFromDb(sid).catch(() => {});
+      }
+      return;
+    }
     case 'memory.policy.updated': {
       const u = p as EngineToClientPayload<'memory.policy.updated'>;
       actions.setPolicies({ policies: u.policies, updated_at: u.updated_at });
@@ -269,12 +279,21 @@ export const kesoku = {
 
   async listSessions(): Promise<void> {
     const s = getState();
+    const roleFilter = s.ui.roleFilter;
     const res = await kesoku.rpc<EngineToClientPayload<'session.list.result'>>('session.list', {
       all_channels: s.settings.allChannels,
-      role: s.ui.roleFilter ?? undefined,
+      role: roleFilter ?? undefined,
       limit: 50,
     });
     actions.setSessions(res.sessions, true);
+    const nextSessions = getState().sessions;
+    void reconcileSessionsInDb(nextSessions, roleFilter).catch(() => {});
+    const cur = getState().currentSessionId;
+    if (cur && !roleFilter && !nextSessions[cur]) {
+      useStore.setState({ currentSessionId: null });
+      actions.setUi({ launchpad: true });
+      void kvSet('last_session', null).catch(() => {});
+    }
   },
 
   async search(q: string) {
@@ -488,8 +507,10 @@ export const kesoku = {
     const wasCurrent = getState().currentSessionId === sessionId;
     actions.removeSession(sessionId);
     if (wasCurrent) actions.setUi({ launchpad: true });
+    void purgeSessionFromDb(sessionId).catch(() => {});
     try {
       await kesoku.rpc('session.delete', { session_id: sessionId });
+      void purgeSessionFromDb(sessionId).catch(() => {});
       actions.toast('已删除对话');
     } catch {
       if (prev) actions.setSessions([prev]);

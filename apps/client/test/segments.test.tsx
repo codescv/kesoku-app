@@ -4,6 +4,8 @@ import type { BilingualSegment, Segment } from '@kesoku/protocol';
 import { BilingualCard, clearLexCacheForTest, findToken, toWordUnits, tokenSpans } from '../src/features/segments/BilingualCard';
 import { Markdown, parseBlocks } from '../src/features/segments/Markdown';
 import { SegmentList, isStickerMedia, type SegmentEnv } from '../src/features/segments/SegmentRenderer';
+import { formatMessageTime, MessageList } from '../src/features/session/MessageList';
+import { db, purgeSessionFromDb, reconcileSessionsInDb } from '../src/lib/db';
 import type { CardContext } from '../src/features/cards/types';
 import { useStore } from '../src/lib/store';
 
@@ -199,6 +201,102 @@ describe('<Markdown> safe renderer', () => {
   });
   it('parses blocks', () => {
     expect(parseBlocks('# T\n\npara\n\n```js\nx\n```').map((b) => b.t)).toEqual(['h', 'p', 'code']);
+  });
+  it('keeps sequential ordered list numbering across nested bullet sublists and blank lines', () => {
+    const md = [
+      '1. **Event Inbox (事件收件箱)**',
+      '- 不让 webhook 直接硬调 Agent',
+      '- 最小实现：按用户建事件表',
+      '',
+      '1. **Timers (定时器)**',
+      '- 让 Agent 能主动起来的关键',
+      '- **Follow-ups**: Agent 给自己设的死线',
+      '',
+      '1. **Memory (记忆)**',
+      '- 跨会话连续性的核心',
+    ].join('\n');
+    const blocks = parseBlocks(md);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].t).toBe('ol');
+    if (blocks[0].t === 'ol') {
+      expect(blocks[0].items).toHaveLength(3);
+      expect(blocks[0].subLists?.[0]).toHaveLength(2);
+      expect(blocks[0].subLists?.[1]).toHaveLength(2);
+      expect(blocks[0].subLists?.[2]).toHaveLength(1);
+    }
+    const { container } = render(<Markdown text={md} />);
+    const ols = container.querySelectorAll('ol');
+    expect(ols).toHaveLength(1);
+    const topLis = ols[0].querySelectorAll(':scope > li');
+    expect(topLis).toHaveLength(3);
+    expect(topLis[0].querySelectorAll('ul > li')).toHaveLength(2);
+    expect(topLis[1].querySelectorAll('ul > li')).toHaveLength(2);
+    expect(topLis[2].querySelectorAll('ul > li')).toHaveLength(1);
+  });
+});
+
+describe('formatMessageTime & <MessageList> timestamps', () => {
+  it('formats same-day, yesterday, same-year, and cross-year timestamps cleanly', () => {
+    const now = new Date(2026, 10, 15, 16, 30, 0).getTime();
+    const todayTs = new Date(2026, 10, 15, 9, 5, 0).getTime();
+    const yesterdayTs = new Date(2026, 10, 14, 21, 15, 0).getTime();
+    const sameYearTs = new Date(2026, 9, 8, 14, 20, 0).getTime();
+    const prevYearTs = new Date(2025, 11, 31, 23, 59, 0).getTime();
+    expect(formatMessageTime(todayTs, now)).toBe('09:05');
+    expect(formatMessageTime(yesterdayTs, now)).toBe('昨天 21:15');
+    expect(formatMessageTime(sameYearTs, now)).toBe('10-08 14:20');
+    expect(formatMessageTime(prevYearTs, now)).toBe('2025-12-31 23:59');
+  });
+
+  it('renders message send time on both user and assistant messages', () => {
+    const ts1 = new Date(2026, 10, 15, 10, 12, 0).getTime();
+    const ts2 = new Date(2026, 10, 15, 10, 13, 0).getTime();
+    useStore.setState({
+      sessions: {
+        's-time': { session_id: 's-time', chatbot_id: 'app', role: 'asuka', mode_id: 'chat', title: 'T', updated_at: ts2 },
+      },
+      items: {
+        's-time': [
+          { key: 'u1', message_id: 'u1', kind: 'user', ts: ts1, text: '你好' },
+          { key: 'a1', message_id: 'a1', kind: 'assistant', ts: ts2, segments: [{ type: 'text', markdown: '早安！' }] },
+        ],
+      },
+    });
+    render(<MessageList sessionId="s-time" modeId="chat" />);
+    const times = screen.getAllByTestId('msg-time');
+    expect(times).toHaveLength(2);
+    expect(times[0].textContent).toContain('10:12');
+    expect(times[1].textContent).toContain('10:13');
+  });
+});
+
+describe('IndexedDB session reconciliation', () => {
+  it('purgeSessionFromDb and reconcileSessionsInDb remove stale deleted sessions so web reload does not flash old sessions', async () => {
+    const sKeep = { session_id: 's-keep-1', chatbot_id: 'app', role: 'asuka', mode_id: 'chat', title: 'Keep 1', updated_at: 100 };
+    const sOld2 = { session_id: 's-old-2', chatbot_id: 'app', role: 'asuka', mode_id: 'chat', title: 'Old 2', updated_at: 90 };
+    const sOld3 = { session_id: 's-old-3', chatbot_id: 'app', role: 'coder', mode_id: 'chat', title: 'Old 3', updated_at: 80 };
+    await db.sessions.bulkPut([
+      { session_id: 's-keep-1', data: sKeep, updated_at: 100 },
+      { session_id: 's-old-2', data: sOld2, updated_at: 90 },
+      { session_id: 's-old-3', data: sOld3, updated_at: 80 },
+    ]);
+    await db.messages.put({
+      id: 's-old-2|m1',
+      session_id: 's-old-2',
+      ts: 90,
+      data: { key: 'm1', message_id: 'm1', kind: 'user', ts: 90, text: 'hi' },
+    });
+    await db.cursors.put({ session_id: 's-old-2', last_seq: 5 });
+
+    await reconcileSessionsInDb({ 's-keep-1': sKeep });
+
+    const remaining = await db.sessions.toArray();
+    expect(remaining.map((s) => s.session_id)).toEqual(['s-keep-1']);
+    expect(await db.messages.where('session_id').equals('s-old-2').count()).toBe(0);
+    expect(await db.cursors.get('s-old-2')).toBeUndefined();
+
+    await purgeSessionFromDb('s-keep-1');
+    expect(await db.sessions.count()).toBe(0);
   });
 });
 

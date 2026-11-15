@@ -129,10 +129,10 @@
 
   --hit: 44px;
 
-  --safe-t: env(safe-area-inset-top, var(--safe-top, 0px));
-  --safe-b: env(safe-area-inset-bottom, var(--safe-bottom, 0px));
-  --safe-l: env(safe-area-inset-left, var(--safe-left, 0px));
-  --safe-r: env(safe-area-inset-right, var(--safe-right, 0px));
+  --safe-t: max(env(safe-area-inset-top, 0px), var(--safe-top, 0px));
+  --safe-b: max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px));
+  --safe-l: max(env(safe-area-inset-left, 0px), var(--safe-left, 0px));
+  --safe-r: max(env(safe-area-inset-right, 0px), var(--safe-right, 0px));
 }
 
 :root[data-fontsize='large'] {

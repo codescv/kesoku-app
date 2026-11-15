@@ -116,6 +116,7 @@ export function ProfilePanel({
   const d = draft ?? base;
   const dirty = d.nickname !== base.nickname || d.bio !== base.bio || d.cameo_opt_in !== base.cameo_opt_in;
   const hasAi = !!profile.avatar_ai;
+  const canCameo = hasExistingSource || hasAi;
   const bioBytes = utf8Bytes(d.bio);
   const errors = {
     nickname: d.nickname.length > 32 ? '最多 32 个字符' : undefined,
@@ -134,7 +135,7 @@ export function ProfilePanel({
       const res = await kesoku.rpc<EngineToClientPayload<'user_profile.put.result'>>('user_profile.put', {
         nickname: d.nickname.trim(),
         bio: d.bio,
-        cameo_opt_in: hasAi ? d.cameo_opt_in : false,
+        cameo_opt_in: canCameo ? d.cameo_opt_in : false,
       });
       if (res?.profile) actions.setProfile(res.profile);
       setDraft(null);
@@ -176,7 +177,7 @@ export function ProfilePanel({
           </span>
           <div className="ps-avatar-main">
             <div className="ps-row">
-              <span className="ps-title">我的头像与二次元形象</span>
+              <span className="ps-title">我的头像与参考照</span>
             </div>
             {hasAi && (
               <button type="button" className="ps-ai-badge" onClick={() => setGenOpen(true)}>
@@ -232,16 +233,18 @@ export function ProfilePanel({
         <section className="ps-card">
           <div className="ps-row ps-between">
             <div>
-              <div className="ps-strong">允许在约会与剧场插画中以二次元形象同框</div>
+              <div className="ps-strong">允许在约会与剧场插画中与角色同框</div>
               <div className="ps-sub">
-                {hasAi ? '开启后作为我的锁脸参考' : '需先生成 AI 头像'}
+                {canCameo
+                  ? '开启后，双人插画将直接以你的原图/头像作为五官参考绘制同框画面（无需先生成 AI 头像）'
+                  : '请先上传一张个人照片，即可直接作为双人插画的五官参考'}
               </div>
             </div>
             <Switch
-              checked={hasAi && d.cameo_opt_in}
-              disabled={!hasAi}
+              checked={canCameo && d.cameo_opt_in}
+              disabled={!canCameo}
               onChange={(v) => patch({ cameo_opt_in: v })}
-              label="允许在约会与剧场插画中以二次元形象同框"
+              label="允许在约会与剧场插画中与角色同框"
             />
           </div>
         </section>

@@ -84,3 +84,54 @@ export async function kvGet<T>(key: string, fallback: T): Promise<T> {
 export async function kvSet(key: string, value: unknown): Promise<void> {
   await db.kv.put({ key, value });
 }
+
+/** Completely purge a deleted session and its messages/cursors/states/last_session pointer from IndexedDB. */
+export async function purgeSessionFromDb(sessionId: string): Promise<void> {
+  await db.transaction('rw', [db.sessions, db.messages, db.cursors, db.states, db.kv], async () => {
+    await db.sessions.delete(sessionId);
+    await db.messages.where('session_id').equals(sessionId).delete();
+    await db.cursors.delete(sessionId);
+    await db.states.delete(sessionId);
+    const last = await db.kv.get('last_session');
+    if (last?.value === sessionId) {
+      await db.kv.delete('last_session');
+    }
+  });
+}
+
+/**
+ * Reconcile IndexedDB sessions against the authoritative active session map so deleted sessions
+ * never linger in IndexedDB and flash on web page reload.
+ */
+export async function reconcileSessionsInDb(
+  sessions: Record<string, SessionSummary>,
+  roleFilter?: string | null,
+): Promise<void> {
+  const keepIds = new Set(Object.keys(sessions));
+  const rows = Object.values(sessions).map((d) => ({
+    session_id: d.session_id,
+    data: d,
+    updated_at: d.updated_at,
+  }));
+  await db.transaction('rw', [db.sessions, db.messages, db.cursors, db.states, db.kv], async () => {
+    const existing = await db.sessions.toArray();
+    const staleIds = existing
+      .filter((row) => (!roleFilter || row.data?.role === roleFilter) && !keepIds.has(row.session_id))
+      .map((row) => row.session_id);
+    if (staleIds.length > 0) {
+      await db.sessions.bulkDelete(staleIds);
+      await db.cursors.bulkDelete(staleIds);
+      await db.states.bulkDelete(staleIds);
+      for (const id of staleIds) {
+        await db.messages.where('session_id').equals(id).delete();
+      }
+      const last = await db.kv.get('last_session');
+      if (typeof last?.value === 'string' && staleIds.includes(last.value)) {
+        await db.kv.delete('last_session');
+      }
+    }
+    if (rows.length > 0) {
+      await db.sessions.bulkPut(rows);
+    }
+  });
+}

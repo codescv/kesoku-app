@@ -15,14 +15,37 @@ import { explainLexical } from '../../lib/lexical';
 import { overlays } from './overlays';
 import { useIsDesktop } from '../../app/useMedia';
 
-function AssistantHeader({ roleId, fallbackName }: { roleId: string; fallbackName: string }) {
+/** Format a message timestamp (`ts` in Unix seconds or ms) as `HH:mm`, `昨天 HH:mm`, `MM-DD HH:mm`, or `YYYY-MM-DD HH:mm`. */
+export function formatMessageTime(ts: number | undefined, nowMs = Date.now()): string {
+  if (typeof ts !== 'number' || !Number.isFinite(ts) || ts <= 0) return '';
+  const ms = ts > 1e11 ? ts : ts * 1000;
+  const d = new Date(ms);
+  const now = new Date(nowMs);
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const hhmm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfMsgDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const dayDiff = Math.round((startOfToday - startOfMsgDay) / 86_400_000);
+  if (dayDiff === 0) return hhmm;
+  if (dayDiff === 1) return `昨天 ${hhmm}`;
+  if (d.getFullYear() === now.getFullYear()) return `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${hhmm}`;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${hhmm}`;
+}
+
+function AssistantHeader({ roleId, fallbackName, ts }: { roleId: string; fallbackName: string; ts?: number }) {
   const persona = useStore((s) => s.personas.find((p) => p.role_id === roleId));
   const src = useAvatarUrl(persona ? roleAvatarRef(persona) : null, persona?.avatar_rev);
   const displayName = persona?.display_name || fallbackName;
+  const timeLabel = formatMessageTime(ts);
   return (
     <div className="k-assistant-head">
       <Avatar src={src} name={displayName} size={28} ai={persona?.avatar_ai} />
       <span className="k-assistant-name">{displayName}</span>
+      {timeLabel && (
+        <time className="k-msg-time" data-testid="msg-time">
+          {timeLabel}
+        </time>
+      )}
     </div>
   );
 }
@@ -137,6 +160,7 @@ export function UserAttachmentItem({ a, index, sessionId, messageId }: { a: Atta
 }
 
 function UserBubble({ item, sessionId }: { item: ChatItem; sessionId: string }) {
+  const timeLabel = formatMessageTime(item.ts);
   return (
     <div className={'k-row k-row-user' + (item.status === 'failed' ? ' is-failed' : '')}>
       <div className="k-bubble k-bubble-user">
@@ -150,6 +174,11 @@ function UserBubble({ item, sessionId }: { item: ChatItem; sessionId: string }) 
         {item.text && <div className="k-user-text">{item.text}</div>}
         {item.status === 'sending' && <span className="k-sending" aria-label="发送中">···</span>}
       </div>
+      {timeLabel && item.status !== 'failed' && (
+        <time className="k-msg-time k-msg-time-user" data-testid="msg-time">
+          {timeLabel}
+        </time>
+      )}
       {item.status === 'failed' && (
         <button type="button" className="k-retry" onClick={() => void kesoku.retry(sessionId, item)}>
           未送达 · 点击重试
@@ -258,7 +287,7 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
           const rowRoleId = item.sender?.role_id || defaultRoleId;
           return (
             <div key={item.key} className="k-row k-row-assistant">
-              <AssistantHeader roleId={rowRoleId} fallbackName={item.sender?.display_name ?? name} />
+              <AssistantHeader roleId={rowRoleId} fallbackName={item.sender?.display_name ?? name} ts={item.ts} />
               <ThinkingPill events={evs} running={false} />
               {item.segments?.length ? <SegmentList segments={item.segments} env={env} /> : item.text ? <Markdown text={item.text} /> : null}
               {byMessage.m.get(item.key)?.map((p) => <ProposalCard key={p.proposal_id} proposal={p} />) ?? null}
