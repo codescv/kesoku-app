@@ -66,7 +66,7 @@ describe('translator native / foreign languages on mode start (v0.3.7 Item 4)', 
     expect(sid).toBe('s9');
     const expected = { native_lang: 'zh-CN', foreign_langs: ['ja', 'en', 'ko'], src_lang: 'ja', dst_lang: 'zh-CN' };
     expect(rpc.mock.calls[0][0]).toBe('session.create');
-    expect(rpc.mock.calls[0][1]).toEqual({ mode: 'translator', prefs: expected });
+    expect(rpc.mock.calls[0][1]).toEqual({ mode: 'translator', role: 'default', prefs: expected });
     await vi.waitFor(() => expect(rpc.mock.calls.some((c) => c[0] === 'mode.prefs.set')).toBe(true));
     expect(useStore.getState().modePrefs.s9).toMatchObject(expected);
   });

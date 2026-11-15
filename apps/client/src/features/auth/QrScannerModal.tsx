@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { pickImages } from '../../native/camera';
+import { ensureCameraPermission, pickImages } from '../../native/camera';
 import { decodeQrFromBlob, decodeQrFromSource } from '../../native/qr';
 import { UiIcon } from '@kesoku/ui';
 
@@ -13,7 +13,7 @@ export function QrScannerModal({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [camState, setCamState] = useState<'starting' | 'ready' | 'unavailable'>('starting');
   const [hint, setHint] = useState<string | null>(null);
-  const [picking, setPicking] = useState(false);
+  const [picking, setPicking] = useState<'camera' | 'gallery' | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -27,6 +27,10 @@ export function QrScannerModal({
         return;
       }
       try {
+        // Android WebView: the OS CAMERA runtime permission must be granted before getUserMedia
+        // (BridgeWebChromeClient's VIDEO_CAPTURE request), otherwise the preview silently fails.
+        await ensureCameraPermission();
+        if (!active) return;
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: 'environment' },
@@ -76,11 +80,11 @@ export function QrScannerModal({
     };
   }, [onDetect]);
 
-  async function handlePickImage() {
+  async function handlePickImage(source: 'camera' | 'gallery') {
     setHint(null);
-    setPicking(true);
+    setPicking(source);
     try {
-      const files = await pickImages(1, { source: 'gallery' });
+      const files = await pickImages(1, { source });
       const file = files[0];
       if (!file) return;
       const decoded = await decodeQrFromBlob(file);
@@ -92,7 +96,7 @@ export function QrScannerModal({
     } catch {
       setHint('读取图片失败，请重试');
     } finally {
-      setPicking(false);
+      setPicking(null);
     }
   }
 
@@ -140,14 +144,30 @@ export function QrScannerModal({
           <button
             type="button"
             className="k-btn k-btn-ghost k-btn-block"
-            disabled={picking}
-            onClick={() => void handlePickImage()}
+            data-testid="qr-take-photo"
+            disabled={!!picking}
+            onClick={() => void handlePickImage('camera')}
           >
-            {picking ? (
+            {picking === 'camera' ? (
               '识别中…'
             ) : (
               <>
-                <UiIcon name="image" size={18} /> 从相册 / 拍照识别二维码
+                <UiIcon name="camera" size={18} /> 拍照识别
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            className="k-btn k-btn-ghost k-btn-block"
+            data-testid="qr-pick-gallery"
+            disabled={!!picking}
+            onClick={() => void handlePickImage('gallery')}
+          >
+            {picking === 'gallery' ? (
+              '识别中…'
+            ) : (
+              <>
+                <UiIcon name="image" size={18} /> 从相册选择
               </>
             )}
           </button>

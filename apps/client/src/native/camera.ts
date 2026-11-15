@@ -1,10 +1,10 @@
-import { Camera, MediaTypeSelection } from '@capacitor/camera';
+import { Camera, CameraResultType, CameraSource, MediaTypeSelection } from '@capacitor/camera';
 import { isNative } from './platform';
 
 export interface PickImagesOptions {
   /**
-   * Web only: `'camera'` adds the `capture` attribute so mobile browsers open the camera
-   * directly; `'gallery'` (default) shows the regular file / photo picker.
+   * `'camera'` takes a new photo (native: system camera via `Camera.takePhoto`; web: the `capture`
+   * attribute so mobile browsers open the camera directly); `'gallery'` (default) shows the photo picker.
    */
   source?: 'gallery' | 'camera';
 }
@@ -62,6 +62,45 @@ function pickWithInput(max: number, source: 'gallery' | 'camera'): Promise<File[
   });
 }
 
+function isCancel(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /cancel/i.test(msg);
+}
+
+/**
+ * Ensures the OS camera permission (Android `Manifest.permission.CAMERA` / iOS camera usage) is granted
+ * before `getUserMedia` / the system camera. Resolves `true` when granted or on web; never throws.
+ */
+export async function ensureCameraPermission(): Promise<boolean> {
+  if (!isNative()) return true;
+  try {
+    const cur = await Camera.checkPermissions();
+    if (cur.camera === 'granted' || cur.camera === 'limited') return true;
+    const next = await Camera.requestPermissions({ permissions: ['camera'] });
+    return next.camera === 'granted' || next.camera === 'limited';
+  } catch {
+    return false;
+  }
+}
+
+/** Native system camera: one new photo. Resolves [] when the user cancels. */
+async function takeNativePhoto(): Promise<File[]> {
+  let webPath: string | undefined;
+  try {
+    webPath = (await Camera.takePhoto({ quality: 90, correctOrientation: true, editable: 'no' })).webPath;
+  } catch (err) {
+    if (isCancel(err)) return [];
+    // Older native plugin builds without takePhoto: fall back to the legacy getPhoto API.
+    try {
+      webPath = (await Camera.getPhoto({ quality: 90, correctOrientation: true, resultType: CameraResultType.Uri, source: CameraSource.Camera })).webPath;
+    } catch (err2) {
+      if (isCancel(err2)) return [];
+      throw err2;
+    }
+  }
+  return webPath ? [await webPathToFile(webPath, 0)] : [];
+}
+
 /**
  * Lets the user pick up to `max` images (call from a tap handler).
  * Native: system photo picker via @capacitor/camera. Web: file input.
@@ -70,6 +109,7 @@ function pickWithInput(max: number, source: 'gallery' | 'camera'): Promise<File[
 export async function pickImages(max: number, options: PickImagesOptions = {}): Promise<File[]> {
   const limit = clampMax(max);
   if (!isNative()) return pickWithInput(limit, options.source ?? 'gallery');
+  if (options.source === 'camera') return takeNativePhoto();
 
   let results;
   try {
@@ -81,8 +121,7 @@ export async function pickImages(max: number, options: PickImagesOptions = {}): 
       correctOrientation: true,
     }));
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/cancel/i.test(msg)) return [];
+    if (isCancel(err)) return [];
     throw err;
   }
   const paths = results
