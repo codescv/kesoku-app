@@ -435,14 +435,40 @@ export const kesoku = {
     useStore.setState((st) => ({ sessions: { ...st.sessions, [sessionId]: { ...st.sessions[sessionId], role } } }));
   },
 
-  async renameSession(sessionId: string, title: string) {
-    await kesoku.rpc('session.rename', { session_id: sessionId, title });
-    useStore.setState((st) => ({ sessions: { ...st.sessions, [sessionId]: { ...st.sessions[sessionId], title } } }));
+  /** Optimistic rename: the row updates immediately, rolls back + toasts on RPC failure. Never throws. */
+  async renameSession(sessionId: string, rawTitle: string): Promise<void> {
+    const title = rawTitle.trim();
+    if (!title) return;
+    const prev = getState().sessions[sessionId]?.title;
+    const setTitle = (t: string) =>
+      useStore.setState((st) => ({ sessions: st.sessions[sessionId] ? { ...st.sessions, [sessionId]: { ...st.sessions[sessionId]!, title: t } } : st.sessions }));
+    setTitle(title);
+    try {
+      await kesoku.rpc('session.rename', { session_id: sessionId, title });
+      actions.toast('已重命名对话');
+    } catch {
+      if (prev !== undefined) setTitle(prev);
+      actions.toast('重命名对话失败', 'error');
+    }
   },
 
-  async deleteSession(sessionId: string) {
-    await kesoku.rpc('session.delete', { session_id: sessionId });
+  /** Optimistic delete: the row disappears immediately, is restored + toasts on RPC failure. Never throws. */
+  async deleteSession(sessionId: string): Promise<void> {
+    const prev = getState().sessions[sessionId];
+    const wasCurrent = getState().currentSessionId === sessionId;
     actions.removeSession(sessionId);
+    if (wasCurrent) actions.setUi({ launchpad: true });
+    try {
+      await kesoku.rpc('session.delete', { session_id: sessionId });
+      actions.toast('已删除对话');
+    } catch {
+      if (prev) actions.setSessions([prev]);
+      if (wasCurrent) {
+        useStore.setState({ currentSessionId: sessionId });
+        actions.setUi({ launchpad: false });
+      }
+      actions.toast('删除对话失败', 'error');
+    }
   },
 
   // ── memory policies (V1.2) ──
