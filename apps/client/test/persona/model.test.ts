@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_MEMORY_POLICIES } from '@kesoku/protocol';
-import { policyDeviations, roleAvatarRef, sanitizePromptHint, sortRoles, userAvatarRef, validatePersona, emptyDraft } from '../../src/features/persona/model';
+import {
+  emptyDraft,
+  fallbackRoleId,
+  policyDeviations,
+  roleAvatarRef,
+  roleFallbackName,
+  sanitizePromptHint,
+  sortRoles,
+  userAvatarRef,
+  validatePersona,
+  VOICE_PRESETS,
+  voicePresetOptions,
+} from '../../src/features/persona/model';
 import { withRev } from '../../src/features/persona/avatar';
 
 describe('persona model', () => {
@@ -48,5 +60,27 @@ describe('persona model', () => {
   it('sorts builtin roles first', () => {
     const r = (role_id: string, builtin = false) => ({ role_id, display_name: role_id, tagline: '', builtin, avatar_rev: 0 });
     expect(sortRoles([r('zed'), r('default', true), r('asuka', true), r('coder', true)]).map((x) => x.role_id)).toEqual(['asuka', 'coder', 'default', 'zed']);
+  });
+
+  it('falls back to the first role in display order, else the generic default role', () => {
+    expect(fallbackRoleId([])).toBe('default');
+    expect(fallbackRoleId([{ role_id: 'zed', display_name: 'Zed', tagline: '', builtin: false, avatar_rev: 0 }])).toBe('zed');
+    expect(roleFallbackName('coder')).toBe('Coder');
+    expect(roleFallbackName('mio')).toBe('mio');
+    expect(roleFallbackName(undefined)).toBe('AI 助手');
+  });
+
+  it('prepends a role-specific saved preset and a role-dedicated voice for any role', () => {
+    const opts = voicePresetOptions({ role_id: 'asuka', display_name: '斋藤飞鸟', voice_preset: 'asuka' });
+    expect(opts[0]).toEqual({ id: 'asuka', label: '斋藤飞鸟 原声 (asuka)' });
+    expect(opts.filter((o) => o.id === 'asuka')).toHaveLength(1);
+    expect(opts.slice(1).map((o) => o.id)).toEqual(VOICE_PRESETS.map((v) => v.id));
+
+    const mio = voicePresetOptions({ role_id: 'mio', display_name: '旅伴 Mio', voice_preset: 'cherry' });
+    expect(mio[0]).toEqual({ id: 'mio', label: '旅伴 Mio 专属语音 (mio)' });
+    expect(mio.filter((o) => o.id === 'cherry')).toHaveLength(1);
+
+    expect(voicePresetOptions({ role_id: 'default', voice_preset: null }).map((o) => o.id)).toEqual(VOICE_PRESETS.map((v) => v.id));
+    expect(voicePresetOptions(null)).toHaveLength(VOICE_PRESETS.length);
   });
 });

@@ -229,6 +229,30 @@ describe('pkmn_move_wiki', () => {
     fireEvent.click(screen.getByRole('button', { name: /多重鳞片/ }));
     expect(ctx.openPeek).toHaveBeenCalledWith(expect.objectContaining({ id: 'multiscale' }), expect.any(Object));
   });
+
+  describe('description + effect', () => {
+    const descBase = { name: { zh: '大声咆哮' }, type: '恶', category: 'special', power: 55, accuracy: 95, version: 'sv' };
+    it('renders 招式说明 and 招式效果 separately', () => {
+      const { container } = renderKind('pkmn_move_wiki', { ...descBase, description: '大声地咆哮，攻击对手。', effect_short: '100%降低目标特攻1级' });
+      expect(container.querySelector('.kc-mv-desc')?.textContent).toBe('大声地咆哮，攻击对手。');
+      const eff = container.querySelector('.kc-mv-effect');
+      expect(eff?.textContent).toBe('招式效果：100%降低目标特攻1级');
+      expect(eff?.querySelector('b')?.textContent).toBe('招式效果：');
+    });
+    it('shows the effect alone when there is no description, and dedupes identical text', () => {
+      const only = renderKind('pkmn_move_wiki', { ...descBase, effect: '降低特攻' });
+      expect(only.container.querySelector('.kc-mv-desc')).toBeNull();
+      expect(only.container.querySelector('.kc-mv-effect')?.textContent).toBe('招式效果：降低特攻');
+      only.unmount();
+      const same = renderKind('pkmn_move_wiki', { ...descBase, description: '同一句', effect_short: '同一句' });
+      expect(same.container.querySelector('.kc-mv-desc')?.textContent).toBe('同一句');
+      expect(same.container.querySelector('.kc-mv-effect')).toBeNull();
+    });
+    it('accepts localized description objects', () => {
+      const { container } = renderKind('pkmn_move_wiki', { ...descBase, description: { zh: '中文说明', en: 'English' } });
+      expect(container.querySelector('.kc-mv-desc')?.textContent).toBe('中文说明');
+    });
+  });
 });
 
 describe('pkmn_matchup / lesson / grading', () => {

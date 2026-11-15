@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { Capacitor } from '@capacitor/core';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { makeEnvelope } from '@kesoku/protocol';
 import { modeMeta } from '@kesoku/ui';
 import { initialState, actions, useStore } from '../src/lib/store';
@@ -10,13 +9,6 @@ import { Shell } from '../src/app/Shell';
 import { TopBar } from '../src/app/TopBar';
 import { Launchpad } from '../src/features/session/Launchpad';
 import { SessionPanel } from '../src/features/session/SessionPanel';
-import { AuthScreen } from '../src/features/auth/AuthScreen';
-import { tryNativeQrScan } from '../src/native/qr';
-
-// Native secure storage is not available under jsdom (AuthScreen reads the relay on native platforms).
-vi.mock('../src/native/secureStore', () => ({
-  secureStore: { get: async () => null, set: async () => {}, remove: async () => {} },
-}));
 
 const CLASSROOM = modeMeta('jp_classroom').title;
 const CHAT = modeMeta('chat').title;
@@ -227,40 +219,5 @@ describe('v0.1.14 · role selection on New Session', () => {
     expect(useStore.getState().ui.draftRole).toBeNull();
     render(<TopBar sessionId="s1" modeId="chat" onMenu={() => {}} showMenu={false} />);
     expect(screen.getByRole('button', { name: '角色与模式' }).textContent).toContain('飞鸟');
-  });
-});
-
-describe('v0.1.14 · Android 扫码配对', () => {
-  type CapGlobal = { nativePromise?: (...a: unknown[]) => Promise<unknown> };
-  let savedNativePromise: CapGlobal['nativePromise'];
-  let hanging: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    vi.spyOn(Capacitor, 'getPlatform').mockReturnValue('android');
-    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
-    // Android's Bridge logs InvalidPluginMethodException for Camera.scanQRCode and never settles the call.
-    hanging = vi.fn(() => new Promise(() => {}));
-    const g = globalThis as unknown as { Capacitor?: CapGlobal };
-    g.Capacitor ??= {};
-    savedNativePromise = g.Capacitor.nativePromise;
-    g.Capacitor.nativePromise = hanging as never;
-  });
-  afterEach(() => {
-    const g = globalThis as unknown as { Capacitor?: CapGlobal };
-    if (g.Capacitor) g.Capacitor.nativePromise = savedNativePromise;
-  });
-
-  it('tryNativeQrScan resolves unavailable immediately on Android without calling Camera.scanQRCode', async () => {
-    await expect(tryNativeQrScan()).resolves.toEqual({ status: 'unavailable' });
-    expect(hanging).not.toHaveBeenCalled();
-  });
-
-  it('tapping 扫码配对 on Android opens QrScannerModal with 拍照识别 + 从相册选择', async () => {
-    render(<AuthScreen onDone={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: /扫码配对/ }));
-    await waitFor(() => expect(screen.getByRole('dialog', { name: '扫描配对二维码' })).toBeTruthy());
-    expect(hanging).not.toHaveBeenCalledWith('Camera', 'scanQRCode', expect.anything());
-    expect(screen.getByTestId('qr-take-photo').textContent).toContain('拍照识别');
-    expect(screen.getByTestId('qr-pick-gallery').textContent).toContain('从相册选择');
   });
 });

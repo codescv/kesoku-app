@@ -125,6 +125,23 @@ describe('SessionPanel (Items 1, 6, 7)', () => {
     for (const n of ['search', 'plus', 'brain', 'folder', 'sliders']) expect(document.querySelector(`[data-ui-icon="${n}"]`)).toBeTruthy();
     expect(document.querySelector('.k-spanel-foot')!.textContent).not.toMatch(EMOJI);
   });
+
+  it('renders a ModeIcon for chat sessions and sessions without mode_id', () => {
+    const now = Date.now() / 1000;
+    useStore.setState({
+      sessions: {
+        a: { session_id: 'a', title: '闲聊', mode_id: 'chat', updated_at: now } as never,
+        b: { session_id: 'b', title: '无模式', updated_at: now - 1 } as never,
+        c: { session_id: 'c', title: '翻译', mode_id: 'translator', updated_at: now - 2 } as never,
+      },
+    });
+    render(<SessionPanel />);
+    const rows = Array.from(document.querySelectorAll('.k-srow'));
+    expect(rows).toHaveLength(3);
+    for (const r of rows) expect(r.querySelector('.k-srow-mode [data-mode-icon]')).toBeTruthy();
+    expect(document.querySelectorAll('.k-srow-mode [data-mode-icon="chat"]')).toHaveLength(2);
+    expect(document.querySelector('.k-srow-mode [data-mode-icon="translator"]')).toBeTruthy();
+  });
 });
 
 describe('Launchpad (Item 1)', () => {

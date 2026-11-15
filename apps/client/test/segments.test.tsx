@@ -145,6 +145,40 @@ describe('<BilingualCard>', () => {
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('b')).toBeNull();
   });
+
+  describe('multi-line ja / zh', () => {
+    const multiSeg = {
+      type: 'bilingual',
+      ja: '森(もり)さんは見(み)る。\n甲(こう)：行(い)かない？',
+      ja_plain: '森さんは見る。\n甲：行かない？',
+      ruby_parts: [
+        { base: '森', rt: 'もり' },
+        { base: 'さんは' },
+        { base: '見', rt: 'み' },
+        { base: 'る。\n' },
+        { base: '甲', rt: 'こう' },
+        { base: '：' },
+        { base: '行', rt: 'い' },
+        { base: 'かない？' },
+      ],
+      zh: '森先生看。\n甲：去不去？',
+    };
+
+    it('word units isolate the line break', () => {
+      const units = toWordUnits(multiSeg.ruby_parts);
+      expect(units.some((u) => u.base === '\n')).toBe(true);
+      expect(units.every((u) => u.base === '\n' || !u.base.includes('\n'))).toBe(true);
+    });
+
+    it('renders <br /> between Japanese lines and inside the Chinese translation', () => {
+      const { container } = render(<BilingualCard seg={multiSeg as never} resolveVoice={async () => null} explain={async () => null} />);
+      expect(container.querySelectorAll('.k-bi-ja br')).toHaveLength(1);
+      expect(container.querySelectorAll('.k-bi-ja ruby')).toHaveLength(4);
+      const zh = container.querySelector('.k-bi-zh')!;
+      expect(zh.querySelectorAll('br')).toHaveLength(1);
+      expect(zh.textContent).toBe('森先生看。甲：去不去？');
+    });
+  });
 });
 
 describe('<Markdown> safe renderer', () => {
