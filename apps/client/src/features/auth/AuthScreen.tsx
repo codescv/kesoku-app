@@ -127,7 +127,7 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
     <div className="k-auth">
       <div className="k-auth-card">
         <div className="k-auth-logo" aria-hidden>
-          K
+          <img src="/icons/icon.svg" alt="" width={64} height={64} />
         </div>
         <h1>Kesoku</h1>
         {!native && loadingConfig && (

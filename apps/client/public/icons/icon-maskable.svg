@@ -1,14 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="512" height="512">
   <defs>
-    <linearGradient id="kesoku-g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#3B82F6"/>
-      <stop offset="1" stop-color="#6E56CF"/>
+    <linearGradient id="kesoku-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F8F5EE"/>
+      <stop offset="1" stop-color="#EFEADF"/>
     </linearGradient>
   </defs>
-  <rect width="108" height="108" fill="url(#kesoku-g)"/>
-  <g fill="none" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M42 35V73"/>
-    <path d="M68 35L42 59"/>
-    <path d="M52 50L69 73"/>
-  </g>
+  <rect width="108" height="108" fill="url(#kesoku-bg)"/>
+  <!-- Lower-right dark strap + keyhole leather tab -->
+  <path d="M43.2 50.8 L67.0 73.4" stroke="#282D34" stroke-width="12.1" stroke-linecap="round"/>
+  <path d="M60.2 69.2 L71.2 79.8 C73.8 82.3 77.6 82.3 79.5 80.4 C81.4 78.5 81.4 74.7 78.9 72.1 L68.4 61.0 Z" fill="#1E2228"/>
+  <circle cx="73.2" cy="74.2" r="2.1" fill="#F8F5EE"/>
+  <path d="M73.2 74.2 L70.6 71.7" stroke="#F8F5EE" stroke-width="1.2" stroke-linecap="round"/>
+  <!-- Upper-right vermilion strap folding over -->
+  <path d="M74.5 25.9 L36.7 59.4" stroke="#F8F5EE" stroke-width="14.3" stroke-linecap="round"/>
+  <path d="M74.5 25.9 L36.7 59.4" stroke="#E04832" stroke-width="12.1" stroke-linecap="round"/>
+  <!-- Left vertical vermilion strap + bottom keyhole leather tab -->
+  <path d="M35.6 24.8 L35.6 71.3" stroke="#E04832" stroke-width="12.1" stroke-linecap="round"/>
+  <path d="M28.6 69.5 L28.6 81.6 C28.6 85.4 31.7 88.2 35.6 88.2 C39.5 88.2 42.6 85.4 42.6 81.6 L42.6 69.5 Z" fill="#1E2228"/>
+  <circle cx="35.6" cy="80.2" r="2.1" fill="#F8F5EE"/>
+  <path d="M35.6 80.2 L35.6 76.6" stroke="#F8F5EE" stroke-width="1.2" stroke-linecap="round"/>
+  <!-- Tri-glide '日' guitar strap buckle at waist -->
+  <rect x="24.5" y="43.3" width="22.2" height="21.4" rx="4.2" fill="#F8F5EE"/>
+  <rect x="30.3" y="45.0" width="10.6" height="18.0" fill="#E04832"/>
+  <rect x="25.8" y="44.6" width="19.6" height="18.8" rx="3.5" fill="none" stroke="#20242A" stroke-width="3.0"/>
+  <line x1="27.0" y1="54.0" x2="44.2" y2="54.0" stroke="#20242A" stroke-width="2.4"/>
 </svg>
