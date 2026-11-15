@@ -1,8 +1,8 @@
 {
   "name": "kesoku-app",
   "private": true,
-  "version": "0.1.13",
-  "description": "Kesoku — 4-platform client (Web PWA / Android / iOS) and Cloud Run relay for the self-hosted Kesoku Engine.",
+  "version": "0.1.14",
+  "description": "Kesoku \u2014 4-platform client (Web PWA / Android / iOS) and Cloud Run relay for the self-hosted Kesoku Engine.",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.32.1",
