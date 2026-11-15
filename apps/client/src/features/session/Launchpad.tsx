@@ -1,9 +1,11 @@
-import { useRef, useState } from 'react';
-import type { MemoryPolicy, ModeId } from '@kesoku/protocol';
-import { MODE_LIST, ModeIcon, POLICY_BADGE, Sheet, UiIcon, type ModeMeta } from '@kesoku/ui';
+import { useMemo, useRef, useState } from 'react';
+import type { MemoryPolicy, ModeId, PersonaSummary } from '@kesoku/protocol';
+import { Avatar, MODE_LIST, ModeIcon, POLICY_BADGE, Sheet, UiIcon, type ModeMeta } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
-import { useStore } from '../../lib/store';
+import { actions, useStore } from '../../lib/store';
 import { PolicySegmented } from '../memory/PolicySegmented';
+import { useAvatarUrl } from '../persona/avatar';
+import { fallbackRoleId, roleAvatarRef, roleFallbackName, sortRoles } from '../persona/model';
 
 const MODEL_LABEL: Record<string, string> = { 'gemini-3.8-flash': 'Flash 3.8 · Low' };
 
@@ -48,6 +50,39 @@ function ModeTile({ m, onOpen, onInfo }: { m: ModeMeta; onOpen: () => void; onIn
   );
 }
 
+function RoleAvatar({ role, size }: { role: PersonaSummary; size: number }) {
+  const src = useAvatarUrl(roleAvatarRef(role), role.avatar_rev);
+  return <Avatar src={src} name={role.display_name} size={size} ai={role.avatar_ai} />;
+}
+
+/** Horizontal role pills: the picked role starts the mode / new session. */
+function RolePills({ roles, activeRoleId, onPick, testId }: { roles: PersonaSummary[]; activeRoleId: string; onPick: (r: PersonaSummary) => void; testId?: string }) {
+  return (
+    <div className="k-launch-roles" role="radiogroup" aria-label="选择对话角色" data-testid={testId}>
+      {roles.map((r) => {
+        const on = r.role_id === activeRoleId;
+        return (
+          <button
+            key={r.role_id}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            className={'k-launch-role' + (on ? ' is-on' : '')}
+            data-testid={testId ? `launchpad-role-${r.role_id}` : undefined}
+            onClick={() => onPick(r)}
+          >
+            <RoleAvatar role={r} size={28} />
+            <span className="k-launch-role-text">
+              <b>{r.display_name || roleFallbackName(r.role_id)}</b>
+              {r.tagline ? <small>{r.tagline}</small> : null}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Screen 01 · 8-grid mode launchpad (new session). */
 export function Launchpad() {
   const [info, setInfo] = useState<ModeMeta | null>(null);
@@ -57,15 +92,36 @@ export function Launchpad() {
     .sort((a, b) => b.updated_at - a.updated_at)
     .slice(0, 2);
   const policy = useStore((s) => (info ? s.policies.policies[info.id] : undefined));
+  const personas = useStore((s) => s.personas);
+  const currentSessionId = useStore((s) => s.currentSessionId);
+  const draftRole = useStore((s) => s.ui.draftRole);
+  const roleFilter = useStore((s) => s.ui.roleFilter);
+  const activeRoleId = (currentSessionId ? sessions[currentSessionId]?.role : null) ?? draftRole ?? roleFilter ?? fallbackRoleId(personas);
+  const roleList = useMemo(() => sortRoles(personas), [personas]);
+  const activeRole = roleList.find((r) => r.role_id === activeRoleId);
+  const activeRoleName = activeRole?.display_name || roleFallbackName(activeRoleId);
+  const pickRole = (r: PersonaSummary) => {
+    actions.setUi({ draftRole: r.role_id });
+    if (currentSessionId && sessions[currentSessionId]?.role !== r.role_id) {
+      void kesoku.setRole(currentSessionId, r.role_id).catch(() => actions.toast('切换角色失败', 'error'));
+    }
+  };
+  const start = (id: ModeId) => void kesoku.startMode(id, { role: activeRoleId });
   return (
     <div className="k-launchpad">
       <div className="k-launch-head">
         <h1>想做点什么？</h1>
         <span className="k-launch-hint">点选模式开始 · 长按查看说明与记忆策略 · 或直接在下方打字</span>
       </div>
+      {roleList.length > 0 && (
+        <section className="k-launch-rolebar" aria-label="对话角色">
+          <span className="k-launch-rolebar-label">{currentSessionId ? '对话角色' : '选择对话角色'}</span>
+          <RolePills roles={roleList} activeRoleId={activeRoleId} onPick={pickRole} testId="launchpad-role-picker" />
+        </section>
+      )}
       <div className="k-mode-grid">
         {MODE_LIST.map((m) => (
-          <ModeTile key={m.id} m={m} onOpen={() => void kesoku.startMode(m.id)} onInfo={() => setInfo(m)} />
+          <ModeTile key={m.id} m={m} onOpen={() => start(m.id)} onInfo={() => setInfo(m)} />
         ))}
       </div>
       {recent.length > 0 && (
@@ -96,6 +152,12 @@ export function Launchpad() {
               <span>默认模型</span>
               <b>{info.defaultModel ? MODEL_LABEL[info.defaultModel] ?? info.defaultModel : '跟随顶栏模型胶囊'}</b>
             </div>
+            {roleList.length > 0 && (
+              <div className="k-kv k-kv-col">
+                <span>对话角色</span>
+                <RolePills roles={roleList} activeRoleId={activeRoleId} onPick={pickRole} />
+              </div>
+            )}
             <div className="k-kv k-kv-col">
               <span>当前模式记忆</span>
               <PolicySegmented modeId={info.id as ModeId} value={policy} />
@@ -106,10 +168,10 @@ export function Launchpad() {
               onClick={() => {
                 const id = info.id as ModeId;
                 setInfo(null);
-                void kesoku.startMode(id);
+                start(id);
               }}
             >
-              进入{info.title}
+              使用「{activeRoleName}」进入{info.title}
             </button>
           </div>
         )}

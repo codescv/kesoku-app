@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MemoryPolicy, ModeId } from '@kesoku/protocol';
-import { ModeHud, detectActiveMode } from '@kesoku/hud';
+import { ModeHud, detectActiveMode, normalizeModeId } from '@kesoku/hud';
 import { ModeIcon, Sheet, UiIcon, modeMeta } from '@kesoku/ui';
 import { kesoku } from '../lib/client';
 import { actions, useStore } from '../lib/store';
@@ -127,11 +127,15 @@ export function Shell() {
 
   const foreign = !!origin && origin !== 'app' && (session?.chatbot_id ?? 'app') !== 'app';
   const active = useMemo(() => detectActiveMode(stateFiles), [stateFiles]);
-  const modeId: ModeId = foreign ? 'chat' : active.modeId;
+  // games.json is the mode truth once loaded; until then (restored session, snapshot in flight) fall back
+  // to the session's mode_id so a classroom never shows 日常聊天.
+  const hasGamesFile = 'game/games.json' in stateFiles;
+  const fallbackMode = normalizeModeId(session?.mode_id) ?? 'chat';
+  const modeId: ModeId = foreign ? 'chat' : active.modeId !== 'chat' || hasGamesFile ? active.modeId : fallbackMode;
   const meta = modeMeta(modeId);
   const policy = (policies[modeId] ?? 'confirm_only') as MemoryPolicy;
   // Generic role naming: never hardcode a specific persona; derive from the live role list.
-  const roleId = session?.role ?? fallbackRoleId(personas);
+  const roleId = session?.role ?? ui.draftRole ?? ui.roleFilter ?? fallbackRoleId(personas);
   const rolePersona = personas.find((p) => p.role_id === roleId);
   const fullRoleName = rolePersona?.display_name || roleFallbackName(roleId);
   const roleName = fullRoleName.split(' ')[0] || fullRoleName;
@@ -153,8 +157,10 @@ export function Shell() {
         setTimeout(() => document.getElementById('k-search')?.focus(), 50);
       } else if (mod && e.key.toLowerCase() === 'n') {
         e.preventDefault();
+        const s = useStore.getState();
+        const draftRole = s.ui.roleFilter ?? (s.currentSessionId ? s.sessions[s.currentSessionId]?.role : null) ?? s.ui.draftRole ?? null;
         useStore.setState({ currentSessionId: null });
-        actions.setUi({ launchpad: true, screen: 'chat' });
+        actions.setUi({ launchpad: true, screen: 'chat', draftRole });
       } else if (e.key === 'Escape') {
         if (useStore.getState().ui.inspector?.kind === 'word') actions.setUi({ inspector: null });
         if (useStore.getState().ui.drawerOpen) actions.setUi({ drawerOpen: false });

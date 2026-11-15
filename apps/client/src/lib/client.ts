@@ -18,6 +18,7 @@ import { actions, getState, useStore } from './store';
 import type { ChatItem } from './types';
 import type { MediaRef } from '../features/cards/types';
 import { translatorStartPrefs } from './translatorPrefs';
+import { fallbackRoleId } from '../features/persona/model';
 
 const SEQ_TYPES = new Set<string>(SEQ_EVENT_TYPES);
 const APP_VERSION = '0.1.5';
@@ -197,7 +198,25 @@ async function afterConnect() {
     useStore.setState((st) => ({ lastSeq: { ...st.lastSeq, [x.session_id]: Math.max(st.lastSeq[x.session_id] ?? 0, x.last_seq) } }));
   }
   if (sessions.length) socket?.send('sync.resume', { sessions });
+  // sync.resume only replays events: the restored (IndexedDB) current session has no state_files /
+  // mode_prefs / llm_override yet, so fetch its snapshot or the TopBar falls back to 日常聊天.
+  const cur = getState().currentSessionId;
+  if (cur && !hasSessionState(cur)) void kesoku.openSession(cur, { force: true, keepUi: true }).catch(() => {});
   void kesoku.refreshAll();
+}
+
+/** True when a session's state files (incl. `game/games.json` for non-chat modes) have been hydrated. */
+function hasSessionState(sessionId: string): boolean {
+  const st = getState();
+  const sf = st.stateFiles[sessionId];
+  const mode = st.sessions[sessionId]?.mode_id;
+  return sf !== undefined && (!mode || mode === 'chat' || 'game/games.json' in sf);
+}
+
+/** Role used when a new session is created: explicit → user-picked draft → role filter → first persona. */
+function resolveDraftRole(explicit?: string | null): string {
+  const st = getState();
+  return explicit ?? st.ui.draftRole ?? st.ui.roleFilter ?? fallbackRoleId(st.personas);
 }
 
 export const kesoku = {
@@ -270,11 +289,15 @@ export const kesoku = {
     return res.hits;
   },
 
-  async openSession(sessionId: string, opts: { force?: boolean } = {}): Promise<void> {
-    actions.setUi({ launchpad: false, screen: 'chat', drawerOpen: false });
-    useStore.setState({ currentSessionId: sessionId });
-    void kvSet('last_session', sessionId);
-    if (!opts.force && getState().items[sessionId]?.length && tracked.has(sessionId)) return;
+  async openSession(sessionId: string, opts: { force?: boolean; keepUi?: boolean } = {}): Promise<void> {
+    if (!opts.keepUi) {
+      // An existing session carries its own role: drop any New Session draft pick.
+      actions.setUi({ launchpad: false, screen: 'chat', drawerOpen: false, draftRole: null });
+      useStore.setState({ currentSessionId: sessionId });
+      void kvSet('last_session', sessionId);
+    }
+    // Skip session.open only when messages AND state files (game/games.json for modes) are already loaded.
+    if (!opts.force && getState().items[sessionId]?.length && hasSessionState(sessionId) && tracked.has(sessionId)) return;
     const snap = await kesoku.rpc<EngineToClientPayload<'session.snapshot'>>('session.open', { session_id: sessionId });
     actions.applySnapshot(snap);
     tracked.add(sessionId);
@@ -283,14 +306,17 @@ export const kesoku = {
 
   async createSession(opts: { role?: string; mode?: ModeId; title?: string } = {}): Promise<string> {
     const tPrefs = opts.mode === 'translator' ? translatorStartPrefs(getState().settings) : null;
-    const snap = await kesoku.rpc<EngineToClientPayload<'session.snapshot'>>('session.create', tPrefs ? { ...opts, prefs: tPrefs } : opts);
+    const req: Payload = { ...opts, role: resolveDraftRole(opts.role), mode: opts.mode ?? 'chat' };
+    if (opts.title === undefined) delete req.title;
+    if (tPrefs) req.prefs = tPrefs;
+    const snap = await kesoku.rpc<EngineToClientPayload<'session.snapshot'>>('session.create', req);
     actions.applySnapshot(snap);
     const sid = snap.session.session_id;
     tracked.add(sid);
     // 翻译模式：母语 + 常用外语 (also persisted as session mode prefs so the HUD and the engine agree).
     if (tPrefs) void kesoku.setModePrefs(sid, tPrefs);
     useStore.setState({ currentSessionId: sid });
-    actions.setUi({ launchpad: !opts.mode, screen: 'chat', drawerOpen: false });
+    actions.setUi({ launchpad: !opts.mode, screen: 'chat', drawerOpen: false, draftRole: null });
     if (opts.mode) {
       actions.setUi({ pendingMode: { sessionId: sid, modeId: opts.mode, at: Date.now() } });
       watchPendingMode(sid, opts.mode);
@@ -383,12 +409,16 @@ export const kesoku = {
     await kesoku.rpc('turn.stop', { session_id: sessionId }).catch(() => {});
   },
 
-  async startMode(modeId: ModeId): Promise<void> {
+  async startMode(modeId: ModeId, opts: { role?: string } = {}): Promise<void> {
     const sid = getState().currentSessionId;
     if (!sid) {
-      await kesoku.createSession({ mode: modeId });
+      await kesoku.createSession({ mode: modeId, role: resolveDraftRole(opts.role) });
       return;
     }
+    // Existing session: a role picked on the Launchpad / TopBar applies before the mode launches.
+    const wantRole = opts.role ?? getState().ui.draftRole;
+    const curRole = getState().sessions[sid]?.role;
+    if (wantRole && curRole && wantRole !== curRole) await kesoku.setRole(sid, wantRole).catch(() => actions.toast('切换角色失败', 'error'));
     actions.setUi({ launchpad: false, pendingMode: { sessionId: sid, modeId, at: Date.now() } });
     let tPrefs: Record<string, unknown> | null = null;
     if (modeId === 'translator') {

@@ -81,7 +81,10 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
   const session = useStore((s) => (sessionId ? s.sessions[sessionId] : undefined));
   const pending = useStore((s) => s.ui.pendingMode);
   const effectiveMode = (pending && pending.sessionId === sessionId ? pending.modeId : modeId) as ModeId;
-  const role = session?.role ?? fallbackRoleId(personas);
+  const draftRole = useStore((s) => s.ui.draftRole);
+  const roleFilter = useStore((s) => s.ui.roleFilter);
+  // New Session (no session yet): the role the user picked here / on the Launchpad starts the next session.
+  const role = session?.role ?? draftRole ?? roleFilter ?? fallbackRoleId(personas);
   const persona = personas.find((p) => p.role_id === role);
   const avatarSrc = useAvatarUrl(persona ? roleAvatarRef(persona) : null, persona?.avatar_rev);
   const name = persona?.display_name ?? roleFallbackName(role);
@@ -104,16 +107,19 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
       </Capsule>
       <Sheet open={open} onClose={() => setOpen(false)} title="角色与模式">
         <section className="k-rm-section">
-          <h3>切换角色</h3>
+          <h3>{sessionId ? '切换角色' : '选择对话角色'}</h3>
           <div className="k-rm-roles">
             {roles.map((r) => (
               <button
                 key={r.role_id}
                 type="button"
                 className={'k-rm-role' + (r.role_id === role ? ' is-on' : '')}
-                disabled={!sessionId}
+                aria-pressed={r.role_id === role}
+                data-testid={`topbar-role-${r.role_id}`}
                 onClick={() => {
+                  actions.setUi({ draftRole: r.role_id });
                   if (sessionId) void kesoku.setRole(sessionId, r.role_id).catch(() => actions.toast('切换角色失败', 'error'));
+                  else actions.toast(`已选择角色：${r.display_name}`);
                   setOpen(false);
                 }}
               >

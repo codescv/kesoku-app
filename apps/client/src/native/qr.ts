@@ -1,5 +1,5 @@
 import jsQR from 'jsqr';
-import { isNative } from './platform';
+import { getPlatform, isNative } from './platform';
 
 interface BarcodeDetectorLike {
   detect(source: ImageBitmapSource): Promise<Array<{ rawValue?: string }>>;
@@ -112,9 +112,13 @@ export type NativeQrOutcome =
 /**
  * Invokes the native iOS `Camera.scanQRCode` sheet when available on the Capacitor bridge.
  * Returns `{ status: 'unavailable' }` on platforms where the in-WebView `<QrScannerModal>` should be used.
+ *
+ * iOS only: `scanQRCode` exists solely in our iOS bridge. On Android, `@capacitor/camera`'s CameraPlugin
+ * has no such method and Capacitor's Bridge only logs the InvalidPluginMethodException without rejecting
+ * the call, so the promise would hang forever and 扫码配对 would do nothing.
  */
 export async function tryNativeQrScan(): Promise<NativeQrOutcome> {
-  if (!isNative()) return { status: 'unavailable' };
+  if (!isNative() || getPlatform() !== 'ios') return { status: 'unavailable' };
   const cap = (globalThis as unknown as {
     Capacitor?: {
       nativePromise?: (plugin: string, method: string, options: Record<string, unknown>) => Promise<{ value?: string }>;

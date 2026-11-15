@@ -366,7 +366,8 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
     [sessions, allChannels, roleFilter],
   );
   const pending = Object.values(proposals).filter((p) => (p.status ?? 'pending') === 'pending').length;
-  const activeRole = (current ? sessions[current]?.role : undefined) ?? fallbackRoleId(personas);
+  const draftRole = useStore((s) => s.ui.draftRole);
+  const activeRole = (current ? sessions[current]?.role : undefined) ?? draftRole ?? roleFilter ?? fallbackRoleId(personas);
   const activePersona = personas.find((p) => p.role_id === activeRole) ?? personas[0];
   const activeAvatarSrc = useAvatarUrl(activePersona ? roleAvatarRef(activePersona) : null, activePersona?.avatar_rev);
   const roles = [
@@ -395,9 +396,13 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
       <button
         type="button"
         className="k-new-session"
+        data-testid="new-session"
         onClick={() => {
+          // Carry the role over to the New Session screen (role filter → current session's role → earlier pick).
+          const s = useStore.getState();
+          const draftRole = s.ui.roleFilter ?? (s.currentSessionId ? s.sessions[s.currentSessionId]?.role : null) ?? s.ui.draftRole ?? null;
           useStore.setState({ currentSessionId: null });
-          actions.setUi({ launchpad: true, screen: 'chat', drawerOpen: false });
+          actions.setUi({ launchpad: true, screen: 'chat', drawerOpen: false, draftRole });
           go();
         }}
       >
@@ -412,7 +417,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
             aria-selected={roleFilter === r.id}
             className={'k-chip' + (roleFilter === r.id ? ' is-on' : '')}
             onClick={() => {
-              actions.setUi({ roleFilter: r.id });
+              actions.setUi(r.id && !useStore.getState().currentSessionId ? { roleFilter: r.id, draftRole: r.id } : { roleFilter: r.id });
               void kesoku.listSessions().catch(() => {});
             }}
           >

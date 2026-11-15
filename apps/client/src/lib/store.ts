@@ -11,9 +11,12 @@ import {
   type SessionSummary,
   type UserProfile,
 } from '@kesoku/protocol';
+import { detectActiveMode } from '@kesoku/hud';
 import type { SocketStatus } from './ws';
 import type { ChatItem, InspectorPanel, PolicyState, StreamPreview, TurnEvent } from './types';
 import { applyClear, applyDelta, fromActiveTurn, type DeltaPayload } from '../features/stream/previewBuffer';
+
+const GAMES_FILE = 'game/games.json';
 
 export interface MediaEntry {
   status: 'pending' | 'ready' | 'failed';
@@ -89,6 +92,8 @@ export interface KesokuState {
     screen: Screen;
     stageView: 'stage' | 'bubbles';
     roleFilter: string | null;
+    /** Role picked for the next new session (New Session screen / Launchpad / TopBar sheet before a session exists). */
+    draftRole: string | null;
     pendingMode: { sessionId: string; modeId: string; at: number } | null;
     composerInsert: { text: string; n: number } | null;
   };
@@ -134,7 +139,7 @@ export function initialState(): KesokuState {
     avatarJobs: {},
     searchHits: [],
     settings: { ...DEFAULT_SETTINGS },
-    ui: { drawerOpen: false, launchpad: true, inspector: null, screen: 'chat', stageView: 'stage', roleFilter: null, pendingMode: null, composerInsert: null },
+    ui: { drawerOpen: false, launchpad: true, inspector: null, screen: 'chat', stageView: 'stage', roleFilter: null, draftRole: null, pendingMode: null, composerInsert: null },
     toasts: [],
   };
 }
@@ -414,6 +419,11 @@ export const actions = {
           const files = { ...(s.stateFiles[sid] ?? {}), ...p.files };
           for (const r of p.removed) delete files[r];
           patch.stateFiles = { ...s.stateFiles, [sid]: files };
+          // Keep the session's mode_id (sidebar pill, TopBar fallback) in sync with game/games.json.
+          if (s.sessions[sid] && (GAMES_FILE in p.files || p.removed.includes(GAMES_FILE))) {
+            const modeId = detectActiveMode(files).modeId;
+            if (s.sessions[sid]!.mode_id !== modeId) patch.sessions = { ...s.sessions, [sid]: { ...s.sessions[sid]!, mode_id: modeId } };
+          }
           if (s.ui.pendingMode?.sessionId === sid) patch.ui = { ...s.ui, pendingMode: null };
           break;
         }

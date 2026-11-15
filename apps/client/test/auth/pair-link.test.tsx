@@ -131,6 +131,7 @@ describe('AuthScreen pairing link (native)', () => {
     render(<AuthScreen onDone={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: /扫码配对/ }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: '扫描配对二维码' })).toBeTruthy());
-    expect(screen.getByRole('button', { name: /从相册 \/ 拍照识别二维码/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /拍照识别/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /从相册选择/ })).toBeTruthy();
   });
 });
