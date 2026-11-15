@@ -33,7 +33,7 @@ export interface CardContext {
   openPeek: (entry: GlossaryEntry, glossary?: Record<string, GlossaryEntry>) => void;
   /** Present content full-screen (order card / direction card / translation show card). */
   openFullscreen: (node: ReactNode) => void;
-  /** Lock a chip into the composer (e.g. `[问飞鸟 ›]`). */
+  /** Lock a chip into the composer (e.g. `[问<角色名> ›]`). */
   insertComposer: (text: string) => void;
   /** Lightweight per-session mode prefs (`mode.prefs.set`, zero LLM turn). */
   setModePrefs: (prefs: Record<string, unknown>) => void;

@@ -7,7 +7,7 @@ import { kesoku } from '../../../lib/client';
 import { useStore } from '../../../lib/store';
 import type { CardContext, MediaRef } from '../../cards/types';
 import { toMediaRef, useImageUrl } from '../../cards/util';
-import { LexCard, explainLexCached, findToken, getCachedLex, toWordUnits } from '../../segments/BilingualCard';
+import { LexCard, cacheSentenceLex, explainLexCached, findToken, toWordUnits } from '../../segments/BilingualCard';
 import { Markdown, renderInline } from '../../segments/Markdown';
 import { StickerThumb, isStickerMedia, useVoiceStatus } from '../../segments/SegmentRenderer';
 import { parseStreaming } from '../../stream/streamParser';
@@ -21,7 +21,7 @@ export interface GalgameStageProps {
   onPolicyChange: (p: MemoryPolicy) => void;
   onPick: (questionMessageId: string, choices: string[]) => void;
   onExit: () => void;
-  /** Full display name of the active role (e.g. 斋藤飞鸟); generic agent sender names are never shown. */
+  /** Full display name of the active role (from the live persona list); generic agent sender names are never shown. */
   personaName?: string;
 }
 
@@ -105,7 +105,8 @@ export function latestTurn(items: ChatItem[]): { item: ChatItem; segments: Story
 }
 
 const GENERIC_NAMES = new Set(['kesoku', 'assistant']);
-const DEFAULT_PERSONA = '斋藤飞鸟';
+/** Last-resort nameplate when neither the segment, the live persona nor the sender carries a name. */
+const DEFAULT_PERSONA = 'AI 助手';
 
 function nonGeneric(n: unknown): string | undefined {
   if (typeof n !== 'string') return undefined;
@@ -113,7 +114,7 @@ function nonGeneric(n: unknown): string | undefined {
   return t && !GENERIC_NAMES.has(t.toLowerCase()) ? t : undefined;
 }
 
-/** Speaker: segment speaker → live persona name → sender display name → non-generic sender name → 斋藤飞鸟. */
+/** Speaker: segment speaker → live persona name → sender display name → non-generic sender name → generic fallback. */
 export function resolveSpeaker(segSpeaker: unknown, item: ChatItem | undefined, personaName?: string): string {
   return (
     nonGeneric(segSpeaker) ||
@@ -285,7 +286,7 @@ function Speech({
     setActive(i);
     onOpenLex?.();
     const u = units[i];
-    const bundled = findToken(u, plain, seg.tokens) ?? getCachedLex(plain, u.base);
+    const bundled = findToken(u, plain, seg.tokens);
     if (bundled) {
       setLex(bundled);
       return;
@@ -300,6 +301,7 @@ function Speech({
           { timeoutMs: 30_000 },
         );
         const rawTok = (r as { token?: unknown }).token;
+        if (Array.isArray(r.tokens) && r.tokens.length > 0) cacheSentenceLex(txt, r.tokens);
         if (rawTok && typeof rawTok === 'object') return rawTok as LexToken;
         return { surface: u.base, reading: u.rt, note: typeof r.explanation_markdown === 'string' ? r.explanation_markdown : String(rawTok ?? '') };
       });

@@ -189,7 +189,8 @@ describe('pokemon_dex', () => {
     const ctx = makeCtx({ media: { artwork: 'ph-art' } });
     renderKind('pokemon_dex', { ...DEX_BASE, artwork: '[file:pkmn/0149-mega.webp]' }, ctx);
     await act(async () => {});
-    expect(ctx.resolveMedia).toHaveBeenCalledWith({ placeholder_id: 'ph-art' });
+    // The data ref is kept next to the placeholder so a lost placeholder can still hydrate the file.
+    expect(ctx.resolveMedia).toHaveBeenCalledWith({ ref: 'pkmn/0149-mega.webp', placeholder_id: 'ph-art' });
     expect((screen.getByAltText('超级快龙') as HTMLImageElement).src).toBe('https://media.test/ph-art');
   });
 });

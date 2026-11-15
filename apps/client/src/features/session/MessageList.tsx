@@ -5,11 +5,12 @@ import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import type { ChatItem } from '../../lib/types';
 import { SegmentList, type SegmentEnv } from '../segments/SegmentRenderer';
+import { cacheSentenceLex } from '../segments/BilingualCard';
 import { Markdown } from '../segments/Markdown';
 import { StreamingPreview, ThinkingPill } from '../stream/StreamingPreview';
 import { ProposalCard } from '../proposals/ProposalCard';
 import { useAvatarUrl } from '../persona/avatar';
-import { roleAvatarRef } from '../persona/model';
+import { fallbackRoleId, roleAvatarRef, roleFallbackName } from '../persona/model';
 import { makeCardContext } from './cardContext';
 import { useIsDesktop } from '../../app/useMedia';
 
@@ -135,6 +136,8 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
           { timeoutMs: 30_000 },
         );
         const rawTok = (r as { token?: unknown }).token;
+        // Whole-sentence analysis: cache every 意群 so the next word of this sentence needs no request.
+        if (Array.isArray(r.tokens) && r.tokens.length > 0) cacheSentenceLex(text, r.tokens);
         if (rawTok && typeof rawTok === 'object') return rawTok as LexToken;
         const md = typeof r.explanation_markdown === 'string' ? r.explanation_markdown : typeof rawTok === 'string' ? rawTok : '';
         return { surface: token, note: md };
@@ -163,7 +166,8 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
   }, [sessionId]);
 
   const persona = personas.find((p) => p.role_id === session?.role);
-  const name = persona?.display_name ?? (session?.role === 'coder' ? 'Coder' : '飞鸟');
+  const name = persona?.display_name ?? roleFallbackName(session?.role);
+  const defaultRoleId = session?.role || fallbackRoleId(personas);
 
   return (
     <div
@@ -215,7 +219,7 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
             preloadVoice: idx >= items.length - 12,
           };
           const evs = (item.turn_id && turnEvents[item.turn_id]) || EMPTY_EVENTS;
-          const rowRoleId = item.sender?.role_id || session?.role || 'asuka';
+          const rowRoleId = item.sender?.role_id || defaultRoleId;
           return (
             <div key={item.key} className="k-row k-row-assistant">
               <AssistantHeader roleId={rowRoleId} fallbackName={item.sender?.display_name ?? name} />
@@ -230,7 +234,7 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
         ))}
         {preview && (preview.text || preview.thought || (turnEvents[preview.turn_id]?.length ?? 0) > 0) && (
           <div className="k-row k-row-assistant is-streaming">
-            <AssistantHeader roleId={session?.role || 'asuka'} fallbackName={name} />
+            <AssistantHeader roleId={defaultRoleId} fallbackName={name} />
             <ThinkingPill events={turnEvents[preview.turn_id] ?? EMPTY_EVENTS} running={!preview.interrupted} startedAt={preview.startedAt} thought={preview.thought} />
             <StreamingPreview preview={preview} />
           </div>

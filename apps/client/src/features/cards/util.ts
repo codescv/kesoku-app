@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CardContext, GlossaryEntry, MediaRef } from './types';
 
 /* ------------------------------------------------------------------ */
@@ -82,20 +82,31 @@ export function toMediaRef(v: unknown): MediaRef | null {
   return null;
 }
 
-/** Card media lookup: `ctx.media[key]` placeholder first, then the raw data value. */
+/**
+ * Card media lookup: `ctx.media[key]` placeholder first, then the raw data value. The data value (e.g.
+ * `{ ref: 'pkmn/0987.webp' }`) is kept alongside the placeholder so resolving can fall back to `media.hydrate`
+ * when the placeholder is unknown to the live store (after a reload) or fails.
+ */
 export function cardMedia(ctx: Pick<CardContext, 'media'>, keys: string[], fallback?: unknown): MediaRef | null {
+  const fb = toMediaRef(fallback);
   for (const k of keys) {
     const ph = ctx.media?.[k];
-    if (typeof ph === 'string' && ph) return { placeholder_id: ph };
+    if (typeof ph === 'string' && ph) return fb ? { ...fb, placeholder_id: ph } : { placeholder_id: ph };
   }
-  return toMediaRef(fallback);
+  return fb;
 }
 
 /** Resolve an IMAGE ref on mount (never used for audio — audio resolves only inside a tap handler). */
 export function useImageUrl(resolve: CardContext['resolveMedia'] | undefined, ref: MediaRef | null): string | null | undefined {
   const key = ref ? JSON.stringify(ref) : '';
   const [state, setState] = useState<{ key: string; url: string | null | undefined }>({ key: '', url: undefined });
+  // `resolve` is recreated with the card context on every list render (streaming, state.sync…). Keep the latest in
+  // a ref and re-resolve only when the media itself changes, so in-flight loads are never cancelled/reset.
+  const resolveRef = useRef(resolve);
+  resolveRef.current = resolve;
+  const hasResolve = !!resolve;
   useEffect(() => {
+    const resolve = resolveRef.current;
     if (!ref || !resolve) return;
     if (ref.url && !ref.placeholder_id && !ref.object && !ref.ref) {
       setState({ key, url: ref.url });
@@ -111,7 +122,7 @@ export function useImageUrl(resolve: CardContext['resolveMedia'] | undefined, re
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, resolve]);
+  }, [key, hasResolve]);
   if (!ref) return null;
   return state.key === key ? state.url : undefined;
 }

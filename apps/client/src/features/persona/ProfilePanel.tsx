@@ -7,6 +7,7 @@ import { useAvatarUrl } from './avatar';
 import { AvatarSheet, type AvatarSource } from './AvatarSheet';
 import { errorCode, fmtBytes, policyDeviations, userAvatarRef, userSourceAvatarRef, utf8Bytes } from './model';
 import { CropSheet, Counter, FieldError, PickImageButton, Switch, makePreviewUrl } from './parts';
+import { MarkdownEditable } from './MarkdownEditable';
 
 interface ProfileDraft {
   nickname: string;
@@ -210,25 +211,22 @@ export function ProfilePanel({
             />
             <FieldError id="ps-err-nick" text={errors.nickname} />
           </label>
-          <label className="ps-field">
-            <span className="ps-label">
-              <span>个人介绍与背景</span>
-              <span className={'ps-count' + (errors.bio ? ' is-err' : '')}>{`${fmtBytes(bioBytes)} / 2 KiB`}</span>
-            </span>
-            <textarea
-              className={'ps-textarea' + (errors.bio ? ' is-err' : '')}
-              rows={4}
+          <div className="ps-field">
+            <MarkdownEditable
+              label="个人介绍与背景"
+              ariaLabel="个人介绍与背景"
               value={d.bio}
+              onChange={(v) => patch({ bio: v })}
+              rows={4}
+              invalid={!!errors.bio}
               placeholder="职业、爱好、忌口、学习进度…"
-              aria-label="个人介绍与背景"
-              aria-invalid={!!errors.bio}
-              onChange={(e) => patch({ bio: e.target.value })}
+              actions={<span className={'ps-count' + (errors.bio ? ' is-err' : '')}>{`${fmtBytes(bioBytes)} / 2 KiB`}</span>}
             />
             <FieldError id="ps-err-bio" text={errors.bio} />
             <span className="ps-sub ps-icon-label">
               <UiIcon name="brain" size={14} /> 这些信息会作为长期记忆供所有角色读取
             </span>
-          </label>
+          </div>
         </section>
 
         <section className="ps-card">

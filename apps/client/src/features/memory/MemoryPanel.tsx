@@ -4,6 +4,8 @@ import { modeMeta, POLICY_BADGE, UiIcon, fileIconName } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { ProposalCard } from '../proposals/ProposalCard';
+import { Markdown } from '../segments/Markdown';
+import { fallbackRoleId } from '../persona/model';
 
 export function validMemoryPath(p: string): boolean {
   return /^[\w\u4e00-\u9fff\-./]+\.md$/.test(p) && !p.split('/').includes('..') && !p.startsWith('/') && !p.includes('\\');
@@ -15,6 +17,46 @@ export function policySummary(policies: Record<string, string>, defaults: Record
   return dev.map((m) => `${modeMeta(m).title}[${POLICY_BADGE[policies[m] as 'full'].label}]`).join(' · ');
 }
 
+/**
+ * Split a leading YAML frontmatter block (`---\n…\n---`) from a memory file for the read view.
+ * Returns simple `key: value` pairs (list values joined) and the Markdown body; no frontmatter → whole text as body.
+ */
+export function stripFrontmatterForPreview(text: string): { meta: Array<{ key: string; value: string }>; body: string } {
+  const m = /^\uFEFF?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
+  if (!m) return { meta: [], body: text };
+  const meta: Array<{ key: string; value: string }> = [];
+  for (const line of m[1].split(/\r?\n/)) {
+    const kv = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line);
+    if (kv) {
+      meta.push({ key: kv[1], value: kv[2].trim().replace(/^\[(.*)\]$/, '$1').replace(/^["'](.*)["']$/, '$1') });
+      continue;
+    }
+    const item = /^\s*-\s+(.*)$/.exec(line);
+    const last = meta[meta.length - 1];
+    if (item && last) last.value = last.value ? `${last.value}, ${item[1].trim()}` : item[1].trim();
+  }
+  return { meta: meta.filter((x) => x.value), body: text.slice(m[0].length) };
+}
+
+function MemoryPreview({ content }: { content: string }) {
+  const { meta, body } = useMemo(() => stripFrontmatterForPreview(content), [content]);
+  return (
+    <div className="k-memory-md-preview">
+      {meta.length > 0 && (
+        <dl className="k-memory-meta">
+          {meta.map((x) => (
+            <div key={x.key} className="k-memory-meta-row">
+              <dt>{x.key}</dt>
+              <dd>{x.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {body.trim() ? <Markdown text={body} /> : <div className="k-empty">（空白记忆，点击「编辑」开始书写）</div>}
+    </div>
+  );
+}
+
 /** Memory library: pending proposals, pinned-first file list, inline editor (memory.put). */
 export function MemoryPanel({ embedded }: { embedded?: boolean }) {
   const current = useStore((s) => s.currentSessionId);
@@ -22,15 +64,20 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
   const personas = useStore((s) => s.personas);
   const proposalsAll = useStore((s) => s.proposals);
   const policies = useStore((s) => s.policies);
-  const [role, setRole] = useState(sessionRole ?? 'asuka');
+  const [role, setRole] = useState(sessionRole ?? fallbackRoleId(personas));
   const [files, setFiles] = useState<MemoryFile[] | null>(null);
   const [open, setOpen] = useState<{ rel_path: string; content: string; pinned: boolean; dirty: boolean } | null>(null);
   const [newPath, setNewPath] = useState('');
+  const [editing, setEditing] = useState(false);
   const pending = useMemo(() => Object.values(proposalsAll).filter((p) => (p.status ?? 'pending') === 'pending'), [proposalsAll]);
 
   useEffect(() => {
     if (sessionRole) setRole(sessionRole);
   }, [sessionRole]);
+  // Roles arrive after mount: fall back to the first known role when the current one does not exist.
+  useEffect(() => {
+    if (!sessionRole && personas.length && !personas.some((p) => p.role_id === role)) setRole(fallbackRoleId(personas));
+  }, [personas, role, sessionRole]);
 
   const load = useCallback(() => {
     setFiles(null);
@@ -45,6 +92,7 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
     try {
       const r = await kesoku.rpc<EngineToClientPayload<'memory.get.result'>>('memory.get', { role, rel_path });
       setOpen({ rel_path, content: r.content, pinned: r.pinned, dirty: false });
+      setEditing(!r.content.trim());
     } catch {
       actions.toast('读取失败', 'error');
     }
@@ -70,7 +118,7 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
     }
   }
 
-  const roles = personas.length ? personas.map((p) => ({ id: p.role_id, name: p.display_name })) : [{ id: 'asuka', name: '飞鸟' }, { id: 'coder', name: 'Coder' }, { id: 'default', name: 'Default' }];
+  const roles = personas.length ? personas.map((p) => ({ id: p.role_id, name: p.display_name || p.role_id })) : [{ id: role, name: role }];
 
   return (
     <div className={'k-memory' + (embedded ? ' is-embedded' : '')}>
@@ -114,8 +162,15 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
             <button type="button" className={'k-pill k-pill-sm ' + (open.pinned ? 'k-pill-warn' : 'k-pill-neutral')} onClick={() => void togglePin(open)}>
               <UiIcon name="pin" size={13} /> {open.pinned ? '常驻记忆' : '设为常驻'}
             </button>
+            <button type="button" className="k-btn k-btn-sm k-btn-ghost k-memory-mode" aria-pressed={editing} onClick={() => setEditing((v) => !v)}>
+              <UiIcon name={editing ? 'file-text' : 'edit'} size={14} /> {editing ? '预览' : '编辑'}
+            </button>
           </div>
-          <textarea className="k-memory-text" value={open.content} spellCheck={false} onChange={(e) => setOpen({ ...open, content: e.target.value, dirty: true })} aria-label="记忆内容" />
+          {editing ? (
+            <textarea className="k-memory-text" value={open.content} spellCheck={false} onChange={(e) => setOpen({ ...open, content: e.target.value, dirty: true })} aria-label="记忆内容" />
+          ) : (
+            <MemoryPreview content={open.content} />
+          )}
           <div className="k-memory-editor-actions">
             <button type="button" className="k-btn k-btn-primary" disabled={!open.dirty} onClick={() => void saveFile()}>
               <UiIcon name="save" size={18} /> 保存
@@ -149,6 +204,7 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
               const p = newPath.trim();
               if (!validMemoryPath(p)) return actions.toast('路径需为 .md 且不得包含 ..', 'error');
               setOpen({ rel_path: p, content: '', pinned: false, dirty: true });
+              setEditing(true);
               setNewPath('');
             }}
           >

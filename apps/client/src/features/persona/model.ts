@@ -38,6 +38,26 @@ export const VOICE_PRESETS: ReadonlyArray<{ id: string; label: string }> = Objec
   { id: 'dylan', label: '沉稳青年 Dylan' },
 ]);
 
+/**
+ * Voice options for a role's `<select>`: the generic presets, plus — generically for ANY role — its own saved
+ * timbre (`voice_preset` not among the presets, e.g. a cloned voice) and a role-dedicated voice named after the
+ * role id, so a saved value is always selectable and shown with a readable label.
+ */
+export function voicePresetOptions(
+  role: { role_id: string; display_name?: string | null; voice_preset?: string | null } | null,
+): Array<{ id: string; label: string }> {
+  const opts: Array<{ id: string; label: string }> = [...VOICE_PRESETS];
+  if (!role) return opts;
+  const name = (role.display_name || '').trim() || role.role_id;
+  const has = (id: string) => opts.some((o) => o.id === id);
+  const extra: Array<{ id: string; label: string }> = [];
+  const preset = role.voice_preset?.trim();
+  if (preset && !has(preset)) extra.push({ id: preset, label: `${name} 原声 (${preset})` });
+  const rid = role.role_id?.trim();
+  if (rid && rid !== 'default' && !has(rid) && preset !== rid) extra.push({ id: rid, label: `${name} 专属语音 (${rid})` });
+  return [...extra, ...opts];
+}
+
 export const INTRO_TEMPLATES: ReadonlyArray<{ id: string; label: string; text: string }> = Object.freeze([
   {
     id: 'guide',
@@ -150,6 +170,20 @@ export function sortRoles(list: readonly PersonaSummary[]): PersonaSummary[] {
     return i >= 0 ? i : r.builtin ? 10 : 100;
   };
   return [...list].sort((a, b) => rank(a) - rank(b));
+}
+
+/**
+ * Role to fall back to when a session has no role yet: the first role in display order (built-ins first), else
+ * the always-present generic `default` role. Never a hardcoded persona.
+ */
+export function fallbackRoleId(list: readonly PersonaSummary[]): string {
+  return sortRoles(list)[0]?.role_id ?? 'default';
+}
+
+/** Readable name for a role id when its persona summary is not loaded (generic, no persona-specific names). */
+export function roleFallbackName(roleId: string | null | undefined): string {
+  if (roleId === 'coder') return 'Coder';
+  return roleId || 'AI 助手';
 }
 
 /** Modes whose memory policy deviates from the defaults. */

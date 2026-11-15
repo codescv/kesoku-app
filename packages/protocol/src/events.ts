@@ -99,7 +99,7 @@ export const ClientToEngine = {
     avatar_object: z.string().optional(),
   }),
   'persona.delete': z.object({ role_id: z.string() }),
-  'voice.preview': z.object({ voice_preset: z.string().max(64), text: z.string().max(80).optional() }),
+  'voice.preview': z.object({ voice_preset: z.string().max(64), role_id: z.string().max(64).optional(), text: z.string().max(80).optional() }),
   'user_profile.get': empty,
   'user_profile.put': z.object({
     nickname: z.string().max(32),
@@ -306,7 +306,7 @@ export const EngineToClient = {
   'voice.preview.result': ok,
   'media.ticket.ok': z.object({ object: z.string(), put_url: z.string(), expires_at: z.number(), max_bytes: z.number().int(), headers: z.record(z.string()).optional() }).passthrough(),
   'media.refresh.ok': z.object({ object: z.string(), url: z.string(), expires_at: z.number() }).passthrough(),
-  'lexical.explain.result': z.object({ text: z.string().optional(), token: LexTokenSchema }).passthrough(),
+  'lexical.explain.result': z.object({ text: z.string().optional(), token: LexTokenSchema, tokens: z.array(LexTokenSchema).optional() }).passthrough(),
   'workspace.list.result': z
     .object({
       rel_path: z.string().default(''),

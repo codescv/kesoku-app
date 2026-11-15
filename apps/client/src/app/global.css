@@ -316,6 +316,12 @@ h1, h2, h3, strong, b { font-weight: 800; }
 .k-memory-editor-head { display: flex; align-items: center; gap: 8px; }
 .k-memory-editor-head .k-memory-path { flex: 1; }
 .k-memory-text { min-height: 280px; resize: vertical; padding: 12px; border-radius: 14px; border: 1.5px solid var(--line-strong); background: var(--card); font: 500 14px/1.6 var(--font-mono); }
+.k-memory-mode.k-btn { min-height: 30px; padding: 0 10px; font-size: 13px; gap: 4px; color: var(--primary); border-color: transparent; white-space: nowrap; }
+.k-memory-md-preview { min-height: 200px; max-height: 60vh; overflow: auto; padding: 12px 14px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--card); font-size: 15px; line-height: 1.6; }
+.k-memory-meta { display: grid; gap: 4px; margin: 0 0 10px; padding: 8px 10px; border-radius: 10px; background: var(--subcard); border: 1px solid var(--line); font-size: 13px; }
+.k-memory-meta-row { display: flex; gap: 8px; min-width: 0; }
+.k-memory-meta dt { flex-shrink: 0; min-width: 72px; font-family: var(--font-mono); font-weight: 700; color: var(--ink-2); }
+.k-memory-meta dd { margin: 0; min-width: 0; word-break: break-word; color: var(--ink); }
 .k-memory-editor-actions { display: flex; justify-content: flex-end; }
 .k-memory-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 0; background: var(--subcard); border-radius: 12px; padding: 10px 12px; text-align: left; font-size: 13px; font-weight: 800; color: var(--ink-2); }
 .k-inspector-word { display: flex; flex-direction: column; gap: 10px; padding: calc(14px + var(--safe-t)) 14px 14px; }

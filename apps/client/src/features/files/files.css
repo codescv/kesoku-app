@@ -134,3 +134,33 @@
   .k-fb .fb-time { display: none; }
   .k-fb .fb-confirm-text { font-size: 12px; }
 }
+
+/* ── syntax-highlighted text viewer (CodeHighlight.tsx) ──
+   Token colours derive from theme tokens and are pulled toward --ink so they stay readable on
+   --subcard in both light and dark themes. The plain var() line is the fallback without color-mix. */
+.k-fb-code { --hl-gutter: 2ch; tab-size: 4; }
+.k-fb-code .hl-row { display: block; position: relative; min-height: 1.55em; padding-left: calc(var(--hl-gutter) + 19px); }
+.k-fb-code .hl-ln {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--hl-gutter);
+  padding-right: 8px;
+  border-right: 1px solid var(--line);
+  text-align: right;
+  color: var(--ink-2);
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
+}
+.k-fb-code .hl-ln::before { content: attr(data-ln); }
+.k-fb-code .hl-comment { color: var(--ink-2); font-style: italic; }
+.k-fb-code .hl-sec { color: var(--accent); font-weight: 800; background: var(--accent-soft); border-radius: 4px; }
+.k-fb-code .hl-key { color: var(--primary-strong); color: color-mix(in srgb, var(--primary) 78%, var(--ink)); }
+.k-fb-code .hl-str { color: var(--ok); color: color-mix(in srgb, var(--ok) 75%, var(--ink)); }
+.k-fb-code .hl-num { color: var(--warn); color: color-mix(in srgb, var(--warn) 72%, var(--ink)); }
+.k-fb-code .hl-bool { color: var(--danger); color: color-mix(in srgb, var(--danger) 80%, var(--ink)); font-weight: 700; }
+.k-fb-code .hl-kw { color: var(--accent); color: color-mix(in srgb, var(--accent) 82%, var(--ink)); font-weight: 700; }
+.k-fb-code .hl-punct { color: var(--ink-2); }

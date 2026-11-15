@@ -9,9 +9,9 @@ import {
   CODER_NOTE,
   INTRO_TEMPLATES,
   TAGLINE_HINT,
-  VOICE_PRESETS,
   emptyDraft,
   errorCode,
+  fallbackRoleId,
   fmtBytes,
   roleAvatarRef,
   roleSourceAvatarRef,
@@ -19,11 +19,15 @@ import {
   sortRoles,
   utf8Bytes,
   validatePersona,
+  voicePresetOptions,
   type PersonaDraft,
 } from './model';
+import { MarkdownEditable } from './MarkdownEditable';
 import { CropSheet, Counter, FieldError, PickImageButton, makePreviewUrl } from './parts';
 
 const NEW = '__new__';
+/** Neutral Japanese sample line for voice previews (not tied to any persona). */
+const VOICE_PREVIEW_TEXT = 'こんにちは！今日もよろしくね。';
 
 function draftOf(d: PersonaDetail): PersonaDraft {
   return {
@@ -66,8 +70,10 @@ export function RolesPanel({
   setSource: (key: string, s: AvatarSource | null) => void;
 }) {
   const personas = useStore((s) => s.personas);
-  const currentRole = useStore((s) => (s.currentSessionId ? s.sessions[s.currentSessionId]?.role : undefined) ?? 'asuka');
+  const sessionRole = useStore((s) => (s.currentSessionId ? s.sessions[s.currentSessionId]?.role : undefined));
   const roles = useMemo(() => sortRoles(personas), [personas]);
+  // Generic default: the session's role, else the first role in display order — never a hardcoded persona.
+  const currentRole = sessionRole ?? fallbackRoleId(personas);
 
   const [selected, setSelected] = useState<string | null>(null);
   const [details, setDetails] = useState<Record<string, PersonaDetail>>({});
@@ -76,7 +82,6 @@ export function RolesPanel({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [tplOpen, setTplOpen] = useState(false);
   const [tplPending, setTplPending] = useState<string | null>(null);
-  const [prefsOpen, setPrefsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -244,7 +249,9 @@ export function RolesPanel({
   const name = draft?.display_name || summary?.display_name || '';
   const introBytes = draft ? utf8Bytes(draft.intro_md) : 0;
   const prefsBytes = draft ? utf8Bytes(draft.preferences_md) : 0;
-  const voiceKnown = !draft?.voice_preset || VOICE_PRESETS.some((v) => v.id === draft.voice_preset);
+  const voiceRoleId = (isNew ? draft?.role_id : sel) || '';
+  const voiceOptions = voicePresetOptions(draft ? { role_id: voiceRoleId, display_name: draft.display_name, voice_preset: draft.voice_preset } : null);
+  const previewPreset = draft?.voice_preset || voiceRoleId || 'default';
   const genKey = sel ? `role:${sel}` : '';
 
   return (
@@ -352,7 +359,7 @@ export function RolesPanel({
                 <input
                   className={'ps-input ps-input-lg' + (errors.display_name ? ' is-err' : '')}
                   value={draft.display_name}
-                  placeholder="如：斋藤飞鸟 Asuka"
+                  placeholder="如：旅伴 Mio"
                   aria-label="角色名称"
                   aria-invalid={!!errors.display_name}
                   aria-describedby="ps-err-name"
@@ -393,15 +400,25 @@ export function RolesPanel({
             )}
 
             <section className="ps-card">
-              <div className="ps-label">
-                <span>性格与台词风格</span>
-                <span className="ps-row">
-                  <span className={'ps-count' + (errors.intro_md ? ' is-err' : '')}>{fmtBytes(introBytes)}</span>
-                  <button type="button" className="ps-btn-sm ps-btn-icon" aria-expanded={tplOpen} aria-label="模板" onClick={() => setTplOpen((v) => !v)}>
-                    模板 <UiIcon name="chevron-down" size={14} />
-                  </button>
-                </span>
-              </div>
+              <MarkdownEditable
+                label="性格与台词风格"
+                ariaLabel="性格与台词风格"
+                value={draft.intro_md}
+                onChange={(v) => patch({ intro_md: v })}
+                rows={7}
+                invalid={!!errors.intro_md}
+                resetKey={sel ?? ''}
+                defaultEditing={isNew}
+                placeholder="性格基调、说话风格、口头禅、禁区…（Markdown）"
+                actions={
+                  <>
+                    <span className={'ps-count' + (errors.intro_md ? ' is-err' : '')}>{fmtBytes(introBytes)}</span>
+                    <button type="button" className="ps-btn-sm ps-btn-icon" aria-expanded={tplOpen} aria-label="模板" onClick={() => setTplOpen((v) => !v)}>
+                      模板 <UiIcon name="chevron-down" size={14} />
+                    </button>
+                  </>
+                }
+              />
               {tplOpen && (
                 <div className="ps-tpl" role="menu" aria-label="模板">
                   {INTRO_TEMPLATES.map((t) => (
@@ -428,45 +445,23 @@ export function RolesPanel({
                   )}
                 </div>
               )}
-              <textarea
-                className={'ps-textarea' + (errors.intro_md ? ' is-err' : '')}
-                rows={7}
-                value={draft.intro_md}
-                aria-label="性格与台词风格"
-                aria-invalid={!!errors.intro_md}
-                placeholder="性格基调、说话风格、口头禅、禁区…（Markdown）"
-                onChange={(e) => patch({ intro_md: e.target.value })}
-              />
               <FieldError id="ps-err-intro" text={errors.intro_md} />
             </section>
 
             <section className="ps-card">
-              <button
-                type="button"
-                className="ps-collapse"
-                aria-expanded={prefsOpen || !!errors.preferences_md}
-                onClick={() => setPrefsOpen((v) => !v)}
-              >
-                <span>偏好与规则</span>
-                <span className="ps-row">
-                  <span className={'ps-count' + (errors.preferences_md ? ' is-err' : '')}>{fmtBytes(prefsBytes)}</span>
-                  <UiIcon name={prefsOpen || errors.preferences_md ? 'chevron-down' : 'chevron-right'} size={16} />
-                </span>
-              </button>
-              {(prefsOpen || !!errors.preferences_md) && (
-                <>
-                  <textarea
-                    className={'ps-textarea' + (errors.preferences_md ? ' is-err' : '')}
-                    rows={5}
-                    value={draft.preferences_md}
-                    aria-label="偏好与规则"
-                    aria-invalid={!!errors.preferences_md}
-                    placeholder="默认模型与思考档位、默认回复语言、是否默认输出双语卡…"
-                    onChange={(e) => patch({ preferences_md: e.target.value })}
-                  />
-                  <FieldError id="ps-err-prefs" text={errors.preferences_md} />
-                </>
-              )}
+              <MarkdownEditable
+                label="偏好与规则"
+                ariaLabel="偏好与规则"
+                value={draft.preferences_md}
+                onChange={(v) => patch({ preferences_md: v })}
+                rows={5}
+                invalid={!!errors.preferences_md}
+                resetKey={sel ?? ''}
+                defaultEditing={isNew}
+                placeholder="默认模型与思考档位、默认回复语言、是否默认输出双语卡…"
+                actions={<span className={'ps-count' + (errors.preferences_md ? ' is-err' : '')}>{fmtBytes(prefsBytes)}</span>}
+              />
+              <FieldError id="ps-err-prefs" text={errors.preferences_md} />
             </section>
 
             <section className="ps-card">
@@ -482,30 +477,32 @@ export function RolesPanel({
                   onChange={(e) => patch({ voice_preset: e.target.value || null })}
                 >
                   <option value="">跟随默认声线</option>
-                  {VOICE_PRESETS.map((v) => (
+                  {voiceOptions.map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.label}
                     </option>
                   ))}
-                  {!voiceKnown && draft.voice_preset && <option value={draft.voice_preset}>{draft.voice_preset}</option>}
                 </select>
-                {draft.voice_preset ? (
-                  <VoicePill
-                    key={draft.voice_preset}
-                    label="点击试听"
-                    className="ps-voice-pill"
-                    resolveUrl={async () => {
+                <VoicePill
+                  key={`${voiceRoleId}:${previewPreset}`}
+                  preloadKey={`${voiceRoleId}:${previewPreset}`}
+                  label="点击试听"
+                  className="ps-voice-pill"
+                  resolveUrl={async () => {
+                    try {
                       const r = await kesoku.rpc<EngineToClientPayload<'media.ready'>>(
                         'voice.preview',
-                        { voice_preset: draft.voice_preset!, text: `你好，我是${(draft.display_name || '你的助手').slice(0, 40)}。` },
-                        { timeoutMs: 30_000 },
+                        { role_id: voiceRoleId || undefined, voice_preset: previewPreset, text: VOICE_PREVIEW_TEXT },
+                        { timeoutMs: 60_000 },
                       );
-                      return r?.url ?? null;
-                    }}
-                  />
-                ) : (
-                  <span className="ps-sub">选择声线后可试听</span>
-                )}
+                      if (!r?.url) actions.toast('语音试听生成失败，请稍后重试', 'error');
+                      return r?.url || null;
+                    } catch {
+                      actions.toast('语音试听生成失败，请稍后重试', 'error');
+                      return null;
+                    }
+                  }}
+                />
               </div>
             </section>
           </>

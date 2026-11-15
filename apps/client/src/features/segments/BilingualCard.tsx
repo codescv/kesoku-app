@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BilingualSegment, LexToken } from '@kesoku/protocol';
 import { RubyText, VoicePill, resolveRubyParts, type RubyPart } from '@kesoku/ui';
 import { useStore } from '../../lib/store';
@@ -32,7 +32,12 @@ export function tokenSpans(plain: string, tokens: LexToken[] | undefined): Array
     }
     if (!t.surface) continue;
     const idx = plain.indexOf(t.surface, cursor);
-    if (idx < 0) continue;
+    if (idx < 0) {
+      // Out-of-order token (e.g. merged from the sentence analysis): match its first occurrence, keep the cursor.
+      const any = plain.indexOf(t.surface);
+      if (any >= 0) spans.push({ start: any, end: any + t.surface.length, token: t });
+      continue;
+    }
     spans.push({ start: idx, end: idx + t.surface.length, token: t });
     cursor = idx + t.surface.length;
   }
@@ -74,16 +79,75 @@ export function toWordUnits(parts: RubyPart[], tokens?: LexToken[]): WordUnit[] 
   return units;
 }
 
+/** Bundled tokens plus whole-sentence tokens whose surface is not already covered. */
+export function mergeTokens(base: LexToken[] | undefined, extra: LexToken[] | undefined): LexToken[] {
+  const b = base ?? [];
+  if (!extra?.length) return b;
+  const seen = new Set(b.map((t) => t.surface));
+  return [...b, ...extra.filter((t) => t.surface && !seen.has(t.surface))];
+}
+
+/** Match a word (surface string) against a token list: exact surface first, then containment. */
+function matchBySurface(base: string, tokens: LexToken[] | undefined): LexToken | undefined {
+  const b = base.trim();
+  if (!b || !tokens?.length) return undefined;
+  return (
+    tokens.find((t) => t.surface === b) ??
+    tokens.find((t) => !!t.surface && t.surface.includes(b)) ??
+    // Only let a longer tapped unit match a token of ≥2 chars (avoid single particles like は/が winning).
+    tokens.find((t) => !!t.surface && t.surface.length >= 2 && b.includes(t.surface))
+  );
+}
+
+/**
+ * Resolve the token for a tapped word unit without any network: positional spans of `tokens` → surface match in
+ * `tokens` → the whole-sentence analysis cache → the per-word cache.
+ */
 export function findToken(unit: WordUnit, plain: string, tokens?: LexToken[]): LexToken | undefined {
-  return tokenSpans(plain, tokens).find((s) => s.start <= unit.start && unit.start < s.end)?.token;
+  return (
+    tokenSpans(plain, tokens).find((s) => s.start <= unit.start && unit.start < s.end)?.token ??
+    matchBySurface(unit.base, tokens) ??
+    matchBySurface(unit.base, getCachedSentenceLex(plain)) ??
+    getCachedLex(plain, unit.base)
+  );
 }
 
 const LEX_CACHE_MAX = 512;
 const lexCache = new Map<string, LexToken>();
 const lexInflight = new Map<string, Promise<LexToken | null>>();
 
+/** Whole-sentence analysis: every 意群 of a sentence, returned by `lexical.explain.result.tokens`. */
+const SENTENCE_LEX_MAX = 128;
+const SENTENCE_LEX_CACHE = new Map<string, LexToken[]>();
+/** One in-flight `lexical.explain` per sentence: taps on other words of the same sentence share it. */
+const INFLIGHT_SENTENCE = new Map<string, Promise<LexToken | null>>();
+
 function lexCacheKey(text: string, token: string): string {
   return `${text.trim()}\u0000${token.trim()}`;
+}
+
+export function getCachedSentenceLex(sentence: string): LexToken[] | undefined {
+  const key = sentence.trim();
+  const hit = SENTENCE_LEX_CACHE.get(key);
+  if (hit) {
+    SENTENCE_LEX_CACHE.delete(key);
+    SENTENCE_LEX_CACHE.set(key, hit);
+  }
+  return hit;
+}
+
+export function cacheSentenceLex(sentence: string, tokens: LexToken[]): void {
+  const key = sentence.trim();
+  const valid = (tokens ?? []).filter((t): t is LexToken => !!t && typeof t === 'object' && typeof t.surface === 'string' && !!t.surface.trim());
+  if (!key || !valid.length) return;
+  if (SENTENCE_LEX_CACHE.has(key)) SENTENCE_LEX_CACHE.delete(key);
+  SENTENCE_LEX_CACHE.set(key, valid);
+  while (SENTENCE_LEX_CACHE.size > SENTENCE_LEX_MAX) {
+    const oldest = SENTENCE_LEX_CACHE.keys().next().value;
+    if (oldest === undefined) break;
+    SENTENCE_LEX_CACHE.delete(oldest);
+  }
+  for (const t of valid) setCachedLex(sentence, t.surface, t);
 }
 
 export function getCachedLex(text: string, token: string): LexToken | undefined {
@@ -112,32 +176,56 @@ export function setCachedLex(text: string, token: string, value: LexToken): void
   }
 }
 
+function cachedWord(text: string, token: string): LexToken | undefined {
+  return getCachedLex(text, token) ?? matchBySurface(token, getCachedSentenceLex(text));
+}
+
+/**
+ * Explain `token` in `text` with caching. The fetcher is expected to store the whole-sentence analysis via
+ * `cacheSentenceLex` when the engine returns it, so the next word of the same sentence resolves from memory.
+ * A tap while another word of the same sentence is loading waits for that request instead of firing a new one.
+ */
 export async function explainLexCached(
   text: string,
   token: string,
   fetcher: (text: string, token: string) => Promise<LexToken | null>,
 ): Promise<LexToken | null> {
-  const cached = getCachedLex(text, token);
+  const cached = cachedWord(text, token);
   if (cached) return cached;
   const key = lexCacheKey(text, token);
   const pending = lexInflight.get(key);
   if (pending) return pending;
+  const sentKey = text.trim();
+  const sentPending = INFLIGHT_SENTENCE.get(sentKey);
+  if (sentPending) {
+    await sentPending.catch(() => null);
+    const hit = cachedWord(text, token);
+    if (hit) return hit;
+    const again = lexInflight.get(key);
+    if (again) return again;
+  }
+  const box: { p?: Promise<LexToken | null> } = {};
   const p = (async () => {
     try {
-      const res = await fetcher(text, token);
+      const res = await Promise.resolve().then(() => fetcher(text, token));
       if (res) setCachedLex(text, token, res);
       return res;
     } finally {
       lexInflight.delete(key);
+      if (INFLIGHT_SENTENCE.get(sentKey) === box.p) INFLIGHT_SENTENCE.delete(sentKey);
     }
   })();
+  box.p = p;
   lexInflight.set(key, p);
+  if (!INFLIGHT_SENTENCE.has(sentKey)) INFLIGHT_SENTENCE.set(sentKey, p);
   return p;
 }
 
 export function clearLexCacheForTest(): void {
   lexCache.clear();
   lexInflight.clear();
+  SENTENCE_LEX_CACHE.clear();
+  INFLIGHT_SENTENCE.clear();
 }
 
 export interface BilingualCardProps {
@@ -222,22 +310,41 @@ export function BilingualCard({ seg, resolveVoice, explain, onWord, compact, inl
   const readyKey = entry?.url || seg.voice?.object || seg.voice?.url || '';
   const parts = useMemo(() => resolveRubyParts(seg as never), [seg]);
   const plain = useMemo(() => parts.map((p) => p.base).join(''), [parts]);
-  const units = useMemo(() => toWordUnits(parts, seg.tokens), [parts, seg.tokens]);
+  // Whole-sentence analysis (all 意群) once any word of this sentence has been explained.
+  const [sentenceTokens, setSentenceTokens] = useState<LexToken[] | undefined>(() => getCachedSentenceLex(plain));
+  const effectiveTokens = useMemo(() => mergeTokens(seg.tokens, sentenceTokens), [seg.tokens, sentenceTokens]);
+  // Word boundaries: bundled tokens win; otherwise the sentence analysis; otherwise script heuristics.
+  const units = useMemo(() => toWordUnits(parts, seg.tokens?.length ? seg.tokens : sentenceTokens), [parts, seg.tokens, sentenceTokens]);
   const [showZh, setShowZh] = useState(false);
-  const [active, setActive] = useState<number | null>(null);
+  // Active word as a char offset (stable when the units are re-split by the sentence analysis).
+  const [activeAt, setActiveAt] = useState<number | null>(null);
+  const active = useMemo(() => {
+    if (activeAt === null) return null;
+    const idx = units.findIndex((u) => u.start <= activeAt && activeAt < u.end);
+    return idx >= 0 ? idx : null;
+  }, [activeAt, units]);
   const [lex, setLex] = useState<LexToken | null>(null);
   const [loading, setLoading] = useState(false);
+  const reqSeq = useRef(0);
+
+  useEffect(() => {
+    setSentenceTokens(getCachedSentenceLex(plain));
+  }, [plain]);
 
   async function onPart(_p: RubyPart, i: number) {
+    const seq = ++reqSeq.current;
     if (active === i) {
-      setActive(null);
+      setActiveAt(null);
       setLex(null);
+      setLoading(false);
       return;
     }
-    setActive(i);
     const u = units[i];
-    const t = findToken(u, plain, seg.tokens) ?? getCachedLex(plain, u.base);
+    setActiveAt(u.start);
+    const t = findToken(u, plain, effectiveTokens);
     if (t) {
+      // Zero RPC, zero spinner: the sentence (or this word) is already analysed.
+      setLoading(false);
       setLex(t);
       onWord?.(t, plain);
       return;
@@ -246,18 +353,21 @@ export function BilingualCard({ seg, resolveVoice, explain, onWord, compact, inl
     setLex({ surface: u.base, reading: u.rt });
     try {
       const r = await explainLexCached(plain, u.base, explain);
+      const whole = getCachedSentenceLex(plain);
+      if (whole) setSentenceTokens(whole);
+      if (seq !== reqSeq.current) return; // the user already tapped another word
       if (r) {
         setLex(r);
         onWord?.(r, plain);
       }
     } finally {
-      setLoading(false);
+      if (seq === reqSeq.current) setLoading(false);
     }
   }
 
   const hasVoice = !!seg.voice && !!(seg.voice.placeholder_id || seg.voice.object || seg.voice.ref || seg.voice.url);
   return (
-    <div className={'k-bi' + (compact ? ' is-compact' : '')} onClick={() => active !== null && (setActive(null), setLex(null))}>
+    <div className={'k-bi' + (compact ? ' is-compact' : '')} onClick={() => activeAt !== null && (setActiveAt(null), setLex(null))}>
       <div className="k-bi-head">
         {seg.speaker && <span className="k-bi-speaker">{seg.speaker}</span>}
         <span className="k-bi-spacer" />
@@ -290,7 +400,7 @@ export function BilingualCard({ seg, resolveVoice, explain, onWord, compact, inl
       )}
       {lex && inlineLex && (
         <div onClick={(e) => e.stopPropagation()}>
-          <LexCard token={lex} onClose={() => (setActive(null), setLex(null))} />
+          <LexCard token={lex} onClose={() => (setActiveAt(null), setLex(null))} />
           {loading && <div className="k-lex-loading">精讲生成中…</div>}
         </div>
       )}

@@ -218,7 +218,7 @@ describe('PeekSheet', () => {
   it('shows 2 pills, folds details, navigates related in place with back, and asks', () => {
     const ctx = makeCtx();
     const onClose = vi.fn();
-    render(<PeekSheet entry={glossary.multiscale} glossary={glossary} onClose={onClose} ctx={ctx} />);
+    render(<PeekSheet entry={glossary.multiscale} glossary={glossary} onClose={onClose} ctx={ctx} personaName="Mio" />);
     expect(screen.getByText('满 HP 时受伤减半')).toBeTruthy();
     expect(screen.queryByText('第三条')).toBeNull();
     expect(screen.queryByText(/满血时生效/)).toBeNull();
@@ -230,7 +230,7 @@ describe('PeekSheet', () => {
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: '返回' }));
     expect(screen.getByText('满 HP 时受伤减半')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /问飞鸟/ }));
+    fireEvent.click(screen.getByRole('button', { name: /问Mio/ }));
     expect(ctx.insertComposer).toHaveBeenCalledWith('多重鳞片');
     expect(onClose).toHaveBeenCalled();
   });

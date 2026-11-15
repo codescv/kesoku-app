@@ -5,7 +5,7 @@ import { kesoku } from '../lib/client';
 import { actions, useStore } from '../lib/store';
 import { PolicySegmented } from '../features/memory/PolicySegmented';
 import { useAvatarUrl } from '../features/persona/avatar';
-import { roleAvatarRef } from '../features/persona/model';
+import { fallbackRoleId, roleAvatarRef, roleFallbackName, sortRoles } from '../features/persona/model';
 
 const LEVEL_LABEL: Record<ThinkingLevel, string> = { minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High' };
 
@@ -81,18 +81,13 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
   const session = useStore((s) => (sessionId ? s.sessions[sessionId] : undefined));
   const pending = useStore((s) => s.ui.pendingMode);
   const effectiveMode = (pending && pending.sessionId === sessionId ? pending.modeId : modeId) as ModeId;
-  const role = session?.role ?? 'asuka';
+  const role = session?.role ?? fallbackRoleId(personas);
   const persona = personas.find((p) => p.role_id === role);
   const avatarSrc = useAvatarUrl(persona ? roleAvatarRef(persona) : null, persona?.avatar_rev);
-  const name = persona?.display_name ?? (role === 'asuka' ? '飞鸟 Asuka' : role);
+  const name = persona?.display_name ?? roleFallbackName(role);
   const meta = modeMeta(effectiveMode);
-  const roles = personas.length
-    ? personas
-    : [
-        { role_id: 'asuka', display_name: '飞鸟 Asuka', tagline: '毒舌傲娇的专属伴游与日语私教', builtin: true, avatar_rev: 0 },
-        { role_id: 'coder', display_name: 'Coder', tagline: '将编码任务委派给引擎主机上的本地 CLI 编码代理', builtin: true, avatar_rev: 0 },
-        { role_id: 'default', display_name: 'Default', tagline: '通用助手', builtin: true, avatar_rev: 0 },
-      ];
+  // Roles come from the engine (persona list); before it arrives show only the active role, generically named.
+  const roles = personas.length ? sortRoles(personas) : [{ role_id: role, display_name: name, tagline: '', builtin: true, avatar_rev: 0 }];
   return (
     <>
       <Capsule className="k-role-capsule" onClick={() => setOpen(true)} label="角色与模式">

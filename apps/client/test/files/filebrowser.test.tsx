@@ -289,6 +289,55 @@ describe('FileBrowser · CRUD', () => {
     expect(calls('workspace.download')).toHaveLength(0);
   });
 
+  it('views a .toml file with syntax highlighting (sections, keys, strings, comments)', async () => {
+    m.rpc.mockImplementation((type: string, payload: Record<string, unknown>) => {
+      if (type === 'workspace.list' && !payload.rel_path) {
+        return Promise.resolve({ rel_path: '', entries: [...ROOT, { name: 'config.toml', rel_path: 'config.toml', kind: 'file', size: 64, updated_at: 100 }] });
+      }
+      if (type === 'workspace.read' && payload.rel_path === 'config.toml') {
+        return Promise.resolve({
+          rel_path: 'config.toml',
+          name: 'config.toml',
+          kind: 'text',
+          size: 64,
+          updated_at: 100,
+          mime: 'application/toml',
+          content: '# engine settings\n[engine]\nmodel = "qwen"\nport = 8080\ndebug = false\n',
+          writable: true,
+        });
+      }
+      return defaultRpc(type, payload);
+    });
+    await renderRoot();
+    fireEvent.click(screen.getByText('config.toml'));
+    await waitFor(() => expect(screen.getByTestId('fb-viewer')).toBeTruthy());
+    const pre = screen.getByTestId('fb-code');
+    expect(pre.tagName).toBe('PRE');
+    expect(pre.className).toContain('k-fb-pre');
+    expect(pre.getAttribute('data-lang')).toBe('toml');
+    const spans = (cls: string) => Array.from(pre.querySelectorAll(`.hl-${cls}`)).map((n) => n.textContent);
+    expect(spans('comment')).toEqual(['# engine settings']);
+    expect(spans('sec')).toEqual(['[engine]']);
+    expect(spans('key')).toEqual(['model', 'port', 'debug']);
+    expect(spans('str')).toEqual(['"qwen"']);
+    expect(spans('num')).toEqual(['8080']);
+    expect(spans('bool')).toEqual(['false']);
+    expect(pre.querySelectorAll('.hl-ln')).toHaveLength(5);
+    // no Markdown 源码/预览 toggle for non-markdown files
+    expect(screen.queryByRole('button', { name: '源码' })).toBeNull();
+  });
+
+  it('markdown previews via <Markdown> and its 源码 view is highlighted', async () => {
+    await renderRoot();
+    fireEvent.click(screen.getByText('README.md'));
+    await waitFor(() => expect(screen.getByTestId('fb-viewer')).toBeTruthy());
+    expect(screen.queryByTestId('fb-code')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '源码' }));
+    const pre = screen.getByTestId('fb-code');
+    expect(pre.getAttribute('data-lang')).toBe('markdown');
+    expect(pre.querySelector('.hl-sec')?.textContent).toBe('# Hello band');
+  });
+
   it('validEntryName rejects empty, slash and dot-dot names', () => {
     expect(validEntryName('')).toBeNull();
     expect(validEntryName('  ')).toBeNull();

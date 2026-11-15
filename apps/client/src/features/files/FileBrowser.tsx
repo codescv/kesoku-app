@@ -4,6 +4,7 @@ import { UiIcon, fileIconName, type UiIconName } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { Markdown } from '../segments/Markdown';
+import { CodeHighlight } from './CodeHighlight';
 import { overlays } from '../session/overlays';
 import './files.css';
 
@@ -570,7 +571,7 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
                   <Markdown text={openFile.content ?? ''} />
                 </div>
               ) : (
-                <pre className="k-fb-pre">{openFile.content ?? ''}</pre>
+                <CodeHighlight code={openFile.content ?? ''} filename={openFile.name} />
               )
             ) : openFile.kind === 'media' ? (
               <MediaPreview file={openFile} />

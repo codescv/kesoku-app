@@ -147,6 +147,9 @@ describe('PersonaStudio · Screen 15 roles', () => {
     expect(screen.getByText(/建议 ≤ 40 字/)).toBeTruthy();
     expect(save.disabled).toBe(false);
 
+    // Markdown fields render as Markdown first; 编辑 switches to the raw textarea.
+    expect(screen.queryByRole('textbox', { name: '性格与台词风格' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '性格与台词风格（点击编辑）' }));
     fireEvent.change(screen.getByLabelText('性格与台词风格'), { target: { value: 'a'.repeat(64 * 1024 + 1) } });
     expect(screen.getByText('超过 64 KiB 上限')).toBeTruthy();
     expect(save.disabled).toBe(true);
@@ -226,6 +229,33 @@ describe('PersonaStudio · Screen 15 roles', () => {
     await waitFor(() => expect(calls('voice.preview')).toHaveLength(1));
     expect(calls('voice.preview')[0]![1]).toMatchObject({ voice_preset: 'cherry' });
     await waitFor(() => expect(play).toHaveBeenCalled());
+  });
+
+  it('selects a role-specific voice preset (e.g. "asuka") and previews it with role_id + toast on failure', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+    m.rpc.mockImplementation((type: string, payload: Record<string, unknown>) =>
+      type === 'persona.get' && payload.role_id === 'asuka'
+        ? defaultRpc(type, payload).then((d) => ({ ...(d as object), voice_preset: 'asuka' }))
+        : defaultRpc(type, payload),
+    );
+    await openRoles();
+    const select = (await screen.findByLabelText('语音音色')) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe('asuka'));
+    expect(select.selectedOptions[0]!.textContent).toBe('斋藤飞鸟 Asuka 原声 (asuka)');
+    fireEvent.click(screen.getByRole('button', { name: '播放语音' }));
+    await waitFor(() => expect(calls('voice.preview')).toHaveLength(1));
+    expect(calls('voice.preview')[0]![1]).toMatchObject({ role_id: 'asuka', voice_preset: 'asuka' });
+
+    // Switching the preset resets the pill so the old clip is never replayed; a failure toasts.
+    m.rpc.mockImplementation((type: string, payload: Record<string, unknown>) =>
+      type === 'voice.preview' ? Promise.reject(new Error('tts down')) : defaultRpc(type, payload),
+    );
+    fireEvent.change(select, { target: { value: 'serena' } });
+    fireEvent.click(screen.getByRole('button', { name: '播放语音' }));
+    await waitFor(() => expect(calls('voice.preview')).toHaveLength(2));
+    expect(calls('voice.preview')[1]![1]).toMatchObject({ role_id: 'asuka', voice_preset: 'serena' });
+    await waitFor(() => expect(useStore.getState().toasts.some((t) => t.text === '语音试听生成失败，请稍后重试')).toBe(true));
   });
 
   it('uploads a cropped avatar and commits it with persona.upsert{avatar_object}', async () => {

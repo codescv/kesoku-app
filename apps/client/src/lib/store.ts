@@ -357,7 +357,7 @@ export const actions = {
             const prev = s.sessions[sid];
             patch.sessions = {
               ...s.sessions,
-              [sid]: { ...(prev ?? { session_id: sid, title: '', role: 'asuka', chatbot_id: 'app' }), ...p, session_id: sid } as SessionSummary,
+              [sid]: { ...(prev ?? { session_id: sid, title: '', role: 'default', chatbot_id: 'app' }), ...p, session_id: sid } as SessionSummary,
             };
           }
           break;
@@ -425,7 +425,7 @@ export const actions = {
       let itemsPatch: Record<string, ChatItem[]> | undefined;
       if (updatedNames.size > 0) {
         for (const [sid, list] of Object.entries(s.items)) {
-          const sessionRole = s.sessions[sid]?.role ?? 'asuka';
+          const sessionRole = s.sessions[sid]?.role ?? 'default';
           let changed = false;
           const nextList = list.map((it) => {
             if (it.kind !== 'assistant') return it;

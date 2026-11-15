@@ -5,7 +5,7 @@ import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { kvSet } from '../../lib/db';
 import { useAvatarUrl } from '../persona/avatar';
-import { roleAvatarRef } from '../persona/model';
+import { fallbackRoleId, roleAvatarRef, roleFallbackName } from '../persona/model';
 
 const CHANNEL_LABEL: Record<string, string> = { discord: 'Discord', discord_asuka: 'Discord', wechat: '微信' };
 
@@ -122,14 +122,14 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
     [sessions, allChannels, roleFilter],
   );
   const pending = Object.values(proposals).filter((p) => (p.status ?? 'pending') === 'pending').length;
-  const activeRole = (current ? sessions[current]?.role : undefined) ?? 'asuka';
+  const activeRole = (current ? sessions[current]?.role : undefined) ?? fallbackRoleId(personas);
   const activePersona = personas.find((p) => p.role_id === activeRole) ?? personas[0];
   const activeAvatarSrc = useAvatarUrl(activePersona ? roleAvatarRef(activePersona) : null, activePersona?.avatar_rev);
   const roles = [
     { id: null as string | null, label: '全部' },
-    ...(personas.length ? personas : [{ role_id: 'asuka', display_name: '飞鸟' }, { role_id: 'coder', display_name: 'Coder' }, { role_id: 'default', display_name: 'Default' }]).map((p) => ({
+    ...personas.map((p) => ({
       id: p.role_id as string | null,
-      label: p.display_name,
+      label: p.display_name || p.role_id,
     })),
   ];
   const go = () => onNavigate?.();
@@ -217,7 +217,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
           <UiIcon name="brain" size={20} /> 记忆库{pending > 0 && <span className="k-badge-dot" aria-label={`${pending} 条待确认`}>{pending}</span>}
         </button>
         <button type="button" className="k-foot-btn" onClick={() => (actions.setUi({ screen: 'studio', drawerOpen: false }), go())}>
-          <Avatar src={activeAvatarSrc} name={activePersona?.display_name ?? '飞鸟'} size={22} ai={activePersona?.avatar_ai} /> 角色与形象工坊
+          <Avatar src={activeAvatarSrc} name={activePersona?.display_name ?? roleFallbackName(activeRole)} size={22} ai={activePersona?.avatar_ai} /> 角色与形象工坊
         </button>
         <button type="button" className="k-foot-btn" onClick={() => (actions.setUi({ screen: 'files', drawerOpen: false }), go())}>
           <UiIcon name="folder" size={20} /> 文件管理

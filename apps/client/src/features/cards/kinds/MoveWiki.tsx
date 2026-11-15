@@ -3,6 +3,16 @@ import { CardShell } from '../parts';
 import { GlossPill, TypeBadge, VersionBadge, labelled } from '../pokemon';
 import { arr, glossaryMap, isObj, num, obj, pick, versionOf, type Dict } from '../util';
 
+/** First non-empty text among fields that may be a plain string or a localized `{zh, ja, en}` object. */
+function textOf(d: Dict, ...keys: string[]): string {
+  for (const k of keys) {
+    const v = d[k];
+    const s = isObj(v) ? pick(v, 'zh', 'text', 'ja', 'en') : pick(d, k);
+    if (s) return s;
+  }
+  return '';
+}
+
 const CATEGORY: Record<string, string> = { physical: '物理', special: '特殊', status: '变化' };
 
 /** `pkmn_move_wiki` card: SV shows `PP · 先制`; Z-A shows `冷却 CD · 射程 · 招式＋` — never mixed. */
@@ -26,6 +36,11 @@ export function MoveWiki({ data, ctx }: CardProps<Dict>) {
   const range = v === 'za' ? pick(d, 'range') : '';
   const plus = v === 'za' ? pick(d, 'plus_effect') : '';
 
+  // 招式说明 (flavor / description) and 招式效果 (mechanical effect) are distinct fields; show both when present.
+  const description = textOf(d, 'description', 'desc', 'flavor_text', 'description_zh');
+  const effect = textOf(d, 'effect_short', 'effect', 'effect_zh');
+  const showEffect = !!effect && effect !== description;
+
   const spec = [type, cat, power !== null ? `威力 ${power}` : '', acc !== null ? `命中 ${acc}` : ''].filter(Boolean).join(' · ');
 
   return (
@@ -44,7 +59,13 @@ export function MoveWiki({ data, ctx }: CardProps<Dict>) {
         {range && <span className="kc-badge kc-badge-accent">🎯 {range}</span>}
         {plus && <span className="kc-badge kc-badge-warn">✦ 招式＋ {plus}</span>}
       </div>
-      {pick(d, 'effect_short', 'effect') && <p className="kc-mv-effect">{pick(d, 'effect_short', 'effect')}</p>}
+      {description && <p className="kc-mv-desc">{description}</p>}
+      {showEffect && (
+        <div className="kc-mv-effect">
+          <b>招式效果：</b>
+          {effect}
+        </div>
+      )}
       {(pills.length > 0 || extraPills.length > 0) && (
         <div className="kc-chips">
           <span className="kc-chip-k">内联百科</span>

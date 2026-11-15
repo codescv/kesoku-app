@@ -35,7 +35,7 @@ export function PokemonDex({ data, ctx }: CardProps<Dict>) {
   const delta = v === 'za' ? obj(d.stat_delta) : {};
   const glossary = glossaryMap(d.glossary);
   const m = matchupOf(d.matchup);
-  const artRef = cardMedia(ctx, ['artwork', 'art', 'image'], d.artwork ?? d.art);
+  const artRef = cardMedia(ctx, ['artwork', 'art', 'image', 'sprite'], d.artwork ?? d.art ?? d.image ?? d.sprite ?? d.image_url);
   const artUrl = useImageUrl(ctx.resolveMedia, artRef);
   const abilities = v === 'sv' ? labelled(d.abilities) : [];
   const megaStone = v === 'za' ? pick(d, 'mega_stone') : '';

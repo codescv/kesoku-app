@@ -270,7 +270,9 @@
 .kc-mv-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
 .kc-mv-name { font-size: 20px; font-weight: 900; }
 .kc-mv-spec { font-size: 14px; font-weight: 800; color: var(--ink-2); }
-.kc-mv-effect { margin: 0; font-size: 15px; font-weight: 700; }
+.kc-mv-desc { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.55; color: var(--ink); }
+.kc-mv-effect { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--subcard); border: 1px solid var(--line); font-size: 14.5px; font-weight: 600; line-height: 1.55; color: var(--ink); }
+.kc-mv-effect b { font-weight: 800; color: var(--primary-strong, var(--primary)); margin-right: 2px; }
 .kc-mu-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .kc-mu-pick { border-radius: 12px; background: var(--subcard); border: 1.5px solid var(--line); }
 .kc-mu-pick-btn { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; width: 100%; min-height: 44px; padding: 6px 10px; background: none; border: 0; color: var(--ink); font: inherit; cursor: pointer; text-align: left; }

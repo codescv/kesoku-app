@@ -10,7 +10,7 @@ export interface PeekSheetProps {
   glossary?: Record<string, GlossaryEntry>;
   onClose: () => void;
   ctx: Pick<CardContext, 'insertComposer'>;
-  /** Display name of the current persona for `[问<name> ›]` (default 飞鸟). */
+  /** Display name of the current persona for `[问<name> ›]` (generic fallback when unknown). */
   personaName?: string;
 }
 
@@ -22,11 +22,11 @@ function findRelated(id: string, glossary: Record<string, GlossaryEntry> | undef
 
 /**
  * Wiki Peek Sheet: title + 2 large effect pills + `▸ 实战细节` + related entries replaced in place (with a
- * back arrow, never stacking dialogs) + `[问飞鸟 ›]`. Zero network: everything comes from the card glossary.
+ * back arrow, never stacking dialogs) + `[问<角色名> ›]`. Zero network: everything comes from the card glossary.
  */
 export function PeekSheet({ entry, glossary, onClose, ctx, personaName }: PeekSheetProps) {
   if (!entry) return null;
-  return <PeekInner key={entry.id || entry.title} root={entry} glossary={glossary} onClose={onClose} ctx={ctx} personaName={personaName || '飞鸟'} />;
+  return <PeekInner key={entry.id || entry.title} root={entry} glossary={glossary} onClose={onClose} ctx={ctx} personaName={personaName || 'AI 助手'} />;
 }
 
 function PeekInner({ root, glossary, onClose, ctx, personaName }: { root: GlossaryEntry; glossary?: Record<string, GlossaryEntry>; onClose: () => void; ctx: Pick<CardContext, 'insertComposer'>; personaName: string }) {

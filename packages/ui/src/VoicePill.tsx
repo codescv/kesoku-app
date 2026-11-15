@@ -48,6 +48,8 @@ export function VoicePill({ resolveUrl, durationMs, label, className, createAudi
   const createRef = useRef(createAudio);
   createRef.current = createAudio;
   const aliveRef = useRef(true);
+  /** Bumped when the clip identity (preloadKey) changes; stale in-flight prepares must not cache their audio. */
+  const genRef = useRef(0);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -70,10 +72,12 @@ export function VoicePill({ resolveUrl, durationMs, label, className, createAudi
   function prepare(): Promise<HTMLAudioElement> {
     if (audioRef.current) return Promise.resolve(audioRef.current);
     if (prepPromiseRef.current) return prepPromiseRef.current;
+    const gen = genRef.current;
     const p = (async () => {
       const url = await resolveRef.current();
       if (!url) throw new Error('no url');
-      if (audioRef.current) return audioRef.current;
+      const stale = gen !== genRef.current;
+      if (!stale && audioRef.current) return audioRef.current;
       const make = createRef.current;
       const audio = make ? make(url) : new Audio(url);
       audio.preload = 'auto';
@@ -87,7 +91,8 @@ export function VoicePill({ resolveUrl, durationMs, label, className, createAudi
         setElapsed(0);
         if (current === selfRef.current) current = null;
       };
-      audioRef.current = audio;
+      // A clip resolved for a previous preloadKey is never cached (the next tap resolves the new clip).
+      if (!stale) audioRef.current = audio;
       try {
         audio.load?.();
       } catch {
@@ -106,6 +111,24 @@ export function VoicePill({ resolveUrl, durationMs, label, className, createAudi
     );
     return p;
   }
+
+  // A new preloadKey means a different clip (other role / voice preset / ready URL): drop the cached audio so
+  // the next tap never replays the previous clip. A tap in progress (loading / playing) is left alone.
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const lastKey = useRef(preloadKey);
+  useEffect(() => {
+    if (lastKey.current === preloadKey) return;
+    lastKey.current = preloadKey;
+    if (stateRef.current === 'playing' || stateRef.current === 'loading') return;
+    genRef.current += 1;
+    audioRef.current?.pause();
+    audioRef.current = null;
+    prepPromiseRef.current = null;
+    setDetectedMs(undefined);
+    setElapsed(0);
+    setState('idle');
+  }, [preloadKey]);
 
   // Background preload: resolve + buffer, never play.
   useEffect(() => {

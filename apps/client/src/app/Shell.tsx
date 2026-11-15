@@ -18,6 +18,7 @@ import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { LexCard } from '../features/segments/BilingualCard';
 import { GalgameStage, ModePanel, PeekSheet } from '../features/modes';
 import { PersonaStudio } from '../features/persona';
+import { fallbackRoleId, roleFallbackName } from '../features/persona/model';
 import { FileBrowser } from '../features/files/FileBrowser';
 
 const EMPTY: Record<string, unknown> = {};
@@ -126,8 +127,11 @@ export function Shell() {
   const modeId: ModeId = foreign ? 'chat' : active.modeId;
   const meta = modeMeta(modeId);
   const policy = (policies[modeId] ?? 'confirm_only') as MemoryPolicy;
-  const roleName = personas.find((p) => p.role_id === (session?.role ?? 'asuka'))?.display_name?.split(' ')[0] ?? '飞鸟';
-  const fullRoleName = personas.find((p) => p.role_id === (session?.role ?? 'asuka'))?.display_name || '斋藤飞鸟';
+  // Generic role naming: never hardcode a specific persona; derive from the live role list.
+  const roleId = session?.role ?? fallbackRoleId(personas);
+  const rolePersona = personas.find((p) => p.role_id === roleId);
+  const fullRoleName = rolePersona?.display_name || roleFallbackName(roleId);
+  const roleName = fullRoleName.split(' ')[0] || fullRoleName;
   const showLaunchpad = ui.screen === 'chat' && (ui.launchpad || !sid);
   const galStage = modeId === 'galgame' && ui.stageView === 'stage' && !showLaunchpad && !!sid;
 

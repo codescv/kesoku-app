@@ -461,13 +461,21 @@ export const kesoku = {
     const fresh = (e?: { status: string; url?: string; expires_at?: number }) => e && e.status === 'ready' && e.url && (!e.expires_at || e.expires_at - 30 > now);
     if (ref.placeholder_id) {
       const e = s.media[ref.placeholder_id];
+      // A durable fallback (`object` / `ref`, e.g. `pkmn/0987.webp`) means we never park on a lost placeholder.
+      const hasFallback = !!(ref.object || ref.ref);
       if (fresh(e)) return e!.url!;
-      if (e?.status === 'failed') return null;
-      if (e?.object) return kesoku.resolveMedia({ object: e.object }, ctx);
-      if (e?.status === 'pending' || !ref.object && !ref.ref) {
+      if (e?.object) return kesoku.resolveMedia({ object: e.object, ref: ref.ref }, ctx);
+      if (e?.status === 'failed' && !hasFallback) return null;
+      if (e?.status === 'pending') {
+        // Still generating: wait (briefly when a fallback exists), then fall back to object / ref.
+        const url = await waitForMedia(ref.placeholder_id, hasFallback ? 15_000 : 240_000);
+        if (url) return url;
+      } else if (!e && !hasFallback) {
+        // Unknown placeholder (e.g. its media.ready has not arrived yet) and nothing else to try.
         const url = await waitForMedia(ref.placeholder_id, 240_000);
         if (url) return url;
       }
+      // Unknown placeholder with a fallback (after reload / store reset): go straight to object / ref below.
     }
     if (ref.object) {
       const e = s.media[`obj:${ref.object}`];

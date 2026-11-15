@@ -91,6 +91,25 @@ describe('<VoicePill> tap-to-play', () => {
     expect(play).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button').getAttribute('data-state')).toBe('playing');
   });
+  it('drops the cached clip when preloadKey changes so a new preset never replays the old audio', async () => {
+    const resolveUrl = vi.fn(async () => `https://example.test/${resolveUrl.mock.calls.length}.m4a`);
+    const created: string[] = [];
+    const createAudio = vi.fn((url: string) => {
+      created.push(url);
+      const a = { play: vi.fn(async () => {}), pause: vi.fn(), preload: '', currentTime: 0 } as unknown as HTMLAudioElement;
+      return a;
+    });
+    const { rerender } = render(<VoicePill resolveUrl={resolveUrl} createAudio={createAudio} preloadKey="asuka:cherry" label="试听" />);
+    await act(async () => fireEvent.click(screen.getByRole('button')));
+    expect(resolveUrl).toHaveBeenCalledTimes(1);
+    // Stop, then switch preset.
+    await act(async () => fireEvent.click(screen.getByRole('button')));
+    rerender(<VoicePill resolveUrl={resolveUrl} createAudio={createAudio} preloadKey="asuka:serena" label="试听" />);
+    expect(screen.getByRole('button').getAttribute('data-state')).toBe('idle');
+    await act(async () => fireEvent.click(screen.getByRole('button')));
+    expect(resolveUrl).toHaveBeenCalledTimes(2);
+    expect(created).toEqual(['https://example.test/1.m4a', 'https://example.test/2.m4a']);
+  });
   it('a second pill stops the first (only one plays)', async () => {
     const pauseA = vi.fn();
     const mk = (pause: () => void) => () => ({ play: vi.fn(async () => {}), pause, preload: '', currentTime: 0 }) as unknown as HTMLAudioElement;
