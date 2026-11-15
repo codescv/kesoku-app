@@ -7,4 +7,18 @@
     <color name="colorPrimary">#3B82F6</color>
     <color name="colorPrimaryDark">#FAF8F5</color>
     <color name="colorAccent">#6E56CF</color>
+
+    <!-- Adaptive launcher icon palette — Light Mode: warm washi. -->
+    <color name="ic_launcher_background">#F4F1EA</color>
+    <color name="ic_launcher_bg_top">#F8F5EE</color>
+    <color name="ic_launcher_bg_mid">#F4F1EA</color>
+    <color name="ic_launcher_bg_bottom">#EFEADF</color>
+    <color name="ic_launcher_bg_glow_start">#00FFFFFF</color>
+    <color name="ic_launcher_bg_glow_mid">#00FFFFFF</color>
+    <color name="ic_launcher_knockout">#F4F1EA</color>
+    <color name="ic_launcher_strap_main">#E04832</color>
+    <color name="ic_launcher_strap_back">#282D34</color>
+    <color name="ic_launcher_leather_tab">#1E2228</color>
+    <color name="ic_launcher_buckle_frame">#20242A</color>
+    <color name="ic_launcher_stitch">#B494A3B8</color>
 </resources>

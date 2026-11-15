@@ -14,80 +14,80 @@
                 android:startY="18"
                 android:endX="54"
                 android:endY="90"
-                android:startColor="#F8F5EE"
-                android:endColor="#EFEADF" />
+                android:startColor="@color/ic_launcher_bg_top"
+                android:endColor="@color/ic_launcher_bg_bottom" />
         </aapt:attr>
     </path>
     <group android:pivotX="54" android:pivotY="54" android:scaleX="0.58" android:scaleY="0.58">
         <!-- Lower-right dark strap + keyhole leather tab -->
         <path
             android:pathData="M43.20,50.76L66.96,73.44"
-            android:strokeColor="#282D34"
+            android:strokeColor="@color/ic_launcher_strap_back"
             android:strokeWidth="12.10"
             android:strokeLineCap="round" />
         <path
-            android:fillColor="#1E2228"
+            android:fillColor="@color/ic_launcher_leather_tab"
             android:pathData="M59.84,76.24L72.78,84.90A3.99,3.99 0,0 0,78.42 79.26L69.76,66.32A7.02,7.02 0,0 0,59.84 76.24Z" />
         <path
             android:pathData="M68.26,68.67L67.36,69.57 M66.01,70.92L65.12,71.82 M63.77,73.17L62.87,74.07"
-            android:strokeColor="#B494A3B8"
+            android:strokeColor="@color/ic_launcher_stitch"
             android:strokeWidth="0.54"
             android:strokeLineCap="round" />
         <path
-            android:fillColor="#F8F5EE"
+            android:fillColor="@color/ic_launcher_knockout"
             android:pathData="M71.71,76.08a2.12,2.12 0,1 1,0 4.23a2.12,2.12 0,1 1,0 -4.23z" />
         <path
             android:pathData="M71.71,78.19L69.32,75.80"
-            android:strokeColor="#F8F5EE"
+            android:strokeColor="@color/ic_launcher_knockout"
             android:strokeWidth="1.15"
             android:strokeLineCap="round" />
         <!-- Upper-right vermilion strap folding over -->
         <path
             android:pathData="M74.52,25.92L36.72,59.40"
-            android:strokeColor="#F8F5EE"
+            android:strokeColor="@color/ic_launcher_knockout"
             android:strokeWidth="14.27"
             android:strokeLineCap="round" />
         <path
             android:pathData="M74.52,25.92L36.72,59.40"
-            android:strokeColor="#E04832"
+            android:strokeColor="@color/ic_launcher_strap_main"
             android:strokeWidth="12.10"
             android:strokeLineCap="round" />
         <!-- Left vertical vermilion strap + bottom keyhole leather tab -->
         <path
             android:pathData="M35.64,24.84L35.64,71.28"
-            android:strokeColor="#E04832"
+            android:strokeColor="@color/ic_launcher_strap_main"
             android:strokeWidth="12.10"
             android:strokeLineCap="round" />
         <path
-            android:fillColor="#1E2228"
+            android:fillColor="@color/ic_launcher_leather_tab"
             android:pathData="M28.62,70.20L31.65,84.24A3.99,3.99 0,0 0,39.63 84.24L42.66,70.20A7.02,7.02 0,0 0,28.62 70.20Z" />
         <path
             android:pathData="M39.93,70.80L38.66,70.80 M36.75,70.80L35.48,70.80 M33.57,70.80L32.30,70.80"
-            android:strokeColor="#B494A3B8"
+            android:strokeColor="@color/ic_launcher_stitch"
             android:strokeWidth="0.54"
             android:strokeLineCap="round" />
         <path
-            android:fillColor="#F8F5EE"
+            android:fillColor="@color/ic_launcher_knockout"
             android:pathData="M35.64,77.07a2.12,2.12 0,1 1,0 4.23a2.12,2.12 0,1 1,0 -4.23z" />
         <path
             android:pathData="M35.64,79.19L35.64,75.80"
-            android:strokeColor="#F8F5EE"
+            android:strokeColor="@color/ic_launcher_knockout"
             android:strokeWidth="1.15"
             android:strokeLineCap="round" />
         <!-- Tri-glide '日' guitar strap buckle at waist -->
         <path
-            android:fillColor="#F8F5EE"
+            android:fillColor="@color/ic_launcher_knockout"
             android:pathData="M28.0,41.8L43.2,41.8A5.0,5.0 0,0 1,48.2 46.8L48.2,61.2A5.0,5.0 0,0 1,43.2 66.2L28.0,66.2A5.0,5.0 0,0 1,23.0 61.2L23.0,46.8A5.0,5.0 0,0 1,28.0 41.8z" />
         <path
-            android:fillColor="#E04832"
+            android:fillColor="@color/ic_launcher_strap_main"
             android:pathData="M30.3,45.0h10.6v18.0h-10.6z" />
         <path
             android:pathData="M29.3,44.6L41.9,44.6A3.5,3.5 0,0 1,45.4 48.1L45.4,59.9A3.5,3.5 0,0 1,41.9 63.4L29.3,63.4A3.5,3.5 0,0 1,25.8 59.9L25.8,48.1A3.5,3.5 0,0 1,29.3 44.6z"
-            android:strokeColor="#20242A"
+            android:strokeColor="@color/ic_launcher_buckle_frame"
             android:strokeWidth="3.0" />
         <path
             android:pathData="M27.0,54.0L44.2,54.0"
-            android:strokeColor="#20242A"
+            android:strokeColor="@color/ic_launcher_buckle_frame"
             android:strokeWidth="2.4" />
     </group>
 </vector>
