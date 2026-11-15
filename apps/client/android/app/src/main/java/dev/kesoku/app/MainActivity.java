@@ -66,19 +66,33 @@ public class MainActivity extends BridgeActivity {
                 content.setPadding(0, 0, 0, 0);
             }
 
+            float initDensity = getResources().getDisplayMetrics().density;
+            if (initDensity <= 0f) initDensity = 1f;
+            int statusBarResId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+            int fallbackStatusBarPx = statusBarResId > 0 ? getResources().getDimensionPixelSize(statusBarResId) : 0;
+            if (fallbackStatusBarPx > 0) {
+                safeTopDp = fallbackStatusBarPx / initDensity;
+            }
+
             ViewCompat.setOnApplyWindowInsetsListener(decorView, (v, windowInsets) -> {
                 Insets bars = windowInsets.getInsets(
                     WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+                );
+                Insets stableBars = windowInsets.getInsetsIgnoringVisibility(
+                    WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.displayCutout()
                 );
                 Insets ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
                 boolean kbVisible = windowInsets.isVisible(WindowInsetsCompat.Type.ime());
                 float density = getResources().getDisplayMetrics().density;
                 if (density <= 0f) density = 1f;
 
-                safeTopDp = bars.top / density;
-                safeRightDp = bars.right / density;
+                int topPx = Math.max(bars.top, Math.max(stableBars.top, fallbackStatusBarPx));
+                int rightPx = Math.max(bars.right, stableBars.right);
+                int leftPx = Math.max(bars.left, stableBars.left);
+                safeTopDp = topPx / density;
+                safeRightDp = rightPx / density;
                 safeBottomDp = (kbVisible ? 0 : bars.bottom) / density;
-                safeLeftDp = bars.left / density;
+                safeLeftDp = leftPx / density;
 
                 // Keep the WebView full-screen; only lift it above the keyboard while it is open.
                 int imePadBottom = kbVisible && ime.bottom > 0 ? ime.bottom : 0;

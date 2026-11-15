@@ -95,7 +95,8 @@ export function renderInline(text: string, keyPrefix = 'i'): ReactNode[] {
 type Block =
   | { t: 'p'; lines: string[] }
   | { t: 'h'; level: number; text: string }
-  | { t: 'ul' | 'ol'; items: string[] }
+  | { t: 'ul'; items: string[] }
+  | { t: 'ol'; items: string[]; start?: number; subLists?: Record<number, string[]> }
   | { t: 'quote'; lines: string[] }
   | { t: 'code'; lang: string; text: string }
   | { t: 'table'; headers: string[]; rows: string[][] }
@@ -151,6 +152,7 @@ export function parseBlocks(src: string): Block[] {
   const lines = src.replace(/\r\n?/g, '\n').split('\n');
   const blocks: Block[] = [];
   let i = 0;
+  let nextOlNum = 1;
   while (i < lines.length) {
     const line = lines[i];
     if (/^\s*$/.test(line)) {
@@ -185,11 +187,13 @@ export function parseBlocks(src: string): Block[] {
     }
     const h = /^(#{1,4})\s+(.*)$/.exec(line);
     if (h) {
+      nextOlNum = 1;
       blocks.push({ t: 'h', level: h[1].length, text: h[2] });
       i++;
       continue;
     }
     if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) {
+      nextOlNum = 1;
       blocks.push({ t: 'hr' });
       i++;
       continue;
@@ -200,10 +204,52 @@ export function parseBlocks(src: string): Block[] {
       blocks.push({ t: 'ul', items });
       continue;
     }
-    if (/^\s*\d+[.)]\s+/.test(line)) {
+    const olFirst = /^\s*(\d+)[.)]\s+(.*)$/.exec(line);
+    if (olFirst) {
+      const firstParsed = parseInt(olFirst[1], 10) || 1;
+      const start = firstParsed > 1 ? firstParsed : nextOlNum;
       const items: string[] = [];
-      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*\d+[.)]\s+/, ''));
-      blocks.push({ t: 'ol', items });
+      const subLists: Record<number, string[]> = {};
+      while (i < lines.length) {
+        const m = /^\s*\d+[.)]\s+(.*)$/.exec(lines[i]);
+        if (!m) break;
+        const idx = items.length;
+        items.push(m[1]);
+        i++;
+        // Skip blank lines immediately after an ordered list item if bullet sub-items or the next ordered item follow
+        let look = i;
+        while (look < lines.length && /^\s*$/.test(lines[look])) look++;
+        if (look < lines.length && /^\s*[-*•]\s+/.test(lines[look])) {
+          i = look;
+          const bullets: string[] = [];
+          while (i < lines.length) {
+            if (/^\s*[-*•]\s+/.test(lines[i])) {
+              bullets.push(lines[i++].replace(/^\s*[-*•]\s+/, ''));
+            } else if (/^\s*$/.test(lines[i])) {
+              let k = i;
+              while (k < lines.length && /^\s*$/.test(lines[k])) k++;
+              if (k < lines.length && /^\s*[-*•]\s+/.test(lines[k])) {
+                i = k;
+              } else {
+                break;
+              }
+            } else {
+              break;
+            }
+          }
+          if (bullets.length) subLists[idx] = bullets;
+        }
+        let nextLook = i;
+        while (nextLook < lines.length && /^\s*$/.test(lines[nextLook])) nextLook++;
+        if (nextLook < lines.length && /^\s*\d+[.)]\s+/.test(lines[nextLook])) {
+          i = nextLook;
+        }
+      }
+      nextOlNum = start + items.length;
+      const block: Extract<Block, { t: 'ol' }> = { t: 'ol', items };
+      if (start > 1) block.start = start;
+      if (Object.keys(subLists).length > 0) block.subLists = subLists;
+      blocks.push(block);
       continue;
     }
     if (/^\s*>\s?/.test(line)) {
@@ -227,6 +273,7 @@ export function parseBlocks(src: string): Block[] {
       p.push(lines[i++]);
     }
     if (!p.length) p.push(lines[i++]); // never stall on an unclassified line
+    nextOlNum = 1;
     blocks.push({ t: 'p', lines: p });
   }
   return blocks;
@@ -260,9 +307,18 @@ export function Markdown({ text, className }: { text: string; className?: string
             );
           case 'ol':
             return (
-              <ol key={k}>
+              <ol key={k} start={b.start && b.start > 1 ? b.start : undefined}>
                 {b.items.map((it, j) => (
-                  <li key={j}>{renderInline(it, `${k}-${j}`)}</li>
+                  <li key={j}>
+                    {renderInline(it, `${k}-${j}`)}
+                    {b.subLists?.[j]?.length ? (
+                      <ul>
+                        {b.subLists[j].map((sub, sj) => (
+                          <li key={sj}>{renderInline(sub, `${k}-${j}-s${sj}`)}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </li>
                 ))}
               </ol>
             );

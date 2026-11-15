@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { kesoku } from '../lib/client';
 import { actions, DEFAULT_SETTINGS, useStore, type Settings } from '../lib/store';
 import { getAuthInfo, hasCredentials } from '../lib/auth';
-import { db, kvGet, loadMessages } from '../lib/db';
+import { db, kvGet, loadMessages, purgeSessionFromDb, reconcileSessionsInDb } from '../lib/db';
 import { AuthScreen } from '../features/auth/AuthScreen';
 import { onDeepLink } from '../native/deeplinks';
 import { isNative } from '../native/platform';
@@ -105,13 +105,17 @@ export function App() {
     };
   }, []);
 
-  // Persist session list snapshot for offline start.
+  // Persist session list snapshot for offline start and purge removed sessions.
   useEffect(
     () =>
       useStore.subscribe((s, prev) => {
         if (s.sessions !== prev.sessions) {
-          const rows = Object.values(s.sessions).map((d) => ({ session_id: d.session_id, data: d, updated_at: d.updated_at }));
-          void db.sessions.bulkPut(rows).catch(() => {});
+          for (const id of Object.keys(prev.sessions)) {
+            if (!(id in s.sessions) && !s.ui.roleFilter) {
+              void purgeSessionFromDb(id).catch(() => {});
+            }
+          }
+          void reconcileSessionsInDb(s.sessions, s.ui.roleFilter).catch(() => {});
         }
       }),
     [],

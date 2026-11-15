@@ -10,7 +10,7 @@
         android:scaleX="0.72"
         android:scaleY="0.72">
         <path
-            android:pathData="M35.6,24.8L35.6,82.0M74.5,25.9L36.7,59.4M43.2,50.8L75.0,78.0"
+            android:pathData="M35.64,24.84L35.64,84.24M74.52,25.92L36.72,59.40M43.20,50.76L75.60,82.08"
             android:strokeColor="#000000"
             android:strokeWidth="11.5"
             android:strokeLineCap="round"

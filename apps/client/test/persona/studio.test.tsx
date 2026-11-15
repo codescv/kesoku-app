@@ -414,13 +414,17 @@ describe('PersonaStudio · Screen 17 my profile', () => {
     expect(s).not.toContain('日常聊天');
   });
 
-  it('cameo is disabled until an AI avatar exists; save sends user_profile.put', async () => {
+  it('cameo is enabled once a source photo or AI avatar exists; save sends user_profile.put', async () => {
     useStore.setState({ profile: PROFILE });
     render(<PersonaStudio onClose={() => {}} initialTab="me" />);
-    const cameo = screen.getByRole('switch', { name: '允许在约会与剧场插画中以二次元形象同框' }) as HTMLButtonElement;
+    const cameo = screen.getByRole('switch', { name: '允许在约会与剧场插画中与角色同框' }) as HTMLButtonElement;
     expect(cameo.disabled).toBe(true);
     expect(screen.getByText('这些信息会作为长期记忆供所有角色读取')).toBeTruthy();
     expect(screen.queryByText(/已由上传照片 AI 生成/)).toBeNull();
+
+    // Direct uploaded source image (without AI avatar generation) is sufficient to enable cameo
+    act(() => actions.setProfile({ ...PROFILE, avatar_ai: false, has_source_image: true, avatar_ref: 'user/avatar.webp' }));
+    expect(cameo.disabled).toBe(false);
 
     act(() => actions.setProfile({ ...PROFILE, avatar_ai: true, avatar_rev: 1 }));
     expect(screen.getByRole('button', { name: '已由上传照片 AI 生成 · 重新生成' })).toBeTruthy();
@@ -467,7 +471,7 @@ describe('PersonaStudio · plain-language copy', () => {
     useStore.setState({ profile: { ...PROFILE, avatar_ai: true, avatar_rev: 1, avatar_ref: 'user/avatar.webp', has_source_image: true } });
     act(() => actions.setPolicies({ policies: { galgame: 'isolated' } }));
     render(<PersonaStudio onClose={() => {}} initialTab="me" />);
-    expect(screen.getByText('开启后作为我的锁脸参考')).toBeTruthy();
+    expect(screen.getByText(/双人插画将直接以你的原图\/头像作为五官参考/)).toBeTruthy();
     expect(screen.getByText(/仅保存在你自己的主机上/)).toBeTruthy();
     const policy = screen.getByTestId('ps-policy-summary');
     expect(policy.querySelector('[data-mode-icon="galgame"]')).toBeTruthy();

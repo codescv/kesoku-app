@@ -12,53 +12,63 @@
         android:scaleY="0.72">
         <!-- Lower-right dark strap + keyhole leather tab -->
         <path
-            android:pathData="M43.2,50.8L67.0,73.4"
+            android:pathData="M43.20,50.76L66.96,73.44"
             android:strokeColor="#282D34"
-            android:strokeWidth="12.1"
+            android:strokeWidth="12.10"
             android:strokeLineCap="round" />
         <path
             android:fillColor="#1E2228"
-            android:pathData="M60.2,69.2L71.2,79.8C73.8,82.3 77.6,82.3 79.5,80.4C81.4,78.5 81.4,74.7 78.9,72.1L68.4,61.0Z" />
+            android:pathData="M59.84,76.24L72.78,84.90A3.99,3.99 0,0 0,78.42 79.26L69.76,66.32A7.02,7.02 0,0 0,59.84 76.24Z" />
+        <path
+            android:pathData="M68.26,68.67L67.36,69.57 M66.01,70.92L65.12,71.82 M63.77,73.17L62.87,74.07"
+            android:strokeColor="#B494A3B8"
+            android:strokeWidth="0.54"
+            android:strokeLineCap="round" />
         <path
             android:fillColor="#F8F5EE"
-            android:pathData="M73.2,72.1a2.1,2.1 0,1 1,0 4.2a2.1,2.1 0,1 1,0 -4.2z" />
+            android:pathData="M71.71,76.08a2.12,2.12 0,1 1,0 4.23a2.12,2.12 0,1 1,0 -4.23z" />
         <path
-            android:pathData="M73.2,74.2L70.6,71.7"
+            android:pathData="M71.71,78.19L69.32,75.80"
             android:strokeColor="#F8F5EE"
-            android:strokeWidth="1.2"
+            android:strokeWidth="1.15"
             android:strokeLineCap="round" />
         <!-- Upper-right vermilion strap folding over -->
         <path
-            android:pathData="M74.5,25.9L36.7,59.4"
+            android:pathData="M74.52,25.92L36.72,59.40"
             android:strokeColor="#F8F5EE"
-            android:strokeWidth="14.3"
+            android:strokeWidth="14.27"
             android:strokeLineCap="round" />
         <path
-            android:pathData="M74.5,25.9L36.7,59.4"
+            android:pathData="M74.52,25.92L36.72,59.40"
             android:strokeColor="#E04832"
-            android:strokeWidth="12.1"
+            android:strokeWidth="12.10"
             android:strokeLineCap="round" />
         <!-- Left vertical vermilion strap + bottom keyhole leather tab -->
         <path
-            android:pathData="M35.6,24.8L35.6,71.3"
+            android:pathData="M35.64,24.84L35.64,71.28"
             android:strokeColor="#E04832"
-            android:strokeWidth="12.1"
+            android:strokeWidth="12.10"
             android:strokeLineCap="round" />
         <path
             android:fillColor="#1E2228"
-            android:pathData="M28.6,69.5L28.6,81.6C28.6,85.4 31.7,88.2 35.6,88.2C39.5,88.2 42.6,85.4 42.6,81.6L42.6,69.5Z" />
+            android:pathData="M28.62,70.20L31.65,84.24A3.99,3.99 0,0 0,39.63 84.24L42.66,70.20A7.02,7.02 0,0 0,28.62 70.20Z" />
+        <path
+            android:pathData="M39.93,70.80L38.66,70.80 M36.75,70.80L35.48,70.80 M33.57,70.80L32.30,70.80"
+            android:strokeColor="#B494A3B8"
+            android:strokeWidth="0.54"
+            android:strokeLineCap="round" />
         <path
             android:fillColor="#F8F5EE"
-            android:pathData="M35.6,78.1a2.1,2.1 0,1 1,0 4.2a2.1,2.1 0,1 1,0 -4.2z" />
+            android:pathData="M35.64,77.07a2.12,2.12 0,1 1,0 4.23a2.12,2.12 0,1 1,0 -4.23z" />
         <path
-            android:pathData="M35.6,80.2L35.6,76.6"
+            android:pathData="M35.64,79.19L35.64,75.80"
             android:strokeColor="#F8F5EE"
-            android:strokeWidth="1.2"
+            android:strokeWidth="1.15"
             android:strokeLineCap="round" />
         <!-- Tri-glide '日' guitar strap buckle at waist -->
         <path
             android:fillColor="#F8F5EE"
-            android:pathData="M28.7,43.3L42.5,43.3A4.2,4.2 0,0 1,46.7 47.5L46.7,60.5A4.2,4.2 0,0 1,42.5 64.7L28.7,64.7A4.2,4.2 0,0 1,24.5 60.5L24.5,47.5A4.2,4.2 0,0 1,28.7 43.3z" />
+            android:pathData="M28.0,41.8L43.2,41.8A5.0,5.0 0,0 1,48.2 46.8L48.2,61.2A5.0,5.0 0,0 1,43.2 66.2L28.0,66.2A5.0,5.0 0,0 1,23.0 61.2L23.0,46.8A5.0,5.0 0,0 1,28.0 41.8z" />
         <path
             android:fillColor="#E04832"
             android:pathData="M30.3,45.0h10.6v18.0h-10.6z" />
