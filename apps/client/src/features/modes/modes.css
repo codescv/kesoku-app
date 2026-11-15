@@ -104,6 +104,10 @@
 .gg-line rt { color: rgba(255, 255, 255, 0.85); }
 .gg-caret { display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -0.12em; background: #fff; animation: gg-blink 1s steps(2) infinite; }
 @keyframes gg-blink { 50% { opacity: 0; } }
+/* Galgame dialogue box while the reply has not started streaming yet. */
+.gg-typing { display: flex; align-items: center; gap: 10px; min-height: 40px; color: rgba(255, 255, 255, 0.78); font: 700 15px/1.5 var(--font-sans); }
+.gg-typing .k-typing-dots { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.gg-typing .k-typing-label b { color: #fff; }
 .gg-zh {
   align-self: stretch; text-align: left; padding: 6px 10px; border: 0; border-radius: 10px;
   background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.82);

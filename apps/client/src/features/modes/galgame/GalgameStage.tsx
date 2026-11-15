@@ -407,6 +407,7 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
   const question = useMemo(() => openQuestion(items), [items]);
   const streamText = preview && !preview.interrupted && preview.text.trim() ? preview.text : '';
   const streaming = !!streamText;
+  const isWaiting = !!preview && !preview.interrupted && !streamText;
 
   const [zhClosed, setZhClosed] = useState<Record<number, boolean>>({});
   const [expanded, setExpanded] = useState(false);
@@ -511,12 +512,12 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
           </div>
         )}
 
-        {(turn || streaming) && (
+        {(turn || streaming || isWaiting) && (
           <div className={'gg-box' + (expanded ? ' is-expanded' : '')} onClick={onBoxClick} data-testid="gg-box">
             <div className="gg-box-head">
-              <span className="gg-nameplate">{streaming ? roleName : speaker}</span>
+              <span className="gg-nameplate">{streaming || isWaiting ? roleName : speaker}</span>
               <div className="gg-head-right">
-                {!streaming && headerVoiceSeg && <SpeechVoice seg={headerVoiceSeg} ctx={ctx} />}
+                {!streaming && !isWaiting && headerVoiceSeg && <SpeechVoice seg={headerVoiceSeg} ctx={ctx} />}
                 <button
                   type="button"
                   className="gg-expand-btn"
@@ -531,7 +532,18 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
               </div>
             </div>
             <div className="gg-box-body" data-testid="gg-box-body">
-              {streaming ? (
+              {isWaiting ? (
+                <div className="gg-typing" role="status" data-testid="gg-typing">
+                  <span className="k-typing-dots" aria-hidden>
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                  <span className="k-typing-label">
+                    <b>{roleName}</b> 正在输入…
+                  </span>
+                </div>
+              ) : streaming ? (
                 <StreamingBody text={streamText} speaker={roleName} />
               ) : (
                 segs.map((s, i) => {

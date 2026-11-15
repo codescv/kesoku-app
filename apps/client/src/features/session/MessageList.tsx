@@ -3,10 +3,10 @@ import type { Attachment, LexToken, MemoryProposal } from '@kesoku/protocol';
 import { Avatar, ModeIcon, UiIcon, VoicePill, modeMeta } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
-import type { ChatItem } from '../../lib/types';
+import type { ChatItem, TurnEvent } from '../../lib/types';
 import { SegmentList, type SegmentEnv } from '../segments/SegmentRenderer';
 import { Markdown } from '../segments/Markdown';
-import { StreamingPreview, ThinkingPill } from '../stream/StreamingPreview';
+import { StreamingPreview, ThinkingPill, TypingIndicator } from '../stream/StreamingPreview';
 import { ProposalCard } from '../proposals/ProposalCard';
 import { useAvatarUrl } from '../persona/avatar';
 import { fallbackRoleId, roleAvatarRef, roleFallbackName } from '../persona/model';
@@ -191,7 +191,7 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [items, preview?.text, proposals.length]);
+  }, [items, preview?.text, !!preview, proposals.length]);
 
   useEffect(() => {
     stick.current = true;
@@ -200,8 +200,12 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
   const persona = personas.find((p) => p.role_id === session?.role);
   const name = persona?.display_name ?? roleFallbackName(session?.role);
   const defaultRoleId = session?.role || fallbackRoleId(personas);
+  const previewEvents = (preview && turnEvents[preview.turn_id]) || EMPTY_EVENTS;
+  const runningTool = preview && !preview.interrupted ? runningToolTitle(previewEvents) : undefined;
+  const typing = !!preview && !preview.interrupted;
 
   return (
+    <>
     <div
       className="k-stage-scroll"
       ref={scroller}
@@ -264,14 +268,35 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
         {byMessage.tail.map((p) => (
           <ProposalCard key={p.proposal_id} proposal={p} />
         ))}
-        {preview && (preview.text || preview.thought || (turnEvents[preview.turn_id]?.length ?? 0) > 0) && (
+        {preview && (
           <div className="k-row k-row-assistant is-streaming">
             <AssistantHeader roleId={defaultRoleId} fallbackName={name} />
-            <ThinkingPill events={turnEvents[preview.turn_id] ?? EMPTY_EVENTS} running={!preview.interrupted} startedAt={preview.startedAt} thought={preview.thought} />
-            <StreamingPreview preview={preview} />
+            <ThinkingPill
+              events={previewEvents}
+              running={!preview.interrupted && (Boolean(preview.thought) || previewEvents.length > 0)}
+              startedAt={preview.startedAt}
+              thought={preview.thought}
+            />
+            <StreamingPreview preview={preview} name={name} toolTitle={runningTool} />
           </div>
         )}
       </div>
     </div>
+    {typing && (
+      <div className="k-typing-bar" data-testid="typing-bar" aria-hidden>
+        <TypingIndicator name={name} toolTitle={runningTool} className="is-bar" />
+      </div>
+    )}
+    </>
   );
+}
+
+/** Title of the latest tool call that has no result yet (shown as `正在执行 <tool>…`). */
+export function runningToolTitle(events: readonly TurnEvent[]): string | undefined {
+  const done = new Set(events.filter((e) => e.kind === 'tool_result').map((e) => (e as { tool_call_message_id?: string }).tool_call_message_id));
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (e.kind === 'tool_call' && e.status === 'running' && !(e.message_id && done.has(e.message_id))) return e.title;
+  }
+  return undefined;
 }

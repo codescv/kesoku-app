@@ -204,6 +204,11 @@ export function upsertItem(list: ChatItem[] | undefined, item: ChatItem): ChatIt
   return out.length > 1 && out[out.length - 2].ts > item.ts ? sortItems(out) : out;
 }
 
+/** An empty (typing-only) preview for `turnId`. */
+export function typingPreview(turnId: string, startedAt = Date.now()): StreamPreview {
+  return { turn_id: turnId, round_id: 0, text: '', thought: '', startedAt };
+}
+
 // ───────────────────────── actions ─────────────────────────
 
 const set = useStore.setState;
@@ -278,12 +283,42 @@ export const actions = {
     });
   },
   addLocalUser(sid: string, item: ChatItem) {
-    set((s) => ({ items: { ...s.items, [sid]: upsertItem(s.items[sid], item) } }));
+    set((s) => {
+      const pv = s.previews[sid];
+      // Discord-style typing indicator with 0 ms latency: show it before the engine acks / streams.
+      const typing = pv && !pv.interrupted ? pv : typingPreview(item.client_msg_id || item.key);
+      return { items: { ...s.items, [sid]: upsertItem(s.items[sid], item) }, previews: { ...s.previews, [sid]: typing } };
+    });
   },
   markUser(sid: string, clientMsgId: string, patch: Partial<ChatItem>) {
-    set((s) => ({
-      items: { ...s.items, [sid]: (s.items[sid] ?? []).map((x) => (x.client_msg_id === clientMsgId ? { ...x, ...patch } : x)) },
-    }));
+    set((s) => {
+      const out: Partial<KesokuState> = {
+        items: { ...s.items, [sid]: (s.items[sid] ?? []).map((x) => (x.client_msg_id === clientMsgId ? { ...x, ...patch } : x)) },
+      };
+      const pv = s.previews[sid];
+      if (pv && pv.turn_id === clientMsgId) {
+        if (patch.status === 'failed') out.previews = { ...s.previews, [sid]: undefined };
+        else if (patch.message_id) out.previews = { ...s.previews, [sid]: { ...pv, turn_id: patch.message_id } };
+      }
+      return out;
+    });
+  },
+  /** Optimistically show the typing indicator (no-op while a live preview is running). Returns the preview's turn id. */
+  startTyping(sid: string, turnId?: string): string {
+    const pv = get().previews[sid];
+    if (pv && !pv.interrupted) return pv.turn_id;
+    const typing = typingPreview(turnId ?? `typing:${Date.now().toString(36)}`);
+    set((s) => ({ previews: { ...s.previews, [sid]: typing } }));
+    return typing.turn_id;
+  },
+  /** Drop the typing indicator (only the one for `turnId` when given; otherwise only a still-empty one). */
+  clearTyping(sid: string, turnId?: string) {
+    set((s) => {
+      const pv = s.previews[sid];
+      if (!pv) return {};
+      if (turnId ? pv.turn_id !== turnId : pv.text.trim() !== '') return {};
+      return { previews: { ...s.previews, [sid]: undefined } };
+    });
   },
   markPicked(sid: string, messageId: string, choices: string[]) {
     set((s) => ({ items: { ...s.items, [sid]: (s.items[sid] ?? []).map((x) => (x.message_id === messageId ? { ...x, picked: choices } : x)) } }));
@@ -312,10 +347,11 @@ export const actions = {
             sender: p.sender as ChatItem['sender'],
           };
           patch.items = { ...s.items, [sid]: upsertItem(s.items[sid], item) };
-          // A new user message interrupts a running preview (UI marks it 已打断).
+          // The agent now works on this message: show its typing indicator (replacing an optimistic or interrupted one).
           const pv = s.previews[sid];
-          if (pv && !s.finalized.has(pv.turn_id) && pv.turn_id !== p.message_id && p.client_msg_id) {
-            patch.previews = { ...s.previews, [sid]: { ...pv, interrupted: true } };
+          if (!s.finalized.has(p.message_id) && pv?.turn_id !== p.message_id) {
+            const keep = pv && !pv.interrupted && (pv.turn_id === p.client_msg_id || !pv.text);
+            patch.previews = { ...s.previews, [sid]: typingPreview(p.message_id, keep ? pv.startedAt : undefined) };
           }
           break;
         }
@@ -326,6 +362,7 @@ export const actions = {
           if (i >= 0) evs[i] = { ...evs[i], ...p };
           else evs.push({ ...p, ts: Date.now() });
           patch.turnEvents = { ...s.turnEvents, [p.turn_id]: evs };
+          if (!s.finalized.has(p.turn_id) && !s.previews[sid]) patch.previews = { ...s.previews, [sid]: typingPreview(p.turn_id) };
           break;
         }
         case 'message.final': {
@@ -345,8 +382,9 @@ export const actions = {
           };
           patch.items = { ...s.items, [sid]: upsertItem(s.items[sid], item) };
           patch.finalized = finalized;
-          const pv = s.previews[sid];
-          if (pv && pv.turn_id === p.turn_id) patch.previews = { ...s.previews, [sid]: undefined };
+          // Any real reply ends the typing indicator, even when its turn_id differs from the preview's
+          // (optimistic client_msg_id, or a self-healing retry finalizing under a new turn id).
+          if (p.sender?.name !== 'Notification' && s.previews[sid]) patch.previews = { ...s.previews, [sid]: undefined };
           break;
         }
         case 'media.pending': {

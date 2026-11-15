@@ -5,9 +5,32 @@ import { parseStreaming } from './streamParser';
 import { Markdown } from '../segments/Markdown';
 import { CardSkeleton } from '../segments/SegmentRenderer';
 
+/** Discord-style `● ● ●  Name 正在输入…` (or `正在执行 <tool>…` while a tool runs). */
+export function TypingIndicator({ name, toolTitle, className }: { name?: string; toolTitle?: string; className?: string }) {
+  return (
+    <div className={'k-typing' + (className ? ` ${className}` : '')} data-testid="typing-indicator" role="status" aria-live="polite">
+      <span className="k-typing-dots" aria-hidden>
+        <span />
+        <span />
+        <span />
+      </span>
+      <span className="k-typing-label">
+        <b>{name || 'AI'}</b> {toolTitle ? `正在执行 ${toolTitle}…` : '正在输入…'}
+      </span>
+    </div>
+  );
+}
+
 /** Progressive preview: text as Markdown, open fences as skeletons (never raw YAML). */
-export function StreamingPreview({ preview }: { preview: StreamPreview }) {
+export function StreamingPreview({ preview, name, toolTitle }: { preview: StreamPreview; name?: string; toolTitle?: string }) {
   const blocks = useMemo(() => parseStreaming(preview.text), [preview.text]);
+  if (!preview.text.trim() && !preview.interrupted) {
+    return (
+      <div className="k-preview is-typing">
+        <TypingIndicator name={name} toolTitle={toolTitle} />
+      </div>
+    );
+  }
   return (
     <div className={'k-preview' + (preview.interrupted ? ' is-interrupted' : '')} aria-live="polite">
       {blocks.map((b, i) => {

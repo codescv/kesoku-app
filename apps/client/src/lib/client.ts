@@ -353,12 +353,20 @@ export const kesoku = {
 
   async pick(sessionId: string, questionMessageId: string, choices: string[]): Promise<void> {
     actions.markPicked(sessionId, questionMessageId, choices);
+    const typing = actions.startTyping(sessionId);
     await kesoku.rpc('ui.pick', { session_id: sessionId, question_message_id: questionMessageId, choices }, { session_id: sessionId }).catch(() => {
+      actions.clearTyping(sessionId, typing);
       actions.toast('选择发送失败', 'error');
     });
   },
 
   async stopTurn(sessionId: string) {
+    // Stop typing right away: keep partial text marked 已打断, drop an empty typing indicator.
+    useStore.setState((st) => {
+      const pv = st.previews[sessionId];
+      if (!pv) return {};
+      return { previews: { ...st.previews, [sessionId]: pv.text.trim() ? { ...pv, interrupted: true } : undefined } };
+    });
     await kesoku.rpc('turn.stop', { session_id: sessionId }).catch(() => {});
   },
 
@@ -377,7 +385,9 @@ export const kesoku = {
       tPrefs = translatorStartPrefs(getState().settings);
       await kesoku.setModePrefs(sid, tPrefs);
     }
+    const typing = actions.startTyping(sid);
     await kesoku.rpc('mode.start', { session_id: sid, mode_id: modeId, ...(tPrefs ? { prefs: tPrefs } : {}) }, { session_id: sid }).catch(() => {
+      actions.clearTyping(sid, typing);
       actions.setUi({ pendingMode: null });
       actions.toast('模式启动失败', 'error');
     });
@@ -385,7 +395,11 @@ export const kesoku = {
   },
 
   async stopMode(sessionId: string): Promise<void> {
-    await kesoku.rpc('mode.stop', { session_id: sessionId }, { session_id: sessionId }).catch(() => actions.toast('退出模式失败', 'error'));
+    const typing = actions.startTyping(sessionId);
+    await kesoku.rpc('mode.stop', { session_id: sessionId }, { session_id: sessionId }).catch(() => {
+      actions.clearTyping(sessionId, typing);
+      actions.toast('退出模式失败', 'error');
+    });
   },
 
   async setModePrefs(sessionId: string, prefs: Payload): Promise<void> {
