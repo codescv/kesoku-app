@@ -160,7 +160,7 @@ export const SessionSummarySchema = z
   .object({
     session_id: z.string(),
     title: z.string().default(''),
-    role: z.string().default('asuka'),
+    role: z.string().default('default'),
     chatbot_id: ChatbotIdSchema.default('app'),
     origin_channel: z.string().nullable().optional(),
     mode_id: z.string().nullable().optional(),

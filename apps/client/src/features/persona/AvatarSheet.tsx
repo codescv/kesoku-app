@@ -346,7 +346,7 @@ export function AvatarSheet({
             )}
           </section>
         ) : (
-          <div className="ps-gen-empty">{canGenerate ? '选择画风后生成 4 张候选 · 仅参考五官与发型，自动去除话筒等无关杂物' : '① 上传原图 · ② 选画风 · ③ 生成 4 张候选'}</div>
+          <div className="ps-gen-empty">{canGenerate ? '选择画风后生成 4 张候选 · 仅参考五官与发型，自动忽略道具、服饰与背景' : '① 上传原图 · ② 选画风 · ③ 生成 4 张候选'}</div>
         )}
 
         <div className="ps-gen-toggle">

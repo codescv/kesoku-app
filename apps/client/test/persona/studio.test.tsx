@@ -478,7 +478,7 @@ describe('PersonaStudio · plain-language copy', () => {
     fireEvent.click(screen.getByRole('button', { name: 'AI 风格化' }));
     expect(document.querySelector('.k-sheet.ps-gen')).toBeTruthy();
     expect(screen.getByText('同步为场景生图的锁脸参考')).toBeTruthy();
-    expect(screen.getByText(/仅参考五官与发型，自动去除话筒等无关杂物/)).toBeTruthy();
+    expect(screen.getByText(/仅参考五官与发型，自动忽略道具、服饰与背景/)).toBeTruthy();
     expect(screen.getByRole('radio', { name: '日系清透立绘' })).toBeTruthy();
     expectNoJargon();
     expect(document.body.textContent).not.toMatch(/[✨✓✦＋→↻]/u);
