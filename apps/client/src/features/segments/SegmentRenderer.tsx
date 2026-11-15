@@ -41,6 +41,14 @@ function QuestionPills({ seg, env }: { seg: QuestionSegment; env: SegmentEnv }) 
   const qid = seg.question_message_id ?? env.ctx.messageId;
   const disabled = !!picked?.length || env.readOnly;
   const max = seg.max ?? (seg.multi ? seg.choices.length : 1);
+  if (picked?.length) {
+    // Answered: the picked option is shown once as the user's own bubble right below — don't repeat it as a pill.
+    return seg.prompt ? (
+      <div className="k-q is-answered">
+        <div className="k-q-prompt">{renderInline(seg.prompt, 'qp')}</div>
+      </div>
+    ) : null;
+  }
   return (
     <div className="k-q">
       {seg.prompt && <div className="k-q-prompt">{renderInline(seg.prompt, 'qp')}</div>}

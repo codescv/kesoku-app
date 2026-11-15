@@ -352,12 +352,25 @@ export const kesoku = {
   },
 
   async pick(sessionId: string, questionMessageId: string, choices: string[]): Promise<void> {
+    const text = choices.length === 1 ? choices[0].trim() : '选择：' + choices.map((c) => c.trim()).join('；');
+    const client_msg_id = newId('cm');
     actions.markPicked(sessionId, questionMessageId, choices);
-    const typing = actions.startTyping(sessionId);
-    await kesoku.rpc('ui.pick', { session_id: sessionId, question_message_id: questionMessageId, choices }, { session_id: sessionId }).catch(() => {
-      actions.clearTyping(sessionId, typing);
+    // One optimistic user bubble (also starts the 0 ms typing preview keyed by client_msg_id);
+    // the engine's message.user carries the same client_msg_id and updates it in place.
+    actions.addLocalUser(sessionId, { key: `c:${client_msg_id}`, kind: 'user', client_msg_id, text, ts: Date.now() / 1000, status: 'sending' });
+    try {
+      const ack = await kesoku.rpc<EngineToClientPayload<'message.ack'>>(
+        'ui.pick',
+        { session_id: sessionId, question_message_id: questionMessageId, choices, client_msg_id },
+        { session_id: sessionId },
+      );
+      actions.markUser(sessionId, client_msg_id, { status: 'sent', ...(ack?.message_id ? { message_id: ack.message_id } : {}) });
+    } catch {
+      useStore.setState((st) => ({ items: { ...st.items, [sessionId]: (st.items[sessionId] ?? []).filter((x) => x.client_msg_id !== client_msg_id) } }));
+      actions.markPicked(sessionId, questionMessageId, []);
+      actions.clearTyping(sessionId, client_msg_id);
       actions.toast('选择发送失败', 'error');
-    });
+    }
   },
 
   async stopTurn(sessionId: string) {

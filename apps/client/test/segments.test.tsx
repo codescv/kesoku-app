@@ -179,11 +179,19 @@ describe('<SegmentList>', () => {
     fireEvent.click(screen.getByText('神社'));
     expect(onPick).toHaveBeenCalledWith('q1', ['神社']);
   });
-  it('disables pills once picked', () => {
+  it('hides the choice pills once picked (the pick is shown once, as the user bubble)', () => {
     const segs: Segment[] = [{ type: 'question', prompt: '', choices: ['A', 'B'], multi: false }];
-    render(<SegmentList segments={segs} env={env({ picked: ['A'] })} />);
-    expect((screen.getByText('B') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText('A').className).toContain('is-on');
+    const { container, unmount } = render(<SegmentList segments={segs} env={env({ picked: ['A'] })} />);
+    expect(container.querySelector('.k-q-choices')).toBeNull();
+    expect(container.querySelector('.k-choice')).toBeNull();
+    expect(screen.queryByText('A')).toBeNull();
+    expect(container.querySelector('.k-q')).toBeNull();
+    unmount();
+    const withPrompt: Segment[] = [{ type: 'question', prompt: '去哪？', choices: ['海边', '神社'], multi: false }];
+    const r = render(<SegmentList segments={withPrompt} env={env({ picked: ['神社'] })} />);
+    expect(r.container.querySelector('.k-q.is-answered .k-q-prompt')?.textContent).toBe('去哪？');
+    expect(r.container.querySelector('.k-q-choices')).toBeNull();
+    expect(screen.queryByText('神社')).toBeNull();
   });
   it('multi-select confirms the chosen set', () => {
     const onPick = vi.fn();

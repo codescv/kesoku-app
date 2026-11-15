@@ -74,7 +74,7 @@ export const ClientToEngine = {
     llm_override: LlmOverrideSchema.optional(),
     reply_to_question: z.string().optional(),
   }),
-  'ui.pick': z.object({ session_id: sid, question_message_id: z.string(), choices: z.array(z.string()).min(1) }),
+  'ui.pick': z.object({ session_id: sid, question_message_id: z.string(), choices: z.array(z.string()).min(1), client_msg_id: z.string().optional() }),
   'turn.stop': z.object({ session_id: sid }),
   'mode.start': z.object({ session_id: sid, mode_id: ModeIdSchema, prefs: z.record(z.unknown()).optional() }),
   'mode.stop': z.object({ session_id: sid, instance_id: z.string().optional() }),

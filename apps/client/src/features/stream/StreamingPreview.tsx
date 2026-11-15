@@ -6,7 +6,21 @@ import { Markdown } from '../segments/Markdown';
 import { CardSkeleton } from '../segments/SegmentRenderer';
 
 /** Discord-style `● ● ●  Name 正在输入…` (or `正在执行 <tool>…` while a tool runs). */
-export function TypingIndicator({ name, toolTitle, className }: { name?: string; toolTitle?: string; className?: string }) {
+export function TypingIndicator({ name, toolTitle, className, hideName }: { name?: string; toolTitle?: string; className?: string; hideName?: boolean }) {
+  const status = toolTitle ? `正在执行 ${toolTitle}…` : '正在输入…';
+  if (hideName) {
+    // Inline under the assistant header, which already shows avatar + name: `● ● ● 正在输入…`.
+    return (
+      <div className={'k-typing' + (className ? ` ${className}` : '')} data-testid="typing-indicator" role="status" aria-live="polite" aria-label={`${name || 'AI'} ${status}`}>
+        <span className="k-typing-dots" aria-hidden>
+          <span />
+          <span />
+          <span />
+        </span>
+        <span className="k-typing-label" aria-hidden>{status}</span>
+      </div>
+    );
+  }
   return (
     <div className={'k-typing' + (className ? ` ${className}` : '')} data-testid="typing-indicator" role="status" aria-live="polite">
       <span className="k-typing-dots" aria-hidden>
@@ -15,7 +29,7 @@ export function TypingIndicator({ name, toolTitle, className }: { name?: string;
         <span />
       </span>
       <span className="k-typing-label">
-        <b>{name || 'AI'}</b> {toolTitle ? `正在执行 ${toolTitle}…` : '正在输入…'}
+        <b>{name || 'AI'}</b> {status}
       </span>
     </div>
   );
@@ -27,7 +41,7 @@ export function StreamingPreview({ preview, name, toolTitle }: { preview: Stream
   if (!preview.text.trim() && !preview.interrupted) {
     return (
       <div className="k-preview is-typing">
-        <TypingIndicator name={name} toolTitle={toolTitle} />
+        <TypingIndicator name={name} toolTitle={toolTitle} hideName />
       </div>
     );
   }

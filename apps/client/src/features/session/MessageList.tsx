@@ -6,7 +6,7 @@ import { actions, useStore } from '../../lib/store';
 import type { ChatItem, TurnEvent } from '../../lib/types';
 import { SegmentList, type SegmentEnv } from '../segments/SegmentRenderer';
 import { Markdown } from '../segments/Markdown';
-import { StreamingPreview, ThinkingPill, TypingIndicator } from '../stream/StreamingPreview';
+import { StreamingPreview, ThinkingPill } from '../stream/StreamingPreview';
 import { ProposalCard } from '../proposals/ProposalCard';
 import { useAvatarUrl } from '../persona/avatar';
 import { fallbackRoleId, roleAvatarRef, roleFallbackName } from '../persona/model';
@@ -188,10 +188,12 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
   );
   const onPick = useCallback((qid: string, choices: string[]) => void kesoku.pick(sessionId, qid, choices), [sessionId]);
 
+  const previewEvents = (preview && turnEvents[preview.turn_id]) || EMPTY_EVENTS;
+  const previewThinking = Boolean(preview?.thought);
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [items, preview?.text, !!preview, proposals.length]);
+  }, [items, preview?.text, !!preview, previewEvents.length, previewThinking, proposals.length]);
 
   useEffect(() => {
     stick.current = true;
@@ -200,9 +202,7 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
   const persona = personas.find((p) => p.role_id === session?.role);
   const name = persona?.display_name ?? roleFallbackName(session?.role);
   const defaultRoleId = session?.role || fallbackRoleId(personas);
-  const previewEvents = (preview && turnEvents[preview.turn_id]) || EMPTY_EVENTS;
   const runningTool = preview && !preview.interrupted ? runningToolTitle(previewEvents) : undefined;
-  const typing = !!preview && !preview.interrupted;
 
   return (
     <>
@@ -282,11 +282,6 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
         )}
       </div>
     </div>
-    {typing && (
-      <div className="k-typing-bar" data-testid="typing-bar" aria-hidden>
-        <TypingIndicator name={name} toolTitle={runningTool} className="is-bar" />
-      </div>
-    )}
     </>
   );
 }

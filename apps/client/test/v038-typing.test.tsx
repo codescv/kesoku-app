@@ -111,11 +111,53 @@ describe('optimistic typing state (client actions)', () => {
   it('pick shows typing immediately and clears it when ui.pick fails', async () => {
     let reject!: (e: unknown) => void;
     fakeSocket(() => new Promise((_r, j) => (reject = j)));
+    useStore.setState({ items: { s1: [{ key: 'q1', kind: 'assistant', message_id: 'q1', ts: 1 }] } });
     const p = kesoku.pick('s1', 'q1', ['A']);
     expect(pv()).toBeDefined();
+    expect(useStore.getState().items.s1.filter((x) => x.kind === 'user')).toHaveLength(1);
     reject(new Error('nope'));
     await p;
     expect(pv()).toBeUndefined();
+    // Failed pick: optimistic bubble removed, pills come back.
+    expect(useStore.getState().items.s1.filter((x) => x.kind === 'user')).toHaveLength(0);
+    expect(useStore.getState().items.s1[0].picked).toEqual([]);
+  });
+
+  it('pick inserts exactly one optimistic user bubble that message.user updates in place', async () => {
+    const rpc = fakeSocket(async (type) => (type === 'ui.pick' ? makeEnvelope('message.ack', { client_msg_id: 'x', message_id: 'mu-1', seq: 2 }) : makeEnvelope(`${type}.result`, {})));
+    seedSession();
+    const segs = [{ type: 'question', prompt: '', choices: ['下一段', '换一句'], multi: false, question_message_id: 'q1' }];
+    useStore.setState({ items: { s1: [{ key: 'q1', kind: 'assistant', message_id: 'q1', ts: 1, segments: segs as never }] } });
+    render(<MessageList sessionId="s1" modeId="chat" />);
+    expect(document.querySelectorAll('.k-q-choices')).toHaveLength(1);
+    await act(async () => {
+      await kesoku.pick('s1', 'q1', ['下一段']);
+    });
+    const pickCall = (rpc.mock.calls as unknown as Array<[string, Record<string, unknown>]>).find(([t]) => t === 'ui.pick');
+    const payload = pickCall![1];
+    expect(payload).toMatchObject({ question_message_id: 'q1', choices: ['下一段'] });
+    const cm = payload.client_msg_id as string;
+    expect(cm).toMatch(/^cm/);
+    let users = useStore.getState().items.s1.filter((x) => x.kind === 'user');
+    expect(users).toHaveLength(1);
+    expect(users[0]).toMatchObject({ client_msg_id: cm, text: '下一段', status: 'sent', message_id: 'mu-1' });
+    // Choices hidden once answered; the pick is visible exactly once.
+    expect(document.querySelector('.k-q-choices')).toBeNull();
+    expect(screen.getAllByText('下一段')).toHaveLength(1);
+    act(() => {
+      actions.applySessionEvent('s1', 'message.user', { message_id: 'mu-1', client_msg_id: cm, text: '下一段', ts: 2 }, 2);
+    });
+    users = useStore.getState().items.s1.filter((x) => x.kind === 'user');
+    expect(users).toHaveLength(1);
+    expect(screen.getAllByText('下一段')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-testid="typing-indicator"]').length).toBe(1);
+  });
+
+  it('multi-choice pick formats one 选择：a；b bubble', async () => {
+    fakeSocket(async () => makeEnvelope('message.ack', { client_msg_id: 'x', message_id: 'mu-2', seq: 2 }));
+    await kesoku.pick('s1', 'q1', [' A ', 'B']);
+    const users = useStore.getState().items.s1.filter((x) => x.kind === 'user');
+    expect(users.map((u) => u.text)).toEqual(['选择：A；B']);
   });
 
   it('stopTurn drops an empty typing preview and marks partial text 已打断', async () => {
@@ -169,9 +211,14 @@ describe('<TypingIndicator /> & <MessageList />', () => {
     seedSession();
     actions.addLocalUser('s1', { key: 'c:cm1', kind: 'user', client_msg_id: 'cm1', text: '在吗', ts: 1, status: 'sending' });
     render(<MessageList sessionId="s1" modeId="chat" />);
+    // Exactly one typing indicator, inline under the assistant header (which already shows the name).
+    expect(document.querySelectorAll('[data-testid="typing-indicator"]').length).toBe(1);
+    expect(screen.queryByTestId('typing-bar')).toBeNull();
     const inline = document.querySelector('.k-row.is-streaming [data-testid="typing-indicator"]');
-    expect(inline?.textContent).toContain('飞鸟 正在输入…');
-    expect(screen.getByTestId('typing-bar').textContent).toContain('飞鸟 正在输入…');
+    expect(inline?.textContent).toContain('正在输入…');
+    expect(inline?.textContent).not.toContain('飞鸟');
+    expect(inline?.getAttribute('aria-label')).toBe('飞鸟 正在输入…');
+    expect(document.querySelector('.k-row.is-streaming')?.textContent?.match(/飞鸟/g)?.length).toBe(1);
     // No empty `思考与工具 · 0.0s` pill while only typing.
     expect(document.querySelector('.k-think-pill')).toBeNull();
 
@@ -181,7 +228,8 @@ describe('<TypingIndicator /> & <MessageList />', () => {
     });
     expect(document.querySelector('.k-row.is-streaming [data-testid="typing-indicator"]')).toBeNull();
     expect(document.querySelector('.k-row.is-streaming .k-preview')?.textContent).toContain('在的哦～');
-    expect(screen.getByTestId('typing-bar')).toBeTruthy();
+    expect(screen.queryByTestId('typing-bar')).toBeNull();
+    expect(screen.queryByTestId('typing-indicator')).toBeNull();
 
     act(() => {
       actions.applySessionEvent('s1', 'message.final', { message_id: 'a1', turn_id: 'heal-9', segments: [{ type: 'text', markdown: '在的哦～' }], raw_markdown: '在的哦～', ts: 2, sender: { kind: 'assistant', name: 'Kesoku', role_id: 'asuka' } }, 2);
