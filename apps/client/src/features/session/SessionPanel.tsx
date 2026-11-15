@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { TouchEvent as ReactTouchEvent } from 'react';
+import { createPortal } from 'react-dom';
 import type { SessionSummary } from '@kesoku/protocol';
 import { Avatar, ModeIcon, UiIcon, modeMeta } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { kvSet } from '../../lib/db';
+import { hapticTap } from '../../native/haptics';
 import { useAvatarUrl } from '../persona/avatar';
 import { fallbackRoleId, roleAvatarRef, roleFallbackName } from '../persona/model';
 
@@ -18,41 +21,143 @@ function rel(ts: number): string {
   return new Date(ts * 1000).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
 }
 
-function SessionRow({ s, active }: { s: SessionSummary; active: boolean }) {
+const LONG_PRESS_MS = 420;
+
+type EditMode = 'menu' | 'rename';
+
+function isForeign(s: SessionSummary): boolean {
+  return !!s.chatbot_id && s.chatbot_id !== 'app';
+}
+
+/** Swallow the event so nothing bubbles up to a drawer-closing / session-opening ancestor. */
+function stop(e: { stopPropagation(): void }) {
+  e.stopPropagation();
+}
+
+function SessionRow({ s, active, onOpen, onEdit }: { s: SessionSummary; active: boolean; onOpen: () => void; onEdit: (mode: EditMode) => void }) {
   const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState(s.title);
-  const [confirmDel, setConfirmDel] = useState(false);
-  const chan = s.chatbot_id && s.chatbot_id !== 'app' ? s.chatbot_id : null;
+  const touchRef = useRef<{ startX: number; startY: number; timer: ReturnType<typeof setTimeout> | null; longPressed: boolean; swiped: boolean }>({
+    startX: 0,
+    startY: 0,
+    timer: null,
+    longPressed: false,
+    swiped: false,
+  });
+  const chan = isForeign(s) ? s.chatbot_id! : null;
   const m = modeMeta(s.mode_id || 'chat');
-  let startX = 0;
+
+  const clearTimer = () => {
+    const t = touchRef.current;
+    if (t.timer) clearTimeout(t.timer);
+    t.timer = null;
+  };
+  useEffect(() => clearTimer, []);
+
+  const onTouchStart = (e: ReactTouchEvent) => {
+    if (renaming) return;
+    const t = touchRef.current;
+    const p = e.touches[0];
+    clearTimer();
+    t.startX = p?.clientX ?? 0;
+    t.startY = p?.clientY ?? 0;
+    t.longPressed = false;
+    t.swiped = false;
+    t.timer = setTimeout(() => {
+      t.timer = null;
+      t.longPressed = true;
+      void hapticTap();
+      onEdit('menu');
+    }, LONG_PRESS_MS);
+  };
+  const onTouchMove = (e: ReactTouchEvent) => {
+    const t = touchRef.current;
+    const p = e.touches[0];
+    if (!p) return;
+    const dx = p.clientX - t.startX;
+    const dy = p.clientY - t.startY;
+    if (Math.hypot(dx, dy) > 10) clearTimer();
+    if (Math.abs(dx) > 20 && Math.abs(dx) > Math.abs(dy)) t.swiped = true;
+  };
+  const onTouchEnd = (e: ReactTouchEvent) => {
+    clearTimer();
+    const t = touchRef.current;
+    if (renaming) return;
+    if (t.longPressed) {
+      // Suppress the synthetic click so it can't open the session or hit the freshly opened menu.
+      if (e.cancelable) e.preventDefault();
+      return;
+    }
+    const p = e.changedTouches[0];
+    const dx = (p?.clientX ?? t.startX) - t.startX;
+    const dy = (p?.clientY ?? t.startY) - t.startY;
+    if (dx < -45 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      t.swiped = true;
+      setMenu(true);
+      void hapticTap();
+    } else if (dx > 40 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      t.swiped = true;
+      setMenu(false);
+    }
+  };
+  const onTouchCancel = () => {
+    clearTimer();
+  };
+
   return (
     <div
       className={'k-srow' + (active ? ' is-active' : '') + (menu ? ' is-menu' : '')}
-      onTouchStart={(e) => (startX = e.touches[0]?.clientX ?? 0)}
-      onTouchEnd={(e) => {
-        const dx = (e.changedTouches[0]?.clientX ?? 0) - startX;
-        if (dx < -50) setMenu(true);
-        if (dx > 40) setMenu(false);
-      }}
+      data-session-id={s.session_id}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchCancel}
     >
       {renaming ? (
         <form
           className="k-srow-rename"
+          onClick={stop}
           onSubmit={(e) => {
             e.preventDefault();
+            e.stopPropagation();
+            const next = title.trim();
             setRenaming(false);
             setMenu(false);
-            if (title.trim()) void kesoku.renameSession(s.session_id, title.trim());
+            if (next && next !== s.title) void kesoku.renameSession(s.session_id, next);
           }}
         >
-          <input autoFocus value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} aria-label="会话标题" />
-          <button type="submit" className="k-btn k-btn-primary k-btn-sm">
+          <input autoFocus value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} aria-label="会话标题" data-testid="session-rename-input" />
+          <button type="button" className="k-btn k-btn-ghost k-btn-sm" onClick={(e) => (stop(e), setRenaming(false), setTitle(s.title))}>
+            取消
+          </button>
+          <button type="submit" className="k-btn k-btn-primary k-btn-sm" data-testid="session-rename-save" onClick={stop}>
             保存
           </button>
         </form>
       ) : (
-        <button type="button" className="k-srow-main" onClick={() => void kesoku.openSession(s.session_id)} onContextMenu={(e) => (e.preventDefault(), setMenu(true))}>
+        <button
+          type="button"
+          className="k-srow-main"
+          onClick={(e) => {
+            const t = touchRef.current;
+            if (t.longPressed || t.swiped) {
+              t.longPressed = false;
+              t.swiped = false;
+              e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
+            onOpen();
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            clearTimer();
+            // A touch long-press already opened the menu; don't toggle it twice.
+            if (!touchRef.current.longPressed) onEdit('menu');
+          }}
+        >
           <span className="k-srow-title">
             {m && (
               <span className="k-srow-mode" aria-hidden>
@@ -69,27 +174,164 @@ function SessionRow({ s, active }: { s: SessionSummary; active: boolean }) {
           </span>
         </button>
       )}
+      {!renaming && (
+        <button
+          type="button"
+          className="k-srow-more"
+          aria-label={`编辑 ${s.title || '未命名会话'}`}
+          data-testid="session-more"
+          onClick={(e) => (stop(e), onEdit('menu'))}
+        >
+          <span aria-hidden>⋯</span>
+        </button>
+      )}
       {menu && !renaming && (
-        <span className="k-srow-actions">
-          <button type="button" className="k-btn k-btn-sm" onClick={() => setRenaming(true)}>
+        <span className="k-srow-actions" onClick={stop}>
+          <button
+            type="button"
+            className="k-btn k-btn-sm"
+            data-testid="session-swipe-rename"
+            onClick={(e) => {
+              stop(e);
+              setTitle(s.title);
+              setRenaming(true);
+            }}
+          >
             重命名
           </button>
-          {confirmDel ? (
-            <button type="button" className="k-btn k-btn-sm k-btn-danger" onClick={() => void kesoku.deleteSession(s.session_id)}>
-              确认删除
-            </button>
-          ) : (
-            <button type="button" className="k-btn k-btn-sm k-btn-danger-ghost" onClick={() => setConfirmDel(true)}>
-              删除
-            </button>
-          )}
-          <button type="button" className="k-btn k-btn-sm k-btn-ghost" aria-label="收起" onClick={() => (setMenu(false), setConfirmDel(false))}>
+          <button
+            type="button"
+            className="k-btn k-btn-sm k-btn-danger"
+            data-testid="session-swipe-delete"
+            disabled={!!chan}
+            title={chan ? '外部渠道会话不可在 App 内删除' : undefined}
+            onClick={(e) => {
+              stop(e);
+              setMenu(false);
+              void kesoku.deleteSession(s.session_id);
+            }}
+          >
+            删除
+          </button>
+          <button type="button" className="k-btn k-btn-sm k-btn-ghost" aria-label="收起" onClick={(e) => (stop(e), setMenu(false))}>
             <UiIcon name="close" size={16} />
           </button>
         </span>
       )}
     </div>
   );
+}
+
+/** Long-press / right-click / ⋯ edit menu for one session (rename & delete). Never closes the drawer. */
+function SessionEditMenu({ sessionId, mode, onMode, onClose }: { sessionId: string; mode: EditMode; onMode: (m: EditMode) => void; onClose: () => void }) {
+  const s = useStore((st) => st.sessions[sessionId]);
+  const [title, setTitle] = useState(s?.title ?? '');
+  const openedAt = useRef(Date.now());
+  useEffect(() => {
+    if (!s) onClose();
+  }, [s, onClose]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  if (!s) return null;
+  const m = modeMeta(s.mode_id || 'chat');
+  const foreign = isForeign(s);
+  const name = s.title || '未命名会话';
+  const save = () => {
+    const next = title.trim();
+    if (!next) return;
+    onClose();
+    if (next !== s.title) void kesoku.renameSession(s.session_id, next);
+  };
+  const node = (
+    <div
+      className="k-sedit-root"
+      data-testid="session-edit-menu"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`编辑会话 ${name}`}
+      onClick={stop}
+      onTouchStart={stop}
+      onTouchEnd={stop}
+      onContextMenu={(e) => {
+        if (!(e.target instanceof HTMLInputElement)) e.preventDefault();
+        stop(e);
+      }}
+    >
+      <div
+        className="k-sedit-scrim"
+        onClick={(e) => {
+          stop(e);
+          // Ignore the trailing synthetic click of the long-press that opened us.
+          if (Date.now() - openedAt.current > 350) onClose();
+        }}
+      />
+      <div className="k-sedit-card">
+        <div className="k-sedit-head">
+          {m && (
+            <span className="k-srow-mode" aria-hidden>
+              <ModeIcon mode={m.id} size={20} />
+            </span>
+          )}
+          <span className="k-sedit-title">{name}</span>
+        </div>
+        {mode === 'rename' ? (
+          <form
+            className="k-sedit-rename"
+            onSubmit={(e) => {
+              e.preventDefault();
+              save();
+            }}
+          >
+            <input autoFocus value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} aria-label="会话标题" data-testid="session-rename-input" />
+            <div className="k-sedit-row">
+              <button type="button" className="k-btn k-btn-ghost" onClick={onClose}>
+                取消
+              </button>
+              <button type="submit" className="k-btn k-btn-primary" data-testid="session-rename-save" disabled={!title.trim()}>
+                保存
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="k-sedit-actions">
+            <button
+              type="button"
+              className="k-sedit-btn"
+              data-testid="session-action-rename"
+              onClick={() => {
+                setTitle(s.title ?? '');
+                onMode('rename');
+              }}
+            >
+              <UiIcon name="edit" size={20} />
+              重命名对话
+            </button>
+            <button
+              type="button"
+              className="k-sedit-btn is-danger"
+              data-testid="session-action-delete"
+              disabled={foreign}
+              onClick={() => {
+                onClose();
+                void kesoku.deleteSession(s.session_id);
+              }}
+            >
+              <UiIcon name="trash" size={20} />
+              删除对话
+            </button>
+            {foreign && <p className="k-sedit-hint">外部渠道会话不可在 App 内删除</p>}
+            <button type="button" className="k-sedit-btn is-cancel" data-testid="session-action-cancel" onClick={onClose}>
+              取消
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+  return typeof document !== 'undefined' ? createPortal(node, document.body) : node;
 }
 
 /** Left drawer / desktop left column (Screen 03). */
@@ -103,6 +345,8 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
   const proposals = useStore((s) => s.proposals);
   const conn = useStore((s) => s.conn);
   const [q, setQ] = useState('');
+  const [editing, setEditing] = useState<{ id: string; mode: EditMode } | null>(null);
+  const closeEdit = useCallback(() => setEditing(null), []);
 
   useEffect(() => {
     if (q.trim().length < 2) {
@@ -135,7 +379,15 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
   const go = () => onNavigate?.();
 
   return (
-    <nav className="k-spanel" aria-label="会话">
+    <nav
+      className="k-spanel"
+      aria-label="会话"
+      onContextMenu={(e) => {
+        // Menu chrome is not text: never show the iOS/desktop callout on buttons, chips or rows.
+        const t = e.target as HTMLElement;
+        if (!t.closest('input, textarea, [contenteditable="true"]')) e.preventDefault();
+      }}
+    >
       <div className="k-spanel-search">
         <UiIcon name="search" size={18} className="k-search-icon" />
         <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索历史对话" aria-label="搜索历史对话" id="k-search" />
@@ -204,9 +456,16 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
           ))
         ) : list.length ? (
           list.map((s) => (
-            <div key={s.session_id} onClick={go}>
-              <SessionRow s={s} active={s.session_id === current} />
-            </div>
+            <SessionRow
+              key={s.session_id}
+              s={s}
+              active={s.session_id === current}
+              onOpen={() => {
+                void kesoku.openSession(s.session_id);
+                go();
+              }}
+              onEdit={(mode) => setEditing({ id: s.session_id, mode })}
+            />
           ))
         ) : (
           <div className="k-empty">还没有会话 · 点「新会话」开始</div>
@@ -230,6 +489,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
           {conn.status === 'online' ? (conn.engineOnline ? `已连接${conn.latencyMs != null ? ` · ${conn.latencyMs}ms` : ''}` : '引擎离线') : conn.status === 'reconnecting' ? '重连中…' : '未连接'}
         </div>
       </div>
+      {editing && <SessionEditMenu key={editing.id} sessionId={editing.id} mode={editing.mode} onMode={(mode) => setEditing({ id: editing.id, mode })} onClose={closeEdit} />}
     </nav>
   );
 }
