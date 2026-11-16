@@ -419,7 +419,8 @@ describe('PersonaStudio · Screen 17 my profile', () => {
     render(<PersonaStudio onClose={() => {}} initialTab="me" />);
     const cameo = screen.getByRole('switch', { name: '允许在约会与剧场插画中与角色同框' }) as HTMLButtonElement;
     expect(cameo.disabled).toBe(true);
-    expect(screen.getByText('这些信息会作为长期记忆供所有角色读取')).toBeTruthy();
+    expect(screen.getByText('个人档案 (user/profile.md)')).toBeTruthy();
+    expect(screen.getByText('AI 会在对话中自动补充更新此档案，你也可以随时在此直接修改，所有角色共享且下一条消息生效')).toBeTruthy();
     expect(screen.queryByText(/已由上传照片 AI 生成/)).toBeNull();
 
     // Direct uploaded source image (without AI avatar generation) is sufficient to enable cameo
@@ -433,8 +434,34 @@ describe('PersonaStudio · Screen 17 my profile', () => {
     fireEvent.change(screen.getByLabelText('我的昵称'), { target: { value: '阿张' } });
     fireEvent.click(screen.getByRole('button', { name: '保存个人形象' }));
     await waitFor(() => expect(calls('user_profile.put')).toHaveLength(1));
-    expect(calls('user_profile.put')[0]![1]).toEqual({ nickname: '阿张', bio: '软件工程师', cameo_opt_in: true });
+    expect(calls('user_profile.put')[0]![1]).toEqual({ nickname: '阿张', profile_md: '软件工程师', cameo_opt_in: true });
     await waitFor(() => expect(useStore.getState().profile?.nickname).toBe('阿张'));
+  });
+
+  it('prefers profile_md over bio, edits user/profile.md via MarkdownEditable, and enforces the 12 KiB limit', async () => {
+    useStore.setState({ profile: { ...PROFILE, bio: '旧版简介', profile_md: '## 基本信息\n- 全栈工程师' } });
+    render(<PersonaStudio onClose={() => {}} initialTab="me" />);
+    expect(screen.getByText('全栈工程师')).toBeTruthy();
+    expect(screen.getByText(/\/ 12 KiB$/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '个人档案 (user/profile.md)（点击编辑）' }));
+    const ta = screen.getByLabelText('个人档案 (user/profile.md)') as HTMLTextAreaElement;
+    expect(ta.value).toBe('## 基本信息\n- 全栈工程师');
+
+    // Exceeding 12 KiB blocks save and shows inline error
+    fireEvent.change(ta, { target: { value: 'a'.repeat(12 * 1024 + 1) } });
+    expect(screen.getByText('超过 12 KiB 上限')).toBeTruthy();
+    const save = screen.getByRole('button', { name: '保存个人形象' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+
+    // Valid edit (< 12 KiB, > 2 KiB) saves via profile_md
+    const updatedMd = '## 基本信息\n- ' + '背'.repeat(900);
+    fireEvent.change(ta, { target: { value: updatedMd } });
+    expect(screen.queryByText('超过 12 KiB 上限')).toBeNull();
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(calls('user_profile.put')).toHaveLength(1));
+    expect(calls('user_profile.put')[0]![1]).toEqual({ nickname: '小张', profile_md: updatedMd, cameo_opt_in: false });
   });
 
   it('AI 风格化 reuses the restyle sheet with target_type user', async () => {

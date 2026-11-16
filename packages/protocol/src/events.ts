@@ -109,7 +109,8 @@ export const ClientToEngine = {
   'user_profile.get': empty,
   'user_profile.put': z.object({
     nickname: z.string().max(32),
-    bio: z.string().max(2048),
+    bio: z.string().max(2048).optional(),
+    profile_md: z.string().optional(),
     cameo_opt_in: z.boolean(),
     avatar_object: z.string().optional(),
   }),

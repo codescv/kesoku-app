@@ -11,14 +11,14 @@ import { MarkdownEditable } from './MarkdownEditable';
 
 interface ProfileDraft {
   nickname: string;
-  bio: string;
+  profile_md: string;
   cameo_opt_in: boolean;
 }
 
 const USER_KEY = 'user';
 
 function draftOf(p: UserProfile): ProfileDraft {
-  return { nickname: p.nickname ?? '', bio: p.bio ?? '', cameo_opt_in: !!p.cameo_opt_in };
+  return { nickname: p.nickname ?? '', profile_md: p.profile_md ?? p.bio ?? '', cameo_opt_in: !!p.cameo_opt_in };
 }
 
 /** `跨模式记忆沉淀策略` summary: defaults line, or the modes deviating from the defaults. */
@@ -114,15 +114,15 @@ export function ProfilePanel({
 
   const base = draftOf(profile);
   const d = draft ?? base;
-  const dirty = d.nickname !== base.nickname || d.bio !== base.bio || d.cameo_opt_in !== base.cameo_opt_in;
+  const dirty = d.nickname !== base.nickname || d.profile_md !== base.profile_md || d.cameo_opt_in !== base.cameo_opt_in;
   const hasAi = !!profile.avatar_ai;
   const canCameo = hasExistingSource || hasAi;
-  const bioBytes = utf8Bytes(d.bio);
+  const profileBytes = utf8Bytes(d.profile_md);
   const errors = {
     nickname: d.nickname.length > 32 ? '最多 32 个字符' : undefined,
-    bio: bioBytes > LIMITS.BIO_MAX_BYTES ? '超过 2 KiB 上限' : undefined,
+    profile_md: profileBytes > LIMITS.PROFILE_MD_MAX_BYTES ? '超过 12 KiB 上限' : undefined,
   };
-  const hasErrors = !!(errors.nickname || errors.bio);
+  const hasErrors = !!(errors.nickname || errors.profile_md);
   const dir = profile.character_dir;
   const name = d.nickname || profile.nickname || '我';
 
@@ -134,7 +134,7 @@ export function ProfilePanel({
     try {
       const res = await kesoku.rpc<EngineToClientPayload<'user_profile.put.result'>>('user_profile.put', {
         nickname: d.nickname.trim(),
-        bio: d.bio,
+        profile_md: d.profile_md,
         cameo_opt_in: canCameo ? d.cameo_opt_in : false,
       });
       if (res?.profile) actions.setProfile(res.profile);
@@ -154,7 +154,7 @@ export function ProfilePanel({
       const up = await kesoku.upload(file, 'avatar_source');
       const res = await kesoku.rpc<EngineToClientPayload<'user_profile.put.result'>>('user_profile.put', {
         nickname: base.nickname,
-        bio: base.bio,
+        profile_md: base.profile_md,
         cameo_opt_in: base.cameo_opt_in,
         avatar_object: up.object,
       });
@@ -214,18 +214,18 @@ export function ProfilePanel({
           </label>
           <div className="ps-field">
             <MarkdownEditable
-              label="个人介绍与背景"
-              ariaLabel="个人介绍与背景"
-              value={d.bio}
-              onChange={(v) => patch({ bio: v })}
-              rows={4}
-              invalid={!!errors.bio}
+              label="个人档案 (user/profile.md)"
+              ariaLabel="个人档案 (user/profile.md)"
+              value={d.profile_md}
+              onChange={(v) => patch({ profile_md: v })}
+              rows={6}
+              invalid={!!errors.profile_md}
               placeholder="职业、爱好、忌口、学习进度…"
-              actions={<span className={'ps-count' + (errors.bio ? ' is-err' : '')}>{`${fmtBytes(bioBytes)} / 2 KiB`}</span>}
+              actions={<span className={'ps-count' + (errors.profile_md ? ' is-err' : '')}>{`${fmtBytes(profileBytes)} / 12 KiB`}</span>}
             />
-            <FieldError id="ps-err-bio" text={errors.bio} />
+            <FieldError id="ps-err-bio" text={errors.profile_md} />
             <span className="ps-sub ps-icon-label">
-              <UiIcon name="brain" size={14} /> 这些信息会作为长期记忆供所有角色读取
+              <UiIcon name="brain" size={14} /> AI 会在对话中自动补充更新此档案，你也可以随时在此直接修改，所有角色共享且下一条消息生效
             </span>
           </div>
         </section>

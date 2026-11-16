@@ -107,6 +107,11 @@ describe('client → engine payloads', () => {
     expect(validatePayload(ClientToEngine, 'avatar.generate', p)?.ok).toBe(true);
     expect(validatePayload(ClientToEngine, 'avatar.generate', { ...p, source_object: '' })?.ok).toBe(false);
   });
+  it('user_profile.put accepts profile_md (with or without legacy bio)', () => {
+    expect(validatePayload(ClientToEngine, 'user_profile.put', { nickname: '小张', profile_md: '## 基本信息\n- 工程师', cameo_opt_in: false })?.ok).toBe(true);
+    expect(validatePayload(ClientToEngine, 'user_profile.put', { nickname: '小张', bio: '工程师', cameo_opt_in: false })?.ok).toBe(true);
+    expect(validatePayload(EngineToClient, 'user_profile.get.result', { nickname: '小张', bio: '', profile_md: '## 基本信息\n- 工程师', cameo_opt_in: false, avatar_rev: 0 })?.ok).toBe(true);
+  });
   it('returns null for unknown types', () => {
     expect(validatePayload(ClientToEngine, 'nope', {})).toBeNull();
   });

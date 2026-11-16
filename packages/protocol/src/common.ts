@@ -262,6 +262,7 @@ export const UserProfileSchema = z
   .object({
     nickname: z.string().default(''),
     bio: z.string().default(''),
+    profile_md: z.string().optional(),
     cameo_opt_in: z.boolean().default(false),
     avatar_rev: z.number().int().nonnegative().default(0),
     avatar_ref: z.string().nullable().optional(),
