@@ -211,7 +211,6 @@ export function MessageList({
   const stick = useRef(true);
   const lastScrollTop = useRef(0);
   const scrollAccum = useRef(0);
-  const lastToggleAt = useRef(0);
 
   const proposals = useMemo(() => Object.values(proposalsAll).filter((p) => p.session_id === sessionId), [proposalsAll, sessionId]);
   /**
@@ -261,6 +260,8 @@ export function MessageList({
           const prev = lastScrollTop.current;
           const dy = top - prev;
           lastScrollTop.current = top;
+          const maxScroll = el.scrollHeight - el.clientHeight;
+          const nearBottom = maxScroll > 0 && maxScroll - top < 24;
           if (top <= 12) {
             scrollAccum.current = 0;
             onScrollDirection('top');
@@ -269,15 +270,11 @@ export function MessageList({
               scrollAccum.current = 0;
             }
             scrollAccum.current += dy;
-            const now = Date.now();
-            const inCooldown = now - lastToggleAt.current < 220;
-            if (scrollAccum.current > 24 && top > 32 && (!inCooldown || scrollAccum.current > 48)) {
+            if (scrollAccum.current > 24 && top > 32) {
               scrollAccum.current = 0;
-              lastToggleAt.current = now;
               onScrollDirection('down');
-            } else if (scrollAccum.current < -18 && (!inCooldown || scrollAccum.current < -48)) {
+            } else if (!nearBottom && scrollAccum.current < -20) {
               scrollAccum.current = 0;
-              lastToggleAt.current = now;
               onScrollDirection('up');
             }
           }

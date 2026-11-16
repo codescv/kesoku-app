@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
@@ -633,6 +633,8 @@ export function Shell() {
   const [panelSheet, setPanelSheet] = useState<InspectorPanel['kind'] | null>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [hudCollapsed, setHudCollapsed] = useState(false);
+  const [hudHeight, setHudHeight] = useState(46);
+  const hudWrapRef = useRef<HTMLDivElement>(null);
 
   const foreign = !!origin && origin !== 'app' && (session?.chatbot_id ?? 'app') !== 'app';
   const active = useMemo(() => detectActiveMode(stateFiles), [stateFiles]);
@@ -651,7 +653,26 @@ export function Shell() {
   const showLaunchpad = ui.screen === 'chat' && (ui.launchpad || !sid);
   const hasTurnActivity = Boolean((items && items.length > 0) || preview);
   const galStage = modeId === 'galgame' && ui.stageView === 'stage' && !showLaunchpad && !!sid && hasTurnActivity;
+  const showHud = !foreign && !showLaunchpad && !!sid && modeId !== 'chat' && !galStage;
   const previewTurnId = preview?.turn_id;
+
+  // Measure the ModeHud natural height only when expanded so `--hud-offset` stays constant during collapse/expand.
+  useLayoutEffect(() => {
+    if (!showHud || hudCollapsed) return;
+    const el = hudWrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      const h = Math.round(el.getBoundingClientRect().height || el.offsetHeight || 0);
+      if (h > 0) setHudHeight((prev) => (prev === h ? prev : h));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      measure();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [showHud, hudCollapsed, modeId, sid]);
 
   // Right column follows the mode: reset any pinned panel when the mode changes.
   useEffect(() => {
@@ -734,27 +755,34 @@ export function Shell() {
             {takenOver ? '已由 App 接管 (普通聊天)' : `此会话来自 ${CHANNEL[origin!] ?? origin} · 发送消息将以普通聊天模式继续`}
           </div>
         )}
-        {!foreign && !showLaunchpad && sid && modeId !== 'chat' && !galStage && (
-          <div className={'k-hud-collapse-wrap' + (hudCollapsed ? ' is-collapsed' : '')} data-testid="mode-hud-wrap">
-            <ModeHud
-              modeId={modeId}
-              stateFiles={stateFiles}
-              modePrefs={modeId === 'translator' ? mergeTranslatorModePrefs(modePrefs, settings) : modePrefs}
-              policy={policy}
-              onPolicyChange={(p) => void kesoku.setPolicy(modeId, p)}
-              onPrefsChange={(prefs) => {
-                const patch = translatorSettingsPatch(prefs);
-                if (patch) {
-                  actions.setSettings(patch);
-                  void kvSet('settings', useStore.getState().settings);
-                }
-                void kesoku.setModePrefs(sid, prefs);
-              }}
-              onOpenPanel={openPanel}
-            />
-          </div>
-        )}
-        <main className="k-stage" style={{ ['--mode' as string]: meta.color }}>
+        <main
+          className={'k-stage' + (showHud ? ' has-hud' : '')}
+          style={{ ['--mode' as string]: meta.color, ['--hud-offset' as string]: `${hudHeight}px` }}
+        >
+          {showHud && (
+            <div
+              ref={hudWrapRef}
+              className={'k-hud-collapse-wrap' + (hudCollapsed ? ' is-collapsed' : '')}
+              data-testid="mode-hud-wrap"
+            >
+              <ModeHud
+                modeId={modeId}
+                stateFiles={stateFiles}
+                modePrefs={modeId === 'translator' ? mergeTranslatorModePrefs(modePrefs, settings) : modePrefs}
+                policy={policy}
+                onPolicyChange={(p) => void kesoku.setPolicy(modeId, p)}
+                onPrefsChange={(prefs) => {
+                  const patch = translatorSettingsPatch(prefs);
+                  if (patch) {
+                    actions.setSettings(patch);
+                    void kvSet('settings', useStore.getState().settings);
+                  }
+                  void kesoku.setModePrefs(sid, prefs);
+                }}
+                onOpenPanel={openPanel}
+              />
+            </div>
+          )}
           {showLaunchpad ? (
             <Launchpad />
           ) : galStage ? (

@@ -29,9 +29,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('v0.1.21 – v0.1.22 · version & mobile small-screen (< 768px) UI optimizations', () => {
-  it('bumps APP_VERSION to 0.1.22', () => {
-    expect(APP_VERSION).toBe('0.1.22');
+describe('v0.1.21 – v0.1.23 · version & mobile small-screen (< 768px) UI optimizations', () => {
+  it('bumps APP_VERSION to 0.1.23', () => {
+    expect(APP_VERSION).toBe('0.1.23');
   });
 
   it('modelShortLabel formats compact model + thinking level labels across all catalog entries', () => {
@@ -98,7 +98,14 @@ describe('v0.1.21 – v0.1.22 · version & mobile small-screen (< 768px) UI opti
     });
 
     render(<Shell />);
+    const stage = document.querySelector('main.k-stage') as HTMLElement;
+    expect(stage).toBeTruthy();
+    expect(stage.className).toContain('has-hud');
+    expect(stage.style.getPropertyValue('--hud-offset')).toBe('46px');
+
     const hudWrap = screen.getByTestId('mode-hud-wrap');
+    expect(stage.contains(hudWrap)).toBe(true);
+    expect(stage.firstElementChild).toBe(hudWrap);
     expect(hudWrap.className).not.toContain('is-collapsed');
 
     const scroller = document.querySelector('.k-stage-scroll') as HTMLDivElement;
@@ -107,19 +114,21 @@ describe('v0.1.21 – v0.1.22 · version & mobile small-screen (< 768px) UI opti
     Object.defineProperty(scroller, 'clientHeight', { value: 400, configurable: true });
     Object.defineProperty(scroller, 'scrollTop', { value: 0, writable: true, configurable: true });
 
-    // Scroll down past threshold (> 24px delta and scrollTop > 32) -> HUD collapses
+    // Scroll down past threshold (> 24px delta and scrollTop > 32) -> HUD collapses while --hud-offset stays constant
     act(() => {
-      scroller.scrollTop = 120;
+      scroller.scrollTop = 90;
       fireEvent.scroll(scroller);
     });
     expect(hudWrap.className).toContain('is-collapsed');
+    expect(stage.style.getPropertyValue('--hud-offset')).toBe('46px');
 
-    // Scroll up (> 48px reverse delta) -> HUD expands
+    // Scroll up (> 20px reverse delta) -> HUD expands while --hud-offset stays constant
     act(() => {
       scroller.scrollTop = 50;
       fireEvent.scroll(scroller);
     });
     expect(hudWrap.className).not.toContain('is-collapsed');
+    expect(stage.style.getPropertyValue('--hud-offset')).toBe('46px');
 
     // Scroll down again -> HUD collapses
     act(() => {
@@ -127,6 +136,7 @@ describe('v0.1.21 – v0.1.22 · version & mobile small-screen (< 768px) UI opti
       fireEvent.scroll(scroller);
     });
     expect(hudWrap.className).toContain('is-collapsed');
+    expect(stage.style.getPropertyValue('--hud-offset')).toBe('46px');
 
     // New streaming turn starts -> HUD automatically expands
     act(() => {
@@ -139,18 +149,77 @@ describe('v0.1.21 – v0.1.22 · version & mobile small-screen (< 768px) UI opti
     });
     expect(hudWrap.className).not.toContain('is-collapsed');
 
-    // Scroll down again -> HUD collapses, then scroll to top (scrollTop <= 12) -> HUD expands
+    // Scroll down to near bottom -> HUD collapses; tiny rubber-band bounce near bottom (< 24px from bottom) does not flicker HUD
     act(() => {
-      scroller.scrollTop = 240;
+      scroller.scrollTop = 795;
       fireEvent.scroll(scroller);
     });
     expect(hudWrap.className).toContain('is-collapsed');
 
     act(() => {
+      scroller.scrollTop = 780;
+      fireEvent.scroll(scroller);
+    });
+    expect(hudWrap.className).toContain('is-collapsed');
+
+    // Scroll to top (scrollTop <= 12) -> HUD expands
+    act(() => {
       scroller.scrollTop = 4;
       fireEvent.scroll(scroller);
     });
     expect(hudWrap.className).not.toContain('is-collapsed');
+    expect(stage.style.getPropertyValue('--hud-offset')).toBe('46px');
+  });
+
+  it('Shell keeps measured --hud-offset constant across hudCollapsed false <-> true transitions', () => {
+    const now = Date.now() / 1000;
+    useStore.setState({
+      currentSessionId: 'c2',
+      sessions: {
+        c2: { session_id: 'c2', title: '日语课', role: 'asuka', mode_id: 'jp_classroom', chatbot_id: 'app', updated_at: now } as never,
+      },
+      stateFiles: {
+        c2: {
+          'game/games.json': { instances: [{ id: 'g1', game: 'jp_classroom', active: true }] },
+          'game/lesson.json': { book: '标日初级上', lesson: 2, segment_index: 1, segments: [{}, {}, {}], due_mistakes: 2 },
+        },
+      },
+      items: {
+        c2: [{ key: 'u1', kind: 'user', text: '继续', ts: now - 10 } as never],
+      },
+      ui: { ...useStore.getState().ui, launchpad: false, screen: 'chat' },
+    });
+
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const h = this.dataset?.testid === 'mode-hud-wrap' ? (this.className.includes('is-collapsed') ? 0 : 52) : 0;
+      return { width: 375, height: h, top: 0, left: 0, bottom: h, right: 375, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+
+    render(<Shell />);
+    const stage = document.querySelector('main.k-stage.has-hud') as HTMLElement;
+    const hudWrap = screen.getByTestId('mode-hud-wrap');
+    const scroller = document.querySelector('.k-stage-scroll') as HTMLDivElement;
+    Object.defineProperty(scroller, 'scrollHeight', { value: 1200, configurable: true });
+    Object.defineProperty(scroller, 'clientHeight', { value: 400, configurable: true });
+    Object.defineProperty(scroller, 'scrollTop', { value: 0, writable: true, configurable: true });
+
+    expect(stage.style.getPropertyValue('--hud-offset')).toBe('52px');
+
+    act(() => {
+      scroller.scrollTop = 100;
+      fireEvent.scroll(scroller);
+    });
+    expect(hudWrap.className).toContain('is-collapsed');
+    expect(stage.style.getPropertyValue('--hud-offset')).toBe('52px');
+
+    act(() => {
+      scroller.scrollTop = 40;
+      fireEvent.scroll(scroller);
+    });
+    expect(hudWrap.className).not.toContain('is-collapsed');
+    expect(stage.style.getPropertyValue('--hud-offset')).toBe('52px');
+
+    rectSpy.mockRestore();
   });
 
   it('MessageList wraps AssistantHeader and ThinkingPill in .k-assistant-meta with full and short labels', () => {
@@ -228,12 +297,18 @@ describe('v0.1.21 – v0.1.22 · version & mobile small-screen (< 768px) UI opti
     expect(globalCss).toContain('.k-role-name');
     expect(globalCss).toContain('.k-model-text-short');
     expect(globalCss).toContain('.k-hud-collapse-wrap.is-collapsed');
+    expect(globalCss).toContain('position: absolute;');
+    expect(globalCss).toContain('transform: translate3d(0, -100%, 0);');
+    expect(globalCss).not.toContain('max-height: 0;');
+    expect(globalCss).toContain('.k-stage.has-hud .k-stage-inner');
+    expect(globalCss).toContain('padding-top: calc(var(--hud-offset, 46px) + 10px);');
     expect(globalCss).toContain('.k-assistant-meta');
     expect(globalCss).toContain('.k-composer-row.is-empty .k-composer-send');
     expect(globalCss).toContain('.k-composer-row.has-text .k-composer-cam');
     expect(globalCss).toContain('.k-composer-row.has-files .k-composer-mic');
 
     expect(hudCss).toContain('@media (max-width: 767px)');
+    expect(hudCss).toContain('backdrop-filter: blur(16px);');
     expect(hudCss).toContain('.k-hud-policy-prefix');
     expect(hudCss).toContain('.k-hud-mistakes.has-count .k-hud-mistakes-label');
   });
