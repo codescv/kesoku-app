@@ -80,7 +80,10 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
   );
 
   const placeholder = modeId === 'chat' ? `发消息给${roleName}...` : meta.placeholder;
-  const canSend = online && !busy && (text.trim().length > 0 || files.length > 0);
+  const hasText = text.trim().length > 0;
+  const hasFiles = files.length > 0;
+  const canSend = online && !busy && (hasText || hasFiles);
+  const rowStateClass = hasText ? ' has-text' : hasFiles ? ' has-files' : ' is-empty';
 
   async function send(extraFiles: File[] = []) {
     if (!online) return;
@@ -212,7 +215,7 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
           </button>
         </div>
       ) : (
-        <div className="k-composer-row">
+        <div className={'k-composer-row' + rowStateClass}>
           <textarea
             ref={taRef}
             className="k-composer-input"
@@ -229,10 +232,10 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
             }}
             aria-label="消息输入框"
           />
-          <button type="button" className="k-composer-btn" aria-label="拍照或选图" onClick={() => void onPick()} disabled={busy}>
+          <button type="button" className="k-composer-btn k-composer-cam" aria-label="拍照或选图" onClick={() => void onPick()} disabled={busy}>
             <UiIcon name="camera" size={22} />
           </button>
-          <button type="button" className="k-composer-btn" aria-label="开始语音输入" onClick={() => void startRecording()} disabled={busy || !online}>
+          <button type="button" className="k-composer-btn k-composer-mic" aria-label="开始语音输入" onClick={() => void startRecording()} disabled={busy || !online}>
             <UiIcon name="mic" size={22} />
           </button>
           <button type="button" className="k-composer-send" aria-label="发送" disabled={!canSend} onClick={() => void send()}>

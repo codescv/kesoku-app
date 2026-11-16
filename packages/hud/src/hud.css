@@ -53,6 +53,7 @@ button.k-hud-chip:hover { filter: brightness(0.97); }
   padding: 6px; border-radius: 16px; background: var(--card); border: 1.5px solid var(--line); box-shadow: var(--shadow-lg);
 }
 .k-hud-policy-pop .k-seg { --seg-color: var(--policy-color, var(--mode)); }
+.k-hud-policy-short { display: none; }
 
 /* jp_classroom */
 .k-hud-lesson { flex: 1 1 200px; min-width: 0; display: block; padding: 2px 0; border: 0; background: transparent; color: inherit; text-align: left; }
@@ -149,6 +150,21 @@ button.k-hud-chip:hover { filter: brightness(0.97); }
 .k-hud-chapter { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 4px; font: 800 15px/1.25 var(--font-sans); }
 .k-hud-chapter-bar .k-progress-track { height: 5px; }
 .k-hud-roster { flex-shrink: 0; }
+
+@media (max-width: 767px) {
+  .k-hud { padding: 4px 10px 6px; gap: 4px; }
+  .k-hud-row { gap: 6px; }
+  .k-hud-main { gap: 5px; }
+  .k-hud-chip { min-height: 28px; padding: 3px 8px; font-size: 13px; }
+  .k-hud-policy-badge { min-height: 28px; padding: 3px 8px; font-size: 12.5px; }
+  .k-hud-policy-prefix { display: none; }
+  .k-hud-policy-short { display: inline; }
+  .k-hud-mistakes.has-count .k-hud-mistakes-label { display: none; }
+  .k-hud-lesson { flex: 1 1 0%; min-width: 0; }
+  .k-hud-lesson .k-progress { gap: 6px; }
+  .k-hud-lesson .k-progress-track { min-width: 36px; max-width: 68px; height: 6px; }
+  .k-hud-lesson .k-progress-label { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; }
+}
 
 @media (max-width: 420px) {
   .k-hud { padding: 5px 10px 7px; }

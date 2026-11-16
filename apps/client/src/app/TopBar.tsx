@@ -8,10 +8,26 @@ import { useAvatarUrl } from '../features/persona/avatar';
 import { fallbackRoleId, roleAvatarRef, roleFallbackName, sortRoles } from '../features/persona/model';
 
 const LEVEL_LABEL: Record<ThinkingLevel, string> = { minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High' };
+const LEVEL_SHORT: Record<ThinkingLevel, string> = { minimal: 'Min', low: 'L', medium: 'M', high: 'H' };
+const MODEL_SHORT_LABEL: Record<string, string> = {
+  'gemini-4-hydrogen': 'Hydrogen',
+  'gemini-3.8-flash': 'Flash',
+  'gemini-3.5-flash-lite': 'Lite',
+  'gemini-4-argon': 'Argon',
+  'claude-sonnet-5-5': 'Sonnet',
+  'claude-opus-5-5': 'Opus',
+};
 
 export function modelLabel(o: LlmOverride | null | undefined): string {
   const m = MODEL_CATALOG.find((x) => x.model_name === o?.model_name);
   return `${m?.label ?? 'Hydrogen'} · ${LEVEL_LABEL[(o?.thinking_level ?? 'low') as ThinkingLevel]}`;
+}
+
+export function modelShortLabel(o: LlmOverride | null | undefined): string {
+  const m = MODEL_CATALOG.find((x) => x.model_name === o?.model_name);
+  const shortModel = (o?.model_name && MODEL_SHORT_LABEL[o.model_name]) ?? m?.label ?? 'Hydrogen';
+  const shortLevel = LEVEL_SHORT[(o?.thinking_level ?? 'low') as ThinkingLevel] ?? 'L';
+  return `${shortModel} · ${shortLevel}`;
 }
 
 export function ModelCapsule({ sessionId }: { sessionId: string | null }) {
@@ -24,7 +40,10 @@ export function ModelCapsule({ sessionId }: { sessionId: string | null }) {
       <Capsule className="k-model-capsule" onClick={() => setOpen(true)} label="模型与思考档位">
         <span className="k-model-label">
           <UiIcon name="spark" size={15} />
-          {modelLabel(cur)}
+          <span className="k-model-text-full">{modelLabel(cur)}</span>
+          <span className="k-model-text-short" aria-hidden="true">
+            {modelShortLabel(cur)}
+          </span>
         </span>
       </Capsule>
       <Sheet open={open} onClose={() => setOpen(false)} title="模型 × 思考档位">
@@ -91,18 +110,17 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
   const meta = modeMeta(effectiveMode);
   // Roles come from the engine (persona list); before it arrives show only the active role, generically named.
   const roles = personas.length ? sortRoles(personas) : [{ role_id: role, display_name: name, tagline: '', builtin: true, avatar_rev: 0 }];
+  const isDefaultChat = effectiveMode === 'chat' && !sessionId;
   return (
     <>
       <Capsule className="k-role-capsule" onClick={() => setOpen(true)} label="角色与模式">
         <Avatar src={avatarSrc} name={name} size={30} ai={persona?.avatar_ai} />
         <span className="k-role-label">
-          {name.split(' ')[0]}
-          {effectiveMode !== 'chat' || sessionId ? <span className="k-role-sep"> · </span> : null}
-          {(effectiveMode !== 'chat' || sessionId) && (
-            <span className="k-role-mode" style={{ color: meta.color }}>
-              {nestedTitle ?? meta.title}
-            </span>
-          )}
+          <span className="k-role-name">{name.split(' ')[0]}</span>
+          <span className={'k-role-sep' + (isDefaultChat ? ' is-default-chat' : '')}> · </span>
+          <span className={'k-role-mode' + (isDefaultChat ? ' is-default-chat' : '')} style={{ color: meta.color }}>
+            {nestedTitle ?? meta.title}
+          </span>
         </span>
       </Capsule>
       <Sheet open={open} onClose={() => setOpen(false)} title="角色与模式">

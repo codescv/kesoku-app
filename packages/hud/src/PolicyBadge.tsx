@@ -58,7 +58,10 @@ export function PolicyBadge({ modeId, policy, onPolicyChange, glass, className }
         onClick={() => setOpen((o) => !o)}
       >
         <UiIcon name={meta.iconName} size={15} className="k-hud-policy-icon" />
-        <span>记忆：{meta.label}</span>
+        <span className="k-hud-policy-prefix">{`记忆：${meta.label}`}</span>
+        <span className="k-hud-policy-short" aria-hidden="true">
+          {meta.label}
+        </span>
         <UiIcon name="chevron-down" size={13} className="k-caret" />
       </button>
       {open && (

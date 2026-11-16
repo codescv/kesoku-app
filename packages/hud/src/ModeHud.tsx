@@ -247,9 +247,12 @@ function LessonHud({ stateFiles, badge, onOpenPanel }: HudCtx) {
           <ProgressBar value={pos} max={total || 1} label={total ? `${head} · ${pos}/${total}` : head} />
         </button>
       )}
-      <Chip tone="danger" onClick={() => onOpenPanel('mistakes')} className="k-hud-mistakes">
+      <Chip tone="danger" onClick={() => onOpenPanel('mistakes')} className={'k-hud-mistakes' + (count !== undefined ? ' has-count' : '')}>
         <UiIcon name="book" size={15} />
-        <span>错题{count !== undefined ? ` ${count}` : ''}</span>
+        <span>
+          <span className="k-hud-mistakes-label">错题</span>
+          {count !== undefined ? ` ${count}` : ''}
+        </span>
       </Chip>
     </Row>
   );

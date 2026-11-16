@@ -188,7 +188,17 @@ function UserBubble({ item, sessionId }: { item: ChatItem; sessionId: string }) 
   );
 }
 
-export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string; modeId: string; readOnly?: boolean }) {
+export function MessageList({
+  sessionId,
+  modeId,
+  readOnly,
+  onScrollDirection,
+}: {
+  sessionId: string;
+  modeId: string;
+  readOnly?: boolean;
+  onScrollDirection?: (dir: 'up' | 'down' | 'top') => void;
+}) {
   const items = useStore((s) => s.items[sessionId] ?? EMPTY_ITEMS);
   const preview = useStore((s) => s.previews[sessionId]);
   const turnEvents = useStore((s) => s.turnEvents);
@@ -199,6 +209,9 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
   const desktop = useIsDesktop();
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  const lastScrollTop = useRef(0);
+  const scrollAccum = useRef(0);
+  const lastToggleAt = useRef(0);
 
   const proposals = useMemo(() => Object.values(proposalsAll).filter((p) => p.session_id === sessionId), [proposalsAll, sessionId]);
   /**
@@ -226,6 +239,8 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
 
   useEffect(() => {
     stick.current = true;
+    lastScrollTop.current = 0;
+    scrollAccum.current = 0;
   }, [sessionId]);
 
   const persona = personas.find((p) => p.role_id === session?.role);
@@ -240,7 +255,33 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
       ref={scroller}
       onScroll={(e) => {
         const el = e.currentTarget;
-        stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        const top = Math.max(0, el.scrollTop);
+        stick.current = el.scrollHeight - top - el.clientHeight < 80;
+        if (onScrollDirection) {
+          const prev = lastScrollTop.current;
+          const dy = top - prev;
+          lastScrollTop.current = top;
+          if (top <= 12) {
+            scrollAccum.current = 0;
+            onScrollDirection('top');
+          } else if (dy !== 0) {
+            if ((dy > 0 && scrollAccum.current < 0) || (dy < 0 && scrollAccum.current > 0)) {
+              scrollAccum.current = 0;
+            }
+            scrollAccum.current += dy;
+            const now = Date.now();
+            const inCooldown = now - lastToggleAt.current < 220;
+            if (scrollAccum.current > 24 && top > 32 && (!inCooldown || scrollAccum.current > 48)) {
+              scrollAccum.current = 0;
+              lastToggleAt.current = now;
+              onScrollDirection('down');
+            } else if (scrollAccum.current < -18 && (!inCooldown || scrollAccum.current < -48)) {
+              scrollAccum.current = 0;
+              lastToggleAt.current = now;
+              onScrollDirection('up');
+            }
+          }
+        }
       }}
     >
       <div className="k-stage-inner">
@@ -287,8 +328,10 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
           const rowRoleId = item.sender?.role_id || defaultRoleId;
           return (
             <div key={item.key} className="k-row k-row-assistant">
-              <AssistantHeader roleId={rowRoleId} fallbackName={item.sender?.display_name ?? name} ts={item.ts} />
-              <ThinkingPill events={evs} running={false} />
+              <div className="k-assistant-meta">
+                <AssistantHeader roleId={rowRoleId} fallbackName={item.sender?.display_name ?? name} ts={item.ts} />
+                <ThinkingPill events={evs} running={false} />
+              </div>
               {item.segments?.length ? <SegmentList segments={item.segments} env={env} /> : item.text ? <Markdown text={item.text} /> : null}
               {byMessage.m.get(item.key)?.map((p) => <ProposalCard key={p.proposal_id} proposal={p} />) ?? null}
             </div>
@@ -299,13 +342,15 @@ export function MessageList({ sessionId, modeId, readOnly }: { sessionId: string
         ))}
         {preview && (
           <div className="k-row k-row-assistant is-streaming">
-            <AssistantHeader roleId={defaultRoleId} fallbackName={name} />
-            <ThinkingPill
-              events={previewEvents}
-              running={!preview.interrupted && (Boolean(preview.thought) || previewEvents.length > 0)}
-              startedAt={preview.startedAt}
-              thought={preview.thought}
-            />
+            <div className="k-assistant-meta">
+              <AssistantHeader roleId={defaultRoleId} fallbackName={name} />
+              <ThinkingPill
+                events={previewEvents}
+                running={!preview.interrupted && (Boolean(preview.thought) || previewEvents.length > 0)}
+                startedAt={preview.startedAt}
+                thought={preview.thought}
+              />
+            </div>
             <StreamingPreview preview={preview} name={name} toolTitle={runningTool} />
           </div>
         )}

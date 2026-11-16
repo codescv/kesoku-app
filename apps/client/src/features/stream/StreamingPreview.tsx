@@ -103,7 +103,12 @@ export function ThinkingPill({ events, running, startedAt, thought }: { events: 
   return (
     <div className={'k-think' + (open ? ' is-open' : '')}>
       <button type="button" className="k-think-pill" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        <span aria-hidden>{open ? '▾' : '▸'}</span> 思考与工具 · {fmtSec(totalMs)}
+        <span aria-hidden>{open ? '▾' : '▸'}</span>{' '}
+        <span className="k-think-label-full">思考与工具</span>
+        <span className="k-think-label-short" aria-hidden="true">
+          思考
+        </span>{' '}
+        · {fmtSec(totalMs)}
         {current && <span className="k-think-tool"> · {current.title}</span>}
       </button>
       {open && (

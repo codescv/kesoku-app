@@ -102,10 +102,25 @@ describe('ModeHud', () => {
       'game/lesson.json': { book: '初级', lesson: 21, segment_index: 4, segments: new Array(9).fill({}), due_mistakes: 2 },
     });
     expect(screen.getByText('初级 第21课 · 5/9')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /错题 2/ }));
+    const mistakesBtn = screen.getByRole('button', { name: /错题 2/ });
+    expect(mistakesBtn.className).toContain('has-count');
+    expect(mistakesBtn.querySelector('.k-hud-mistakes-label')?.textContent).toBe('错题');
+    fireEvent.click(mistakesBtn);
     expect(onOpenPanel).toHaveBeenCalledWith('mistakes');
     fireEvent.click(screen.getByText('初级 第21课 · 5/9'));
     expect(onOpenPanel).toHaveBeenCalledWith('lesson');
+  });
+
+  it('compact mobile spans: PolicyBadge has .k-hud-policy-prefix and LessonHud without count omits .has-count', () => {
+    setup('jp_classroom', {
+      'game/lesson.json': { book: '初级', lesson: 5 },
+    });
+    const policyBtn = screen.getByRole('button', { name: /记忆：确认/ });
+    expect(policyBtn.querySelector('.k-hud-policy-prefix')?.textContent).toBe('记忆：确认');
+    expect(policyBtn.querySelector('.k-hud-policy-short')?.textContent).toBe('确认');
+    const mistakesBtn = screen.getByRole('button', { name: '错题' });
+    expect(mistakesBtn.className).not.toContain('has-count');
+    expect(mistakesBtn.querySelector('.k-hud-mistakes-label')?.textContent).toBe('错题');
   });
 
   it('travel_companion: dietary chip opens memory', () => {

@@ -632,6 +632,7 @@ export function Shell() {
   const personas = useStore((s) => s.personas);
   const [panelSheet, setPanelSheet] = useState<InspectorPanel['kind'] | null>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [hudCollapsed, setHudCollapsed] = useState(false);
 
   const foreign = !!origin && origin !== 'app' && (session?.chatbot_id ?? 'app') !== 'app';
   const active = useMemo(() => detectActiveMode(stateFiles), [stateFiles]);
@@ -650,11 +651,17 @@ export function Shell() {
   const showLaunchpad = ui.screen === 'chat' && (ui.launchpad || !sid);
   const hasTurnActivity = Boolean((items && items.length > 0) || preview);
   const galStage = modeId === 'galgame' && ui.stageView === 'stage' && !showLaunchpad && !!sid && hasTurnActivity;
+  const previewTurnId = preview?.turn_id;
 
   // Right column follows the mode: reset any pinned panel when the mode changes.
   useEffect(() => {
     actions.setUi({ inspector: null });
   }, [modeId, sid]);
+
+  // Expand the mobile ModeHud whenever session, mode, or a new streaming turn starts.
+  useEffect(() => {
+    setHudCollapsed(false);
+  }, [sid, modeId, previewTurnId]);
 
   // Keyboard shortcuts (desktop workbench).
   useEffect(() => {
@@ -728,22 +735,24 @@ export function Shell() {
           </div>
         )}
         {!foreign && !showLaunchpad && sid && modeId !== 'chat' && !galStage && (
-          <ModeHud
-            modeId={modeId}
-            stateFiles={stateFiles}
-            modePrefs={modeId === 'translator' ? mergeTranslatorModePrefs(modePrefs, settings) : modePrefs}
-            policy={policy}
-            onPolicyChange={(p) => void kesoku.setPolicy(modeId, p)}
-            onPrefsChange={(prefs) => {
-              const patch = translatorSettingsPatch(prefs);
-              if (patch) {
-                actions.setSettings(patch);
-                void kvSet('settings', useStore.getState().settings);
-              }
-              void kesoku.setModePrefs(sid, prefs);
-            }}
-            onOpenPanel={openPanel}
-          />
+          <div className={'k-hud-collapse-wrap' + (hudCollapsed ? ' is-collapsed' : '')} data-testid="mode-hud-wrap">
+            <ModeHud
+              modeId={modeId}
+              stateFiles={stateFiles}
+              modePrefs={modeId === 'translator' ? mergeTranslatorModePrefs(modePrefs, settings) : modePrefs}
+              policy={policy}
+              onPolicyChange={(p) => void kesoku.setPolicy(modeId, p)}
+              onPrefsChange={(prefs) => {
+                const patch = translatorSettingsPatch(prefs);
+                if (patch) {
+                  actions.setSettings(patch);
+                  void kvSet('settings', useStore.getState().settings);
+                }
+                void kesoku.setModePrefs(sid, prefs);
+              }}
+              onOpenPanel={openPanel}
+            />
+          </div>
         )}
         <main className="k-stage" style={{ ['--mode' as string]: meta.color }}>
           {showLaunchpad ? (
@@ -761,7 +770,7 @@ export function Shell() {
               personaName={fullRoleName}
             />
           ) : (
-            sid && <MessageList sessionId={sid} modeId={modeId} />
+            sid && <MessageList sessionId={sid} modeId={modeId} onScrollDirection={(dir) => setHudCollapsed(dir === 'down')} />
           )}
           {modeId === 'galgame' && !galStage && !showLaunchpad && sid && (
             <button type="button" className="k-stage-toggle" onClick={() => actions.setUi({ stageView: 'stage' })}>
