@@ -57,8 +57,12 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
   useEffect(() => {
     const ta = taRef.current;
     if (!ta) return;
-    ta.style.height = 'auto';
-    ta.style.height = `${Math.min(160, ta.scrollHeight)}px`;
+    ta.style.height = '';
+    if (!text) return;
+    if (ta.scrollHeight > ta.clientHeight + 2) {
+      const border = ta.offsetHeight - ta.clientHeight;
+      ta.style.height = `${Math.min(160, ta.scrollHeight + border)}px`;
+    }
   }, [text]);
 
   useEffect(() => () => files.forEach((f) => URL.revokeObjectURL(f.preview)), [files]);
@@ -222,7 +226,6 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
             rows={1}
             value={text}
             placeholder={placeholder}
-            lang={modeId === 'jp_classroom' ? 'ja' : undefined}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {

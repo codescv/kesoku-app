@@ -29,9 +29,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('v0.1.21 · version & mobile small-screen (< 768px) UI optimizations', () => {
-  it('bumps APP_VERSION to 0.1.21', () => {
-    expect(APP_VERSION).toBe('0.1.21');
+describe('v0.1.21 – v0.1.22 · version & mobile small-screen (< 768px) UI optimizations', () => {
+  it('bumps APP_VERSION to 0.1.22', () => {
+    expect(APP_VERSION).toBe('0.1.22');
   });
 
   it('modelShortLabel formats compact model + thinking level labels across all catalog entries', () => {
@@ -236,5 +236,49 @@ describe('v0.1.21 · version & mobile small-screen (< 768px) UI optimizations', 
     expect(hudCss).toContain('@media (max-width: 767px)');
     expect(hudCss).toContain('.k-hud-policy-prefix');
     expect(hudCss).toContain('.k-hud-mistakes.has-count .k-hud-mistakes-label');
+  });
+
+  it('Composer in jp_classroom mode renders Chinese placeholder without lang="ja" attribute on textarea', () => {
+    render(<Composer sessionId="s1" modeId="jp_classroom" roleName="飞鸟" />);
+    const textarea = screen.getByLabelText('消息输入框') as HTMLTextAreaElement;
+    expect(textarea.placeholder).toBe('用日语造句...');
+    expect(textarea.getAttribute('lang')).toBeNull();
+  });
+
+  it('Composer keeps textarea.style.height empty for empty and single-line text, and expands only on multiline overflow', () => {
+    render(<Composer sessionId="s1" modeId="jp_classroom" roleName="飞鸟" />);
+    const textarea = screen.getByLabelText('消息输入框') as HTMLTextAreaElement;
+
+    // Initial empty state: style.height is '' so CSS height (44px mobile / 52px desktop) aligns with buttons
+    expect(textarea.style.height).toBe('');
+
+    Object.defineProperty(textarea, 'clientHeight', { value: 41, configurable: true });
+    Object.defineProperty(textarea, 'offsetHeight', { value: 44, configurable: true });
+    Object.defineProperty(textarea, 'scrollHeight', { value: 41, configurable: true });
+
+    // Single-line input: scrollHeight <= clientHeight + 2 -> style.height remains ''
+    fireEvent.change(textarea, { target: { value: 'こんにちは' } });
+    expect(textarea.style.height).toBe('');
+
+    // Multiline input: scrollHeight > clientHeight + 2 -> style.height expands with border (capped at 160px)
+    Object.defineProperty(textarea, 'scrollHeight', { value: 85, configurable: true });
+    fireEvent.change(textarea, { target: { value: 'こんにちは\n元気ですか\n今日はいい天気ですね' } });
+    expect(textarea.style.height).toBe('88px');
+
+    // Overflow beyond 160px -> capped at 160px
+    Object.defineProperty(textarea, 'scrollHeight', { value: 220, configurable: true });
+    fireEvent.change(textarea, { target: { value: '1\n2\n3\n4\n5\n6\n7\n8' } });
+    expect(textarea.style.height).toBe('160px');
+
+    // Clearing text resets style.height back to ''
+    Object.defineProperty(textarea, 'scrollHeight', { value: 41, configurable: true });
+    fireEvent.change(textarea, { target: { value: '' } });
+    expect(textarea.style.height).toBe('');
+  });
+
+  it('global.css aligns .k-composer-input height and border-radius with .k-composer-btn on desktop and mobile', () => {
+    const globalCss = readFileSync(resolve(__dirname, '../src/app/global.css'), 'utf8');
+    expect(globalCss).toContain('height: 52px; min-height: 52px; max-height: 160px; resize: none; padding: 12px 16px; border-radius: 16px;');
+    expect(globalCss).toContain('.k-composer-input { height: 44px; min-height: 44px; padding: 9.5px 13px; border-radius: 14px; font-size: 16px; line-height: 22px; }');
   });
 });
