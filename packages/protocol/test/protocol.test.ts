@@ -234,3 +234,28 @@ describe('workspace CRUD frames', () => {
     expect(read.writable).toBe(true);
   });
 });
+
+describe('session pinned notes frames (v0.1.26)', () => {
+  it('session.notes.get / put validate session_id and the 64 KiB content cap', () => {
+    expect(validatePayload(ClientToEngine, 'session.notes.get', { session_id: 's1' })?.ok).toBe(true);
+    expect(validatePayload(ClientToEngine, 'session.notes.get', { session_id: '' })?.ok).toBe(false);
+    expect(validatePayload(ClientToEngine, 'session.notes.get', {})?.ok).toBe(false);
+    expect(validatePayload(ClientToEngine, 'session.notes.put', { session_id: 's1', content: '' })?.ok).toBe(true);
+    expect(validatePayload(ClientToEngine, 'session.notes.put', { session_id: 's1', content: '# 置顶\n- a' })?.ok).toBe(true);
+    expect(validatePayload(ClientToEngine, 'session.notes.put', { session_id: 's1', content: 'x'.repeat(64 * 1024) })?.ok).toBe(true);
+    expect(validatePayload(ClientToEngine, 'session.notes.put', { session_id: 's1', content: 'x'.repeat(64 * 1024 + 1) })?.ok).toBe(false);
+    expect(validatePayload(ClientToEngine, 'session.notes.put', { session_id: 's1' })?.ok).toBe(false);
+  });
+
+  it('session.notes.*.result carry content, bytes and a nullable updated_at', () => {
+    for (const t of ['session.notes.get.result', 'session.notes.put.result'] as const) {
+      const schema = EngineToClient[t];
+      expect(schema.safeParse({ session_id: 's1', content: 'a', bytes: 1, updated_at: 1_700_000_000 }).success).toBe(true);
+      expect(schema.safeParse({ session_id: 's1', content: '', bytes: 0, updated_at: null }).success).toBe(true);
+      expect(schema.safeParse({ session_id: 's1', content: '', bytes: 0 }).success).toBe(true);
+      expect(schema.safeParse({ session_id: 's1', content: '', bytes: -1 }).success).toBe(false);
+      expect(schema.safeParse({ session_id: 's1', bytes: 0 }).success).toBe(false);
+      expect((schema.parse({ session_id: 's1', content: '', bytes: 0, path: 'notes.md' }) as { path?: string }).path).toBe('notes.md');
+    }
+  });
+});

@@ -96,6 +96,8 @@ export interface KesokuState {
     draftRole: string | null;
     pendingMode: { sessionId: string; modeId: string; at: number } | null;
     composerInsert: { text: string; n: number } | null;
+    /** Session whose pinned notes (`notes.md`) sheet is open, or null. */
+    sessionNotesId: string | null;
   };
   toasts: Toast[];
 }
@@ -139,7 +141,7 @@ export function initialState(): KesokuState {
     avatarJobs: {},
     searchHits: [],
     settings: { ...DEFAULT_SETTINGS },
-    ui: { drawerOpen: false, launchpad: true, inspector: null, screen: 'chat', stageView: 'stage', roleFilter: null, draftRole: null, pendingMode: null, composerInsert: null },
+    ui: { drawerOpen: false, launchpad: true, inspector: null, screen: 'chat', stageView: 'stage', roleFilter: null, draftRole: null, pendingMode: null, composerInsert: null, sessionNotesId: null },
     toasts: [],
   };
 }
@@ -234,6 +236,15 @@ export const actions = {
   },
   setUi(patch: Partial<KesokuState['ui']>) {
     set((s) => ({ ui: { ...s.ui, ...patch } }));
+  },
+  /** Mirror the session's pinned notes into `stateFiles[sid]['notes.md']` (blank content removes the entry). */
+  setSessionNotes(sessionId: string, content: string) {
+    set((s) => {
+      const files = { ...(s.stateFiles[sessionId] ?? {}) };
+      if (content.trim()) files['notes.md'] = content;
+      else delete files['notes.md'];
+      return { stateFiles: { ...s.stateFiles, [sessionId]: files } };
+    });
   },
   setSettings(patch: Partial<Settings>) {
     set((s) => ({ settings: { ...s.settings, ...patch } }));

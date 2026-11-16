@@ -1,6 +1,6 @@
 import { Component, useEffect, useState, type CSSProperties, type ErrorInfo, type ReactNode } from 'react';
 import type { MemoryPolicy, ModeId } from '@kesoku/protocol';
-import { HpBar, ModeIcon, ProgressBar, UiIcon } from '@kesoku/ui';
+import { ModeIcon, ProgressBar, UiIcon } from '@kesoku/ui';
 import { detectActiveMode, normalizeModeId, type GameInstance } from './activeMode';
 import { PolicyBadge } from './PolicyBadge';
 import { arr, entries, file, label, labels, num, obj, str, type Obj } from './safe';
@@ -27,6 +27,11 @@ export interface ModeHudProps {
   onPolicyChange(p: MemoryPolicy): void;
   onPrefsChange(prefs: Record<string, unknown>): void;
   onOpenPanel(panel: HudPanel): void;
+  /**
+   * True when the desktop right sidebar (context inspector) is visible and already shows the full
+   * mode panel (e.g. TRPG party HP / equipment) — the HUD then omits redundant entry points.
+   */
+  inspectorVisible?: boolean;
 }
 
 interface HudCtx extends ModeHudProps {
@@ -64,22 +69,24 @@ function Chip({
   tone = 'neutral',
   title,
   className,
+  testId,
 }: {
   children: ReactNode;
   onClick?: () => void;
   tone?: 'neutral' | 'mode' | 'warn' | 'danger' | 'ok' | 'primary';
   title?: string;
   className?: string;
+  testId?: string;
 }) {
   const cls = ['k-hud-chip', `is-${tone}`, className].filter(Boolean).join(' ');
   if (onClick)
     return (
-      <button type="button" className={cls} onClick={onClick} title={title}>
+      <button type="button" className={cls} onClick={onClick} title={title} data-testid={testId}>
         {children}
       </button>
     );
   return (
-    <span className={cls} title={title}>
+    <span className={cls} title={title} data-testid={testId}>
       {children}
     </span>
   );
@@ -581,100 +588,33 @@ export function squad(party: Obj | undefined): { members: Fighter[]; enemies: Fi
   return { members, enemies };
 }
 
-function HpText({ f }: { f: Fighter }) {
-  if (f.hp === undefined) return null;
-  return (
-    <span className="k-hud-num">
-      HP {f.hp}
-      {f.max !== undefined ? `/${f.max}` : ''}
-    </span>
-  );
-}
-
-function TrpgHud({ stateFiles, badge, onOpenPanel, instance }: HudCtx) {
-  const [collapsed, setCollapsed] = useState(false);
+function TrpgHud({ stateFiles, badge, onOpenPanel, instance, inspectorVisible }: HudCtx) {
   const world = label(slot(instance, 'world'));
   const scenario = label(slot(instance, 'scenario')) ?? label(slot(instance, 'chapter'));
   const { members, enemies } = squad(file(stateFiles, 'game/party.json'));
-  const hasSquad = members.length > 0 || enemies.length > 0;
-  const shownEnemies = enemies.slice(0, 2);
+  // Always one compact row: no live HP strip. Full HP / stats / equipment live in the party panel —
+  // the desktop right sidebar shows it permanently; elsewhere a small 小队 button opens it on demand.
   return (
-    <>
-      <Row badge={badge}>
-        {(world || scenario) && (
-          <Chip tone="mode" className="k-hud-world">
-            <ModeIcon mode="trpg" size={16} styleVariant="line" color="currentColor" />
-            <span className="k-hud-ellipsis">{[world, scenario].filter(Boolean).join(' · ')}</span>
-          </Chip>
-        )}
-        {hasSquad && collapsed && (
-          <button type="button" className="k-hud-squad-mini" onClick={() => onOpenPanel('party')}>
-            {[...members, ...shownEnemies].map((f) => (
-              <span key={f.key} className="k-hud-num">
-                {f.name} {f.hp ?? '–'}
-                {f.max !== undefined ? `/${f.max}` : ''}
-              </span>
-            ))}
-          </button>
-        )}
-        {hasSquad && (
-          <button
-            type="button"
-            className="k-hud-collapse"
-            aria-expanded={!collapsed}
-            aria-label={collapsed ? '展开小队' : '收起小队'}
-            onClick={() => setCollapsed((c) => !c)}
-          >
-            {collapsed ? '▸' : '▾'}
-          </button>
-        )}
-      </Row>
-      {hasSquad && !collapsed && (
-        <div className="k-hud-squad">
-          {shownEnemies.map((e) => (
-            <button type="button" key={`e:${e.key}`} className="k-hud-boss" onClick={() => onOpenPanel('party')}>
-              <span className="k-hud-fname">
-                <UiIcon name="target" size={14} /> {e.name}
-              </span>
-              {e.status.map((s) => (
-                <span key={s} className="k-hud-status is-danger">
-                  {s}
-                </span>
-              ))}
-              <HpText f={e} />
-              {e.hp !== undefined && <HpBar hp={e.hp} max={e.max ?? e.hp} />}
-            </button>
-          ))}
-          {enemies.length > shownEnemies.length && <span className="k-hud-more">+{enemies.length - shownEnemies.length}</span>}
-          {members.length > 0 && (
-            <div className="k-hud-members" style={{ '--cols': Math.min(4, members.length) } as CSSProperties}>
-              {members.map((m) => (
-                <button
-                  type="button"
-                  key={`m:${m.key}`}
-                  className={'k-hud-member' + (m.role === 'player' ? ' is-player' : '')}
-                  onClick={() => onOpenPanel('party')}
-                >
-                  <span className="k-hud-fname">{m.name}</span>
-                  {(m.tag || m.status.length > 0) && (
-                    <span className="k-hud-statuses">
-                      {m.tag && <span className="k-hud-status is-accent">{m.tag}</span>}
-                      {m.status.map((s) => (
-                        <span key={s} className="k-hud-status">
-                          {s}
-                        </span>
-                      ))}
-                    </span>
-                  )}
-                  <HpText f={m} />
-                  {m.hp !== undefined && <HpBar hp={m.hp} max={m.max ?? m.hp} />}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+    <Row badge={badge}>
+      {(world || scenario) && (
+        <Chip tone="mode" className="k-hud-world" title={[world, scenario].filter(Boolean).join(' · ')}>
+          <ModeIcon mode="trpg" size={16} styleVariant="line" color="currentColor" />
+          <span className="k-hud-ellipsis">{[world, scenario].filter(Boolean).join(' · ')}</span>
+        </Chip>
       )}
-    </>
+      {!inspectorVisible && (
+        <Chip tone="primary" className="k-hud-party-btn" onClick={() => onOpenPanel('party')} title="查看小队血量与装备" testId="trpg-party-btn">
+          <UiIcon name="shield" size={14} />
+          <span className="k-hud-party-label">{members.length > 0 ? `小队 (${members.length})` : '小队·装备'}</span>
+          {enemies.length > 0 && (
+            <span className="k-hud-party-enemy" aria-label={`${enemies.length} 个敌人`} data-testid="trpg-party-enemies">
+              <UiIcon name="target" size={12} />
+              <span className="k-hud-num">{enemies.length}</span>
+            </span>
+          )}
+        </Chip>
+      )}
+    </Row>
   );
 }
 

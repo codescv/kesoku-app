@@ -20,6 +20,7 @@ import { makeCardContext } from '../features/session/cardContext';
 import { overlays, useOverlays } from '../features/session/overlays';
 import { MemoryPanel } from '../features/memory/MemoryPanel';
 import { NotesPanel } from '../features/notes/NotesPanel';
+import { SessionNotesSheet } from '../features/notes/SessionNotesSheet';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { LexCard } from '../features/segments/BilingualCard';
 import { GalgameStage, ModePanel, PeekSheet } from '../features/modes';
@@ -772,6 +773,7 @@ export function Shell() {
                   void kesoku.setModePrefs(sid, prefs);
                 }}
                 onOpenPanel={openPanel}
+                inspectorVisible={desktop}
               />
             </div>
           )}
@@ -835,21 +837,24 @@ export function Shell() {
       <Sheet
         open={!!panelSheet}
         onClose={() => setPanelSheet(null)}
-        height="half"
+        height={panelSheet === 'party' ? 'full' : 'half'}
         title={
           panelSheet === 'notes'
             ? '简易便签'
-            : panelSheet === 'mistakes'
-              ? '待复习错题本'
-              : panelSheet === 'roster'
-                ? '演员定妆表'
-                : panelSheet === 'memory'
-                  ? '记忆库'
-                  : undefined
+            : panelSheet === 'party'
+              ? '小队血量与装备'
+              : panelSheet === 'mistakes'
+                ? '待复习错题本'
+                : panelSheet === 'roster'
+                  ? '演员定妆表'
+                  : panelSheet === 'memory'
+                    ? '记忆库'
+                    : undefined
         }
       >
         {panelSheet && <Inspector panel={{ kind: panelSheet } as InspectorPanel} sessionId={sid} modeId={modeId} />}
       </Sheet>
+      <SessionNotesSheet sessionId={ui.sessionNotesId} onClose={() => actions.setUi({ sessionNotesId: null })} />
       <Overlays sessionId={sid} modeId={modeId} />
       <Toasts />
     </div>

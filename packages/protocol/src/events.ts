@@ -28,6 +28,10 @@ import { ERROR_CODES } from './constants';
 const sid = z.string().min(1).max(64);
 const empty = z.object({}).passthrough();
 const ok = z.object({ ok: z.literal(true) }).passthrough();
+/** Result of `session.notes.get` / `session.notes.put` (the session's pinned `notes.md`). */
+const SessionNotesResultSchema = z
+  .object({ session_id: z.string(), content: z.string(), bytes: z.number().nonnegative(), updated_at: z.number().nullable().optional() })
+  .passthrough();
 
 // ───────────────────────────── Client → Engine (via relay) ─────────────────────────────
 
@@ -59,6 +63,10 @@ export const ClientToEngine = {
   'session.open': z.object({ session_id: sid }),
   'session.rename': z.object({ session_id: sid, title: z.string().min(1).max(120) }),
   'session.delete': z.object({ session_id: sid }),
+  /** Read the session's pinned notes (`notes.md`, injected as `<context name="notes">` on every turn). */
+  'session.notes.get': z.object({ session_id: sid }),
+  /** Overwrite the session's pinned notes (empty string clears them). */
+  'session.notes.put': z.object({ session_id: sid, content: z.string().max(64 * 1024) }),
   'session.search': z.object({
     q: z.string().min(1).max(200),
     role: z.string().optional(),
@@ -283,6 +291,8 @@ export const EngineToClient = {
   'session.list.result': z.object({ sessions: z.array(SessionSummarySchema), next_cursor: z.string().nullable().optional() }).passthrough(),
   'session.rename.result': ok,
   'session.delete.result': ok,
+  'session.notes.get.result': SessionNotesResultSchema,
+  'session.notes.put.result': SessionNotesResultSchema,
   'session.search.result': z.object({ hits: z.array(SearchHitSchema) }).passthrough(),
   'history.page.result': z.object({ session_id: z.string(), messages: z.array(MessageRecordSchema), has_more: z.boolean() }).passthrough(),
   'ui.pick.result': ok,

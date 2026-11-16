@@ -21,7 +21,7 @@ import { translatorStartPrefs } from './translatorPrefs';
 import { fallbackRoleId } from '../features/persona/model';
 
 const SEQ_TYPES = new Set<string>(SEQ_EVENT_TYPES);
-export const APP_VERSION = '0.1.25';
+export const APP_VERSION = '0.1.26';
 
 type Payload = Record<string, unknown>;
 
@@ -554,6 +554,21 @@ export const kesoku = {
       }
       actions.toast('删除对话失败', 'error');
     }
+  },
+
+  // ── session pinned notes (`notes.md`, injected as <context name="notes"> every turn) ──
+  /** Fetch the session's pinned notes and mirror them into `stateFiles[sid]['notes.md']`. */
+  async getSessionNotes(sessionId: string): Promise<EngineToClientPayload<'session.notes.get.result'>> {
+    const res = await kesoku.rpc<EngineToClientPayload<'session.notes.get.result'>>('session.notes.get', { session_id: sessionId });
+    actions.setSessionNotes(sessionId, String(res?.content ?? ''));
+    return res;
+  },
+
+  /** Overwrite the session's pinned notes (empty string clears them) and mirror the saved content locally. */
+  async saveSessionNotes(sessionId: string, content: string): Promise<EngineToClientPayload<'session.notes.put.result'>> {
+    const res = await kesoku.rpc<EngineToClientPayload<'session.notes.put.result'>>('session.notes.put', { session_id: sessionId, content });
+    actions.setSessionNotes(sessionId, typeof res?.content === 'string' ? res.content : content);
+    return res;
   },
 
   // ── memory policies (V1.2) ──

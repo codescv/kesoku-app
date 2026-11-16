@@ -29,9 +29,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('v0.1.21 – v0.1.25 · version & mobile small-screen (< 768px) UI optimizations', () => {
-  it('bumps APP_VERSION to 0.1.25', () => {
-    expect(APP_VERSION).toBe('0.1.25');
+describe('v0.1.21 – v0.1.26 · version & mobile small-screen (< 768px) UI optimizations', () => {
+  it('bumps APP_VERSION to 0.1.26', () => {
+    expect(APP_VERSION).toBe('0.1.26');
   });
 
   it('modelShortLabel formats compact model + thinking level labels across all catalog entries', () => {

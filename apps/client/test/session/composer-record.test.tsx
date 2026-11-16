@@ -96,31 +96,35 @@ describe('Composer · tap-to-record with 取消 / 发送', () => {
     expect(m.sendMessage).toHaveBeenCalledWith('s', '', [expect.objectContaining({ object: 'media/s/voice.webm' })]);
   });
 
-  it('translator voice defaults to 【我说】 (母语 → active foreign language)', async () => {
+  it('translator mode renders no 我说 / 听对方说 buttons — only the standard 🎙️ entry', () => {
     render(<Composer sessionId="s" modeId="translator" roleName="飞鸟" />);
-    expect(screen.getByRole('button', { name: /我说（译外语）/ }).getAttribute('aria-pressed')).toBe('true');
-    await startRecording();
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '发送语音' })));
-    expect(m.sendMessage).toHaveBeenCalledWith('s', '【我说】我说简中，翻译成日语', expect.any(Array));
+    expect(screen.queryByRole('button', { name: /我说/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /听对方说/ })).toBeNull();
+    expect(screen.queryByText(/译外语|译母语/)).toBeNull();
+    expect(document.querySelector('.k-composer-sub')).toBeNull();
+    expect(screen.getByRole('button', { name: '开始语音输入' })).toBeTruthy();
   });
 
-  it('tapping 听对方说 starts recording immediately and translates into the configured 母语', async () => {
+  it('translator voice sends the bare recording ("" + audio attachment); the engine picks the direction', async () => {
     useStore.setState((s) => ({
       settings: { ...s.settings, translatorNativeLang: 'zh-TW', translatorForeignLangs: ['en'] },
       modePrefs: { s: { src_lang: 'en', dst_lang: 'zh-TW' } },
     }));
     render(<Composer sessionId="s" modeId="translator" roleName="飞鸟" />);
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: /听对方说（译母语）/ })));
-    expect(screen.getByTestId('composer-recording-bar')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /听对方说（译母语）/ }).getAttribute('aria-pressed')).toBe('true');
+    await startRecording();
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '发送语音' })));
-    expect(m.sendMessage).toHaveBeenCalledWith('s', '【听对方说】对方说英语，翻译成我的母语繁中', expect.any(Array));
+    expect(m.upload).toHaveBeenCalledTimes(1);
+    expect((m.upload.mock.calls[0]![0] as File).type).toBe('audio/webm');
+    expect(m.sendMessage).toHaveBeenCalledTimes(1);
+    expect(m.sendMessage).toHaveBeenCalledWith('s', '', [expect.objectContaining({ object: 'media/s/voice.webm', mime: 'audio/webm' })]);
   });
 
-  it('tapping 我说 starts recording immediately', async () => {
+  it('translator voice with typed text keeps the typed text as the message', async () => {
     render(<Composer sessionId="s" modeId="translator" roleName="飞鸟" />);
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: /我说（译外语）/ })));
-    expect(screen.getByTestId('composer-recording-bar')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('消息输入框'), { target: { value: '请翻译这段' } });
+    await startRecording();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '发送语音' })));
+    expect(m.sendMessage).toHaveBeenCalledWith('s', '请翻译这段', [expect.objectContaining({ object: 'media/s/voice.webm' })]);
   });
 
   it('unmounting mid-recording releases the microphone without sending', async () => {

@@ -255,7 +255,7 @@ function SessionEditMenu({
   let popoverStyle: { left: string; top: string } | undefined;
   if (isPopover && anchor) {
     const cardW = mode === 'rename' ? 280 : 224;
-    const cardH = mode === 'rename' ? 156 : 184;
+    const cardH = mode === 'rename' ? 156 : 224;
     const hasCoords = anchor.x > 0 || anchor.y > 0;
     const rawX = hasCoords ? anchor.x : anchor.rect.left + Math.min(Math.max(anchor.rect.width * 0.4, 24), 140);
     const rawY = hasCoords ? anchor.y : anchor.rect.bottom + 4;
@@ -394,6 +394,18 @@ function SessionEditMenu({
             >
               <UiIcon name="edit" size={20} />
               重命名对话
+            </button>
+            <button
+              type="button"
+              className="k-sedit-btn"
+              data-testid="session-action-notes"
+              onClick={() => {
+                onClose();
+                actions.setUi({ sessionNotesId: s.session_id, drawerOpen: false });
+              }}
+            >
+              <UiIcon name="pin" size={20} />
+              置顶 Notes
             </button>
             <button
               type="button"

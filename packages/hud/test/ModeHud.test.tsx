@@ -145,28 +145,65 @@ describe('ModeHud', () => {
     expect(screen.getByRole('button', { name: '日语' }).getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('trpg: world slot, squad & boss HP strip, collapsible', () => {
-    const { onOpenPanel } = setup('trpg', {
-      'game/games.json': [{ id: 'trpg#1', game: 'trpg', active: true, slots: { world: '夜之城 · 荒坂塔潜入' } }],
-      'game/party.json': {
-        members: {
-          小张: { hp: 28, max_hp: 28, role: 'player', status: [] },
-          飞鸟: { hp: 22, max_hp: 24, role: 'active', status: ['🎯锁定'] },
-          贺喜: { hp: 26, max_hp: 26, role: 'active' },
-          旁白: { role: 'narrator' },
-        },
-        enemies: { boss: { name: 'Boss 重装机甲', hp: 45, max_hp: 80, status: [{ name: '🌋蓄力AOE' }] } },
+  const TRPG_FILES: Record<string, unknown> = {
+    'game/games.json': [{ id: 'trpg#1', game: 'trpg', active: true, slots: { world: '夜之城 · 荒坂塔潜入' } }],
+    'game/party.json': {
+      members: {
+        小张: { hp: 28, max_hp: 28, role: 'player', status: [] },
+        飞鸟: { hp: 22, max_hp: 24, role: 'active', status: ['🎯锁定'] },
+        贺喜: { hp: 26, max_hp: 26, role: 'active' },
+        旁白: { role: 'narrator' },
       },
-    });
-    expect(screen.getByText('夜之城 · 荒坂塔潜入')).toBeTruthy();
-    expect(screen.getAllByRole('meter')).toHaveLength(4);
-    expect(screen.getByText('🌋蓄力AOE')).toBeTruthy();
-    expect(screen.queryByText('旁白')).toBeNull();
-    fireEvent.click(screen.getByText('飞鸟'));
-    expect(onOpenPanel).toHaveBeenCalledWith('party');
-    fireEvent.click(screen.getByRole('button', { name: '收起小队' }));
+      enemies: { boss: { name: 'Boss 重装机甲', hp: 45, max_hp: 80, status: [{ name: '🌋蓄力AOE' }] } },
+    },
+  };
+
+  it('trpg (mobile / tablet): single compact row — world chip + 小队 button + badge, zero live HP bars', () => {
+    const { container, onOpenPanel } = setup('trpg', TRPG_FILES);
+    const hud = container.querySelector('.k-hud[data-mode="trpg"]')!;
+    // Strictly one row: no squad strip, no collapse toggle, no inline meters.
+    expect(hud.querySelectorAll('.k-hud-row')).toHaveLength(1);
+    expect(hud.querySelector('.k-hud-squad, .k-hud-squad-mini, .k-hud-collapse, .k-hud-member, .k-hud-boss')).toBeNull();
     expect(screen.queryAllByRole('meter')).toHaveLength(0);
-    expect(screen.getByRole('button', { name: '展开小队' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /收起小队|展开小队/ })).toBeNull();
+    // World chip truncates on one line and carries the full text as a tooltip.
+    const world = screen.getByText('夜之城 · 荒坂塔潜入');
+    expect(world.classList.contains('k-hud-ellipsis')).toBe(true);
+    expect(world.closest('.k-hud-world')?.getAttribute('title')).toBe('夜之城 · 荒坂塔潜入');
+    // HP values are not shown inline any more.
+    expect(screen.queryByText(/HP\s*\d/)).toBeNull();
+    expect(screen.queryByText('飞鸟')).toBeNull();
+    // 小队 button: combat member count (narrator excluded) + enemy indicator, opens the party panel.
+    const btn = screen.getByTestId('trpg-party-btn');
+    expect(btn.tagName).toBe('BUTTON');
+    expect(btn.textContent).toContain('小队 (3)');
+    expect(btn.querySelector('[data-ui-icon="shield"]')).toBeTruthy();
+    expect(screen.getByTestId('trpg-party-enemies').textContent).toBe('1');
+    expect(btn.textContent).not.toMatch(/[⚔🛡]/u);
+    fireEvent.click(btn);
+    expect(onOpenPanel).toHaveBeenCalledWith('party');
+    // Policy badge stays on the same row.
+    expect(hud.querySelector('.k-hud-row')!.contains(screen.getByRole('button', { name: /记忆：确认/ }))).toBe(true);
+  });
+
+  it('trpg: 小队·装备 label without party data; button still opens the party panel', () => {
+    const { onOpenPanel } = setup('trpg', { 'game/games.json': [{ id: 'trpg#1', game: 'trpg', active: true, slots: { scenario: '放学后·校园怪谈调查部' } }] });
+    expect(screen.getByText('放学后·校园怪谈调查部')).toBeTruthy();
+    const btn = screen.getByTestId('trpg-party-btn');
+    expect(btn.textContent).toContain('小队·装备');
+    expect(screen.queryByTestId('trpg-party-enemies')).toBeNull();
+    fireEvent.click(btn);
+    expect(onOpenPanel).toHaveBeenCalledWith('party');
+  });
+
+  it('trpg (desktop, right sidebar visible): only world chip + policy badge', () => {
+    const { container } = setup('trpg', TRPG_FILES, { inspectorVisible: true });
+    expect(screen.getByText('夜之城 · 荒坂塔潜入')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /记忆：确认/ })).toBeTruthy();
+    expect(screen.queryByTestId('trpg-party-btn')).toBeNull();
+    expect(screen.queryAllByRole('meter')).toHaveLength(0);
+    expect(container.querySelector('.k-hud-squad, .k-hud-collapse, .k-hud-squad-mini')).toBeNull();
+    expect(container.querySelectorAll('.k-hud-row')).toHaveLength(1);
   });
 
   it('pokemon_assistant: version switch and pinned chip', () => {

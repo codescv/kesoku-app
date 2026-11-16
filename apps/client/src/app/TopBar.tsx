@@ -102,6 +102,7 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
   const effectiveMode = (pending && pending.sessionId === sessionId ? pending.modeId : modeId) as ModeId;
   const draftRole = useStore((s) => s.ui.draftRole);
   const roleFilter = useStore((s) => s.ui.roleFilter);
+  const sessionNotesPinned = useStore((s) => (sessionId ? String(s.stateFiles[sessionId]?.['notes.md'] ?? '').trim().length > 0 : false));
   // New Session (no session yet): the role the user picked here / on the Launchpad starts the next session.
   const role = session?.role ?? draftRole ?? roleFilter ?? fallbackRoleId(personas);
   const persona = personas.find((p) => p.role_id === role);
@@ -162,6 +163,20 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
             </span>
             <UiIcon name="chevron-right" size={18} />
           </button>
+          {sessionId && (
+            <button
+              type="button"
+              className="k-link-row k-link-row-session-notes"
+              data-testid="topbar-session-notes-btn"
+              onClick={() => (setOpen(false), actions.setUi({ sessionNotesId: sessionId }))}
+            >
+              <span>
+                <UiIcon name="pin" size={18} /> 当前会话置顶 Notes
+                {sessionNotesPinned && <span className="k-pill k-pill-primary k-pill-sm">已置顶</span>}
+              </span>
+              <UiIcon name="chevron-right" size={18} />
+            </button>
+          )}
           <button
             type="button"
             className="k-link-row"
@@ -169,7 +184,7 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
             onClick={() => (setOpen(false), actions.setUi({ screen: 'notes' }))}
           >
             <span>
-              <UiIcon name="note" size={18} /> 简易便签 (notes.md)
+              <UiIcon name="note" size={18} /> 简易便签 (全局)
             </span>
             <UiIcon name="chevron-right" size={18} />
           </button>

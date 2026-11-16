@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Segmented, UiIcon } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
-import { actions } from '../../lib/store';
+import { actions, useStore } from '../../lib/store';
 import { Markdown } from '../segments/Markdown';
+import { SessionNotesEditor } from './SessionNotesSheet';
 
 export interface StickyNoteItem {
   id: string;
@@ -146,8 +147,88 @@ function isNotFoundError(err: unknown): boolean {
 }
 
 type ViewMode = 'cards' | 'raw';
+export type NotesScope = 'session' | 'global';
 
+/** Desktop Inspector tab strip (记忆库 | 便签) shown at the top of the embedded panel. */
+function NotesInspectorTabs() {
+  return (
+    <div className="k-inspector-tabs" role="tablist" aria-label="检视器切换">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={false}
+        className="k-inspector-tab"
+        data-testid="inspector-tab-memory"
+        onClick={() => actions.setUi({ inspector: { kind: 'memory' } })}
+      >
+        <UiIcon name="brain" size={15} />
+        <span>记忆库</span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={true}
+        className="k-inspector-tab is-active"
+        data-testid="inspector-tab-notes"
+        onClick={() => actions.setUi({ inspector: { kind: 'notes' } })}
+      >
+        <UiIcon name="note" size={15} />
+        <span>便签</span>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Notes screen / Inspector tab. With an open session, a scope switcher toggles between the
+ * session's pinned notes (`session.notes.*`) and the global scratchpad (`$AWD/notes.md`, default).
+ */
 export function NotesPanel({ embedded, onClose }: { embedded?: boolean; onClose?: () => void }) {
+  const currentSessionId = useStore((s) => s.currentSessionId);
+  const [scope, setScope] = useState<NotesScope>('global');
+  const switcher = currentSessionId ? (
+    <div className="k-notes-scope" data-testid="notes-scope-switcher">
+      <Segmented
+        ariaLabel="便签范围"
+        size="sm"
+        value={scope}
+        onChange={setScope}
+        options={[
+          { value: 'session', label: '当前会话置顶' },
+          { value: 'global', label: '全局便签' },
+        ]}
+      />
+    </div>
+  ) : null;
+
+  if (!currentSessionId || scope === 'global') return <GlobalNotesPanel embedded={embedded} onClose={onClose} scopeSwitcher={switcher} />;
+
+  return (
+    <div className={'k-notes' + (embedded ? ' is-embedded' : '')} data-testid="notes-panel" data-scope="session">
+      {embedded && <NotesInspectorTabs />}
+      <header className="k-notes-head">
+        <div className="k-notes-title-row">
+          {!embedded && onClose && (
+            <button type="button" className="k-icon-btn" aria-label="返回" onClick={onClose}>
+              <UiIcon name="arrow-left" size={20} />
+            </button>
+          )}
+          <h2 className="k-notes-title">
+            <UiIcon name="pin" size={embedded ? 18 : 20} />
+            <span>当前会话置顶</span>
+          </h2>
+          <span className="k-pill k-pill-sm k-pill-neutral k-notes-badge">notes.md · 当前会话</span>
+        </div>
+      </header>
+      {switcher}
+      <div className="k-notes-body">
+        <SessionNotesEditor sessionId={currentSessionId} embedded={embedded} />
+      </div>
+    </div>
+  );
+}
+
+function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boolean; onClose?: () => void; scopeSwitcher?: ReactNode }) {
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [items, setItems] = useState<StickyNoteItem[]>([]);
   const [rawContent, setRawContent] = useState('');
@@ -326,33 +407,8 @@ export function NotesPanel({ embedded, onClose }: { embedded?: boolean; onClose?
   const rawDirty = rawDraft !== rawContent;
 
   return (
-    <div className={'k-notes' + (embedded ? ' is-embedded' : '')} data-testid="notes-panel">
-      {embedded && (
-        <div className="k-inspector-tabs" role="tablist" aria-label="检视器切换">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={false}
-            className="k-inspector-tab"
-            data-testid="inspector-tab-memory"
-            onClick={() => actions.setUi({ inspector: { kind: 'memory' } })}
-          >
-            <UiIcon name="brain" size={15} />
-            <span>记忆库</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={true}
-            className="k-inspector-tab is-active"
-            data-testid="inspector-tab-notes"
-            onClick={() => actions.setUi({ inspector: { kind: 'notes' } })}
-          >
-            <UiIcon name="note" size={15} />
-            <span>便签</span>
-          </button>
-        </div>
-      )}
+    <div className={'k-notes' + (embedded ? ' is-embedded' : '')} data-testid="notes-panel" data-scope="global">
+      {embedded && <NotesInspectorTabs />}
 
       <header className="k-notes-head">
         <div className="k-notes-title-row">
@@ -398,6 +454,8 @@ export function NotesPanel({ embedded, onClose }: { embedded?: boolean; onClose?
           </button>
         </div>
       </header>
+
+      {scopeSwitcher}
 
       {loadError && (
         <div className="k-notes-error" role="alert">
