@@ -1,68 +1,32 @@
 import { useEffect, useState } from 'react';
 import { LIMITS, type EngineToClientPayload, type UserProfile } from '@kesoku/protocol';
-import { Avatar, MODES, ModeIcon, POLICY_BADGE, Pill, Skeleton, UiIcon } from '@kesoku/ui';
+import { Avatar, Skeleton, UiIcon } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { useAvatarUrl } from './avatar';
 import { AvatarSheet, type AvatarSource } from './AvatarSheet';
-import { errorCode, fmtBytes, policyDeviations, userAvatarRef, userSourceAvatarRef, utf8Bytes } from './model';
-import { CropSheet, Counter, FieldError, PickImageButton, Switch, makePreviewUrl } from './parts';
+import { errorCode, fmtBytes, userAvatarRef, userSourceAvatarRef, utf8Bytes } from './model';
+import { CropSheet, Counter, FieldError, PickImageButton, makePreviewUrl } from './parts';
 import { MarkdownEditable } from './MarkdownEditable';
 
 interface ProfileDraft {
   nickname: string;
   profile_md: string;
-  cameo_opt_in: boolean;
 }
 
 const USER_KEY = 'user';
 
 function draftOf(p: UserProfile): ProfileDraft {
-  return { nickname: p.nickname ?? '', profile_md: p.profile_md ?? p.bio ?? '', cameo_opt_in: !!p.cameo_opt_in };
-}
-
-/** `跨模式记忆沉淀策略` summary: defaults line, or the modes deviating from the defaults. */
-export function PolicySummary({ onOpenPolicies }: { onOpenPolicies?: () => void }) {
-  const policies = useStore((s) => s.policies);
-  const dev = policyDeviations(policies.policies, policies.defaults);
-  return (
-    <section className="ps-card">
-      <div className="ps-label">
-        <span className="ps-icon-label">
-          <UiIcon name="shield" size={16} /> 跨模式记忆沉淀策略
-        </span>
-        <Pill size="sm" tone="primary">8 模式可独立配置</Pill>
-      </div>
-      <div className="ps-policy" data-testid="ps-policy-summary">
-        {dev.length === 0 ? (
-          <span className="ps-policy-pill">默认：日常聊天 [自动] · 其他模式 [确认]</span>
-        ) : (
-          dev.map((d) => (
-            <span key={d.mode} className={`ps-policy-pill is-${d.policy}`}>
-              <ModeIcon mode={d.mode} size={16} />
-              {`${MODES[d.mode].title} [${POLICY_BADGE[d.policy].label}]`}
-            </span>
-          ))
-        )}
-      </div>
-      <button type="button" className="ps-link-btn" disabled={!onOpenPolicies} onClick={onOpenPolicies}>
-        按模式单独配置 (自动/确认/忽略)
-        <UiIcon name="chevron-right" size={14} />
-      </button>
-      <span className="ps-sub">个人介绍写入的是长期档案，不受各模式记忆策略影响</span>
-    </section>
-  );
+  return { nickname: p.nickname ?? '', profile_md: p.profile_md ?? p.bio ?? '' };
 }
 
 /** Screen 17 · My profile & avatar. */
 export function ProfilePanel({
   sources,
   setSource,
-  onOpenPolicies,
 }: {
   sources: Record<string, AvatarSource | null>;
   setSource: (key: string, s: AvatarSource | null) => void;
-  onOpenPolicies?: () => void;
 }) {
   const profile = useStore((s) => s.profile);
   const [draft, setDraft] = useState<ProfileDraft | null>(null);
@@ -114,9 +78,8 @@ export function ProfilePanel({
 
   const base = draftOf(profile);
   const d = draft ?? base;
-  const dirty = d.nickname !== base.nickname || d.profile_md !== base.profile_md || d.cameo_opt_in !== base.cameo_opt_in;
+  const dirty = d.nickname !== base.nickname || d.profile_md !== base.profile_md;
   const hasAi = !!profile.avatar_ai;
-  const canCameo = hasExistingSource || hasAi;
   const profileBytes = utf8Bytes(d.profile_md);
   const errors = {
     nickname: d.nickname.length > 32 ? '最多 32 个字符' : undefined,
@@ -135,7 +98,7 @@ export function ProfilePanel({
       const res = await kesoku.rpc<EngineToClientPayload<'user_profile.put.result'>>('user_profile.put', {
         nickname: d.nickname.trim(),
         profile_md: d.profile_md,
-        cameo_opt_in: canCameo ? d.cameo_opt_in : false,
+        cameo_opt_in: true,
       });
       if (res?.profile) actions.setProfile(res.profile);
       setDraft(null);
@@ -155,7 +118,7 @@ export function ProfilePanel({
       const res = await kesoku.rpc<EngineToClientPayload<'user_profile.put.result'>>('user_profile.put', {
         nickname: base.nickname,
         profile_md: base.profile_md,
-        cameo_opt_in: base.cameo_opt_in,
+        cameo_opt_in: true,
         avatar_object: up.object,
       });
       if (res?.profile) actions.setProfile(res.profile);
@@ -229,32 +192,6 @@ export function ProfilePanel({
             </span>
           </div>
         </section>
-
-        <section className="ps-card">
-          <div className="ps-row ps-between">
-            <div>
-              <div className="ps-strong">允许在约会与剧场插画中与角色同框</div>
-              <div className="ps-sub">
-                {canCameo
-                  ? '开启后，双人插画将直接以你的原图/头像作为五官参考绘制同框画面（无需先生成 AI 头像）'
-                  : '请先上传一张个人照片，即可直接作为双人插画的五官参考'}
-              </div>
-            </div>
-            <Switch
-              checked={canCameo && d.cameo_opt_in}
-              disabled={!canCameo}
-              onChange={(v) => patch({ cameo_opt_in: v })}
-              label="允许在约会与剧场插画中与角色同框"
-            />
-          </div>
-        </section>
-
-        <PolicySummary onOpenPolicies={onOpenPolicies} />
-
-        <div className="ps-privacy ps-icon-label">
-          <UiIcon name="shield" size={16} />
-          <span>头像与原照片仅保存在你自己的主机上，不会在云端留存。</span>
-        </div>
       </div>
 
       <div className="ps-dock">

@@ -11,11 +11,10 @@ import './persona.css';
 export interface PersonaStudioProps {
   onClose: () => void;
   initialTab?: 'roles' | 'me';
-  onOpenPolicies?: () => void;
 }
 
 /** 🎭 Persona & Avatar Studio — full-screen secondary page (Screens 15–17). */
-export function PersonaStudio({ onClose, initialTab = 'roles', onOpenPolicies }: PersonaStudioProps) {
+export function PersonaStudio({ onClose, initialTab = 'roles' }: PersonaStudioProps) {
   const [tab, setTab] = useState<'roles' | 'me'>(initialTab);
   const count = useStore((s) => s.personas.length);
   const [sources, setSources] = useState<Record<string, AvatarSource | null>>({});
@@ -69,7 +68,7 @@ export function PersonaStudio({ onClose, initialTab = 'roles', onOpenPolicies }:
       {tab === 'roles' ? (
         <RolesPanel sources={sources} setSource={setSource} />
       ) : (
-        <ProfilePanel sources={sources} setSource={setSource} onOpenPolicies={onOpenPolicies} />
+        <ProfilePanel sources={sources} setSource={setSource} />
       )}
     </div>
   );

@@ -732,15 +732,7 @@ export function Shell() {
         </div>
       );
     if (ui.screen === 'studio')
-      return (
-        <PersonaStudio
-          onClose={() => actions.setUi({ screen: 'chat' })}
-          onOpenPolicies={() => {
-            actions.setUi({ screen: 'settings' });
-            setTimeout(() => document.getElementById('memory-policies')?.scrollIntoView({ behavior: 'smooth' }), 80);
-          }}
-        />
-      );
+      return <PersonaStudio onClose={() => actions.setUi({ screen: 'chat' })} />;
     return (
       <>
         <TopBar sessionId={sid} modeId={modeId} nestedTitle={active.nested?.title} showMenu={!desktop && (!tablet || leftCollapsed)} onMenu={() => (tablet ? setLeftCollapsed(false) : actions.setUi({ drawerOpen: true }))} />

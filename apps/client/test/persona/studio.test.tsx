@@ -396,46 +396,41 @@ describe('PersonaStudio · avatar regeneration without re-upload', () => {
 });
 
 describe('PersonaStudio · Screen 17 my profile', () => {
-  it('policy summary shows defaults, then deviations, and links to policy settings', async () => {
-    const onOpen = vi.fn();
-    useStore.setState({ profile: PROFILE });
-    const { unmount } = render(<PersonaStudio onClose={() => {}} initialTab="me" onOpenPolicies={onOpen} />);
-    expect(screen.getByTestId('ps-policy-summary').textContent).toBe('默认：日常聊天 [自动] · 其他模式 [确认]');
-    fireEvent.click(screen.getByRole('button', { name: '按模式单独配置 (自动/确认/忽略)' }));
-    expect(onOpen).toHaveBeenCalledTimes(1);
-    unmount();
-
-    act(() => actions.setPolicies({ policies: { galgame: 'isolated', jp_classroom: 'full' } }));
-    render(<PersonaStudio onClose={() => {}} initialTab="me" />);
-    const s = screen.getByTestId('ps-policy-summary').textContent ?? '';
-    expect(s).toContain('约会 Galgame [忽略]');
-    expect(s).toContain('日语小课堂 [自动]');
-    expect(s).not.toContain('默认');
-    expect(s).not.toContain('日常聊天');
-  });
-
-  it('cameo is enabled once a source photo or AI avatar exists; save sends user_profile.put', async () => {
+  it('renders avatar, nickname, and profile_md without cameo switch, policy summary, or privacy footer; save and upload always send cameo_opt_in: true', async () => {
     useStore.setState({ profile: PROFILE });
     render(<PersonaStudio onClose={() => {}} initialTab="me" />);
-    const cameo = screen.getByRole('switch', { name: '允许在约会与剧场插画中与角色同框' }) as HTMLButtonElement;
-    expect(cameo.disabled).toBe(true);
+    expect(screen.getByText('我的头像与参考照')).toBeTruthy();
+    expect(screen.getByText('我的昵称 / 称呼')).toBeTruthy();
     expect(screen.getByText('个人档案 (user/profile.md)')).toBeTruthy();
     expect(screen.getByText('AI 会在对话中自动补充更新此档案，你也可以随时在此直接修改，所有角色共享且下一条消息生效')).toBeTruthy();
     expect(screen.queryByText(/已由上传照片 AI 生成/)).toBeNull();
 
-    // Direct uploaded source image (without AI avatar generation) is sufficient to enable cameo
-    act(() => actions.setProfile({ ...PROFILE, avatar_ai: false, has_source_image: true, avatar_ref: 'user/avatar.webp' }));
-    expect(cameo.disabled).toBe(false);
+    expect(screen.queryByRole('switch', { name: '允许在约会与剧场插画中与角色同框' })).toBeNull();
+    expect(screen.queryByText('允许在约会与剧场插画中与角色同框')).toBeNull();
+    expect(screen.queryByTestId('ps-policy-summary')).toBeNull();
+    expect(screen.queryByText('跨模式记忆沉淀策略')).toBeNull();
+    expect(screen.queryByText(/仅保存在你自己的主机上/)).toBeNull();
 
     act(() => actions.setProfile({ ...PROFILE, avatar_ai: true, avatar_rev: 1 }));
     expect(screen.getByRole('button', { name: '已由上传照片 AI 生成 · 重新生成' })).toBeTruthy();
-    expect(cameo.disabled).toBe(false);
-    fireEvent.click(cameo);
+
     fireEvent.change(screen.getByLabelText('我的昵称'), { target: { value: '阿张' } });
     fireEvent.click(screen.getByRole('button', { name: '保存个人形象' }));
     await waitFor(() => expect(calls('user_profile.put')).toHaveLength(1));
     expect(calls('user_profile.put')[0]![1]).toEqual({ nickname: '阿张', profile_md: '软件工程师', cameo_opt_in: true });
     await waitFor(() => expect(useStore.getState().profile?.nickname).toBe('阿张'));
+
+    const file = new File([new Uint8Array([1, 2, 3])], 'me.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('上传照片文件'), { target: { files: [file] } });
+    fireEvent.click(await screen.findByRole('button', { name: '使用此图' }));
+    await waitFor(() => expect(m.upload).toHaveBeenCalledWith(file, 'avatar_source'));
+    await waitFor(() => expect(calls('user_profile.put')).toHaveLength(2));
+    expect(calls('user_profile.put')[1]![1]).toEqual({
+      nickname: '阿张',
+      profile_md: '软件工程师',
+      cameo_opt_in: true,
+      avatar_object: 'media/avatar/123e4567-e89b-12d3-a456-426614174000.png',
+    });
   });
 
   it('prefers profile_md over bio, edits user/profile.md via MarkdownEditable, and enforces the 12 KiB limit', async () => {
@@ -461,7 +456,7 @@ describe('PersonaStudio · Screen 17 my profile', () => {
     expect(save.disabled).toBe(false);
     fireEvent.click(save);
     await waitFor(() => expect(calls('user_profile.put')).toHaveLength(1));
-    expect(calls('user_profile.put')[0]![1]).toEqual({ nickname: '小张', profile_md: updatedMd, cameo_opt_in: false });
+    expect(calls('user_profile.put')[0]![1]).toEqual({ nickname: '小张', profile_md: updatedMd, cameo_opt_in: true });
   });
 
   it('AI 风格化 reuses the restyle sheet with target_type user', async () => {
@@ -496,13 +491,12 @@ describe('PersonaStudio · plain-language copy', () => {
 
   it('ProfilePanel and AvatarSheet render no internal paths or token jargon', async () => {
     useStore.setState({ profile: { ...PROFILE, avatar_ai: true, avatar_rev: 1, avatar_ref: 'user/avatar.webp', has_source_image: true } });
-    act(() => actions.setPolicies({ policies: { galgame: 'isolated' } }));
     render(<PersonaStudio onClose={() => {}} initialTab="me" />);
-    expect(screen.getByText(/双人插画将直接以你的原图\/头像作为五官参考/)).toBeTruthy();
-    expect(screen.getByText(/仅保存在你自己的主机上/)).toBeTruthy();
-    const policy = screen.getByTestId('ps-policy-summary');
-    expect(policy.querySelector('[data-mode-icon="galgame"]')).toBeTruthy();
-    expect(policy.textContent).toBe('约会 Galgame [忽略]');
+    expect(screen.getByText('我的头像与参考照')).toBeTruthy();
+    expect(screen.getByText('我的昵称 / 称呼')).toBeTruthy();
+    expect(screen.getByText('个人档案 (user/profile.md)')).toBeTruthy();
+    expect(screen.queryByTestId('ps-policy-summary')).toBeNull();
+    expect(screen.queryByText(/仅保存在你自己的主机上/)).toBeNull();
     expectNoJargon();
     expect(document.body.textContent).not.toMatch(/[✨✓✦🔴🛡🔒🌸]/u);
 
