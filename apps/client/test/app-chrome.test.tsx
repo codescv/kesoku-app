@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { makeEnvelope } from '@kesoku/protocol';
 import { ICON_STYLE_KEY } from '@kesoku/ui';
 import { initialState, actions, useStore } from '../src/lib/store';
-import { __test } from '../src/lib/client';
+import { __test, kesoku } from '../src/lib/client';
 import type { KesokuSocket } from '../src/lib/ws';
 import { App, THEME_COLORS, applyThemeChrome, resolveTheme } from '../src/app/App';
 import { RoleModeCapsule, ModelCapsule, TopBar } from '../src/app/TopBar';
@@ -94,14 +94,46 @@ describe('TopBar (Items 1, 8, 10)', () => {
     expect(bar.textContent).not.toMatch(EMOJI);
   });
 
-  it('role sheet has no Agent 目录 entry but keeps 角色与形象工坊 and 记忆库', () => {
+  it('role sheet (v0.1.27) drops global entries and mode switching; keeps roles, 置顶 Notes and 退出当前模式', () => {
+    const stop = vi.spyOn(kesoku, 'stopMode').mockResolvedValue();
     render(<RoleModeCapsule sessionId="s1" modeId="jp_classroom" />);
     fireEvent.click(screen.getByRole('button', { name: '角色与模式' }));
+    const sheet = screen.getByRole('dialog');
     expect(screen.queryByText(/Agent 目录/)).toBeNull();
     expect(screen.queryByText(/band/)).toBeNull();
-    expect(screen.getByText('角色与形象工坊')).toBeTruthy();
-    expect(screen.getByText('记忆库')).toBeTruthy();
-    expect(document.querySelector('[data-mode-icon="jp_classroom"]')).toBeTruthy();
+    for (const gone of ['角色与形象工坊', '记忆库', '简易便签', '切换模式', '当前模式记忆', '仅改当前模式']) expect(sheet.textContent).not.toContain(gone);
+    expect(screen.queryByTestId('topbar-notes-btn')).toBeNull();
+    expect(sheet.querySelector('.k-sheet-note')).toBeNull();
+    expect(sheet.querySelector('.k-rm-policy')).toBeNull();
+    expect(sheet.querySelector('[role="radiogroup"]')).toBeNull(); // no PolicySegmented
+    expect(screen.getByText('切换角色')).toBeTruthy();
+    expect(sheet.querySelector('.k-rm-roles')).toBeTruthy();
+    expect(screen.getByTestId('topbar-session-notes-btn').textContent).toContain('置顶 Notes');
+    // Non-chat mode inside a session: compact 退出当前模式 row with the mode icon.
+    const modeSection = screen.getByTestId('topbar-mode-section');
+    expect(modeSection.querySelector('[data-mode-icon="jp_classroom"]')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('topbar-stop-mode'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(stop).toHaveBeenCalledWith('s1');
+    stop.mockRestore();
+  });
+
+  it('role sheet omits the mode section in chat mode and before a session exists', () => {
+    const { unmount } = render(<RoleModeCapsule sessionId="s1" modeId="chat" />);
+    fireEvent.click(screen.getByRole('button', { name: '角色与模式' }));
+    expect(screen.queryByTestId('topbar-mode-section')).toBeNull();
+    expect(screen.queryByText('退出当前模式')).toBeNull();
+    expect(screen.getByTestId('topbar-session-notes-btn')).toBeTruthy();
+    expect(document.querySelectorAll('.k-rm-section')).toHaveLength(1);
+    unmount();
+
+    render(<RoleModeCapsule sessionId={null} modeId="trpg" />);
+    fireEvent.click(screen.getByRole('button', { name: '角色与模式' }));
+    expect(screen.getByText('选择对话角色')).toBeTruthy();
+    expect(screen.queryByTestId('topbar-mode-section')).toBeNull();
+    expect(screen.queryByTestId('topbar-session-notes-btn')).toBeNull();
+    expect(screen.queryByText('切换模式')).toBeNull();
+    expect(document.querySelectorAll('.k-rm-section')).toHaveLength(1);
   });
 
   it('model sheet drops the Hydrogen caching note and marks the active cell with a check icon', () => {

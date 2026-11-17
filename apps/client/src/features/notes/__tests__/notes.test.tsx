@@ -250,12 +250,13 @@ describe('NotesPanel interactions', () => {
     expect(sidebarBtn.classList.contains('is-active')).toBe(true);
     u3();
 
-    // TopBar RoleModeCapsule
+    // TopBar RoleModeCapsule no longer carries the global scratchpad entry (v0.1.27): sidebar / inspector only.
     useStore.setState((s) => ({ ui: { ...s.ui, screen: 'chat' } }));
     const { unmount: u4 } = render(<RoleModeCapsule sessionId="s1" modeId="chat" />);
     fireEvent.click(screen.getByRole('button', { name: '角色与模式' }));
-    fireEvent.click(screen.getByTestId('topbar-notes-btn'));
-    expect(useStore.getState().ui.screen).toBe('notes');
+    expect(screen.queryByTestId('topbar-notes-btn')).toBeNull();
+    expect(screen.queryByText(/简易便签/)).toBeNull();
+    expect(useStore.getState().ui.screen).toBe('chat');
     u4();
 
     // SettingsScreen no longer duplicates the sticky notes entry (streamlined in v0.1.20)

@@ -217,7 +217,6 @@ export function NotesPanel({ embedded, onClose }: { embedded?: boolean; onClose?
             <UiIcon name="pin" size={embedded ? 18 : 20} />
             <span>当前会话置顶</span>
           </h2>
-          <span className="k-pill k-pill-sm k-pill-neutral k-notes-badge">notes.md · 当前会话</span>
         </div>
       </header>
       {switcher}

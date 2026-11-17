@@ -1,23 +1,24 @@
 /* 🎭 Persona & Avatar Studio (Screens 15–17). Tokens only; light + dark via tokens.css. */
 
 .ps-root {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
+  /* Inline secondary screen inside .k-col-center (which already provides the safe-area insets). */
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
-  padding-top: var(--safe-t);
-  padding-left: var(--safe-l);
-  padding-right: var(--safe-r);
 }
 
 .ps-top {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 62px;
+  box-sizing: border-box;
   padding: 8px 14px;
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
@@ -987,9 +988,22 @@
   }
 }
 
+@media (max-width: 767px) {
+  .ps-top {
+    min-height: 50px;
+    padding: 4px 10px;
+    gap: 8px;
+  }
+  .ps-back {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+  }
+}
+
 @media (min-width: 1024px) {
   .ps-top {
-    padding: 10px 20px;
+    padding: 8px 20px;
   }
   .ps-top-title {
     font-size: 20px;

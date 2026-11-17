@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { PersonaSummary, UserProfile } from '@kesoku/protocol';
@@ -7,10 +9,11 @@ const m = vi.hoisted(() => ({
   upload: vi.fn(),
   resolveMedia: vi.fn(async () => null as string | null),
 }));
-vi.mock('../../src/lib/client', () => ({ kesoku: m }));
+vi.mock('../../src/lib/client', async (importOriginal) => ({ ...(await importOriginal<typeof import('../../src/lib/client')>()), kesoku: m }));
 
 import { PersonaStudio } from '../../src/features/persona';
 import { FileBrowser } from '../../src/features/files/FileBrowser';
+import { Shell } from '../../src/app/Shell';
 import { __avatarCache } from '../../src/features/persona/avatar';
 import { actions, initialState, useStore } from '../../src/lib/store';
 
@@ -527,5 +530,83 @@ describe('FileBrowser · Agent workspace directory viewer', () => {
     fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
     fireEvent.click(screen.getByText('roles'));
     await waitFor(() => expect(screen.getByText('asuka.md')).toBeTruthy());
+  });
+});
+
+/** Extract the body of the first top-level `selector { … }` rule from a stylesheet. */
+function cssRule(css: string, selector: string): string {
+  const start = css.indexOf(`\n${selector} {`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  return css.slice(start, css.indexOf('}', start));
+}
+
+describe('PersonaStudio · inline secondary screen (v0.1.27)', () => {
+  const personaCss = readFileSync(resolve(__dirname, '../../src/features/persona/persona.css'), 'utf8');
+
+  it('.ps-root is an in-flow flex column (no fixed full-screen overlay, no duplicate safe-area padding)', () => {
+    const root = cssRule(personaCss, '.ps-root');
+    expect(root).not.toMatch(/position:\s*fixed/);
+    expect(root).not.toMatch(/inset:/);
+    expect(root).not.toMatch(/z-index/);
+    expect(root).not.toMatch(/--safe-[tlr]/);
+    for (const decl of ['flex: 1;', 'min-height: 0;', 'width: 100%;', 'display: flex;', 'flex-direction: column;', 'overflow: hidden;', 'background: var(--bg);']) {
+      expect(root).toContain(decl);
+    }
+    // No rule anywhere in persona.css pins the studio root to the viewport.
+    expect(personaCss).not.toMatch(/\.ps-root[^{]*\{[^}]*position:\s*fixed/);
+  });
+
+  it('.ps-top header height matches .k-screen-head / .k-topbar (62px, 50px on mobile)', () => {
+    expect(cssRule(personaCss, '.ps-top')).toContain('min-height: 62px;');
+    const mobile = personaCss.slice(personaCss.indexOf('@media (max-width: 767px)'));
+    expect(mobile).toMatch(/\.ps-top \{[^}]*min-height: 50px;/);
+  });
+
+  it('renders as a non-modal region (Sheets inside keep their dialog role)', async () => {
+    await openRoles();
+    const root = screen.getByTestId('persona-studio');
+    expect(root.className).toBe('ps-root');
+    expect(root.getAttribute('aria-label')).toBe('角色与形象工坊');
+    expect(root.getAttribute('role')).not.toBe('dialog');
+    expect(root.hasAttribute('aria-modal')).toBe(false);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('desktop Shell renders the studio inside .k-col-center while both side columns stay mounted', async () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) =>
+        ({
+          matches: query.includes('min-width'),
+          media: query,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        }) as unknown as MediaQueryList,
+    );
+    useStore.setState((s) => ({ ui: { ...s.ui, screen: 'studio', launchpad: false } }));
+    render(<Shell />);
+    await screen.findByLabelText('角色名称');
+    const shell = document.querySelector('.k-shell')!;
+    expect(shell.className).toContain('is-desktop');
+    const center = shell.querySelector('.k-col-center')!;
+    const studio = screen.getByTestId('persona-studio');
+    expect(center.contains(studio)).toBe(true);
+    expect(center.firstElementChild).toBe(studio);
+    expect(shell.querySelector('.k-col-left')).toBeTruthy();
+    expect(shell.querySelector('.k-col-right')).toBeTruthy();
+    expect(shell.querySelector('.k-col-left')!.contains(studio)).toBe(false);
+    expect(center.querySelector('.k-topbar')).toBeNull();
+    // The sidebar highlights the active secondary screen like 记忆库 / 便签.
+    const studioBtn = screen.getByTestId('sidebar-studio-btn');
+    expect(studioBtn.className).toContain('is-active');
+    expect(studioBtn.getAttribute('aria-current')).toBe('page');
+    expect(screen.getByTestId('sidebar-files-btn').className).not.toContain('is-active');
+    expect(screen.getByTestId('sidebar-settings-btn').className).not.toContain('is-active');
+    // 返回 closes the studio back to the chat column; side columns never unmount.
+    fireEvent.click(within(studio).getByRole('button', { name: '返回' }));
+    expect(useStore.getState().ui.screen).toBe('chat');
+    expect(screen.queryByTestId('persona-studio')).toBeNull();
+    expect(shell.querySelector('.k-col-left')).toBeTruthy();
+    expect(shell.querySelector('.k-col-right')).toBeTruthy();
+    expect(screen.getByTestId('sidebar-studio-btn').className).not.toContain('is-active');
   });
 });

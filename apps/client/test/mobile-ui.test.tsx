@@ -29,9 +29,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('v0.1.21 – v0.1.26 · version & mobile small-screen (< 768px) UI optimizations', () => {
-  it('bumps APP_VERSION to 0.1.26', () => {
-    expect(APP_VERSION).toBe('0.1.26');
+describe('v0.1.21 – v0.1.27 · version & mobile small-screen (< 768px) UI optimizations', () => {
+  it('bumps APP_VERSION to 0.1.27', () => {
+    expect(APP_VERSION).toBe('0.1.27');
   });
 
   it('modelShortLabel formats compact model + thinking level labels across all catalog entries', () => {
@@ -355,5 +355,69 @@ describe('v0.1.21 – v0.1.26 · version & mobile small-screen (< 768px) UI opti
     const globalCss = readFileSync(resolve(__dirname, '../src/app/global.css'), 'utf8');
     expect(globalCss).toContain('height: 52px; min-height: 52px; max-height: 160px; resize: none; padding: 12px 16px; border-radius: 16px;');
     expect(globalCss).toContain('.k-composer-input { height: 44px; min-height: 44px; padding: 9.5px 13px; border-radius: 14px; font-size: 16px; line-height: 22px; }');
+  });
+});
+
+describe('v0.1.27 · TopBar declutter, pinned Notes polish & inline 角色与形象工坊', () => {
+  const globalCss = readFileSync(resolve(__dirname, '../src/app/global.css'), 'utf8');
+  const personaCss = readFileSync(resolve(__dirname, '../src/features/persona/persona.css'), 'utf8');
+
+  it('Android build.gradle ships versionCode 28 / versionName 0.1.27', () => {
+    const gradle = readFileSync(resolve(__dirname, '../android/app/build.gradle'), 'utf8');
+    expect(gradle).toMatch(/versionCode 28\b/);
+    expect(gradle).toContain('versionName "0.1.27"');
+  });
+
+  it('mobile role sheet in a mode session: roles + 置顶 Notes + compact 退出当前模式, nothing else', () => {
+    useStore.setState({ sessions: { s1: { session_id: 's1', title: '跑团', role: 'coder', mode_id: 'trpg', updated_at: Date.now() / 1000 } as never } });
+    render(<RoleModeCapsule sessionId="s1" modeId="trpg" />);
+    fireEvent.click(screen.getByRole('button', { name: '角色与模式' }));
+    const sheet = screen.getByRole('dialog');
+    expect(sheet.querySelectorAll('.k-rm-role')).toHaveLength(PERSONAS.length);
+    expect(sheet.querySelectorAll('.k-link-row')).toHaveLength(1);
+    expect(screen.getByTestId('topbar-session-notes-btn')).toBeTruthy();
+    const section = screen.getByTestId('topbar-mode-section');
+    expect(section.querySelectorAll('button')).toHaveLength(1);
+    expect(screen.getByTestId('topbar-stop-mode').textContent).toBe('退出当前模式');
+    expect(sheet.textContent).not.toMatch(/切换模式|记忆库|角色与形象工坊|简易便签|当前模式记忆/);
+  });
+
+  it('mobile Shell renders 角色与形象工坊 inside .k-col-center like other secondary screens', () => {
+    useStore.setState((s) => ({ ui: { ...s.ui, screen: 'studio', launchpad: false } }));
+    render(<Shell />);
+    const center = document.querySelector('.k-col-center')!;
+    const studio = screen.getByTestId('persona-studio');
+    expect(center.contains(studio)).toBe(true);
+    expect(studio.getAttribute('aria-modal')).toBeNull();
+    expect(document.querySelector('.k-topbar')).toBeNull();
+  });
+
+  it('global.css: role sheet mode row replaces the policy/note rules; pinned Notes uses sans typography without the subtitle', () => {
+    expect(globalCss).not.toContain('.k-rm-policy');
+    expect(globalCss).not.toContain('.k-sheet-note');
+    expect(globalCss).not.toContain('.k-rm-actions');
+    expect(globalCss).toContain('.k-rm-mode-row');
+    expect(globalCss).not.toContain('.k-snotes-sub');
+    expect(globalCss).not.toContain('.k-snotes-label');
+    const input = globalCss.slice(globalCss.indexOf('.k-snotes-input {'), globalCss.indexOf('}', globalCss.indexOf('.k-snotes-input {')));
+    expect(input).toContain('font-family: var(--font-sans)');
+    expect(input).toContain('font-size: 15px');
+    expect(input).toContain('line-height: 1.6');
+    expect(input).toContain('background: var(--card)');
+    expect(input).not.toContain('--font-mono');
+    const preview = globalCss.slice(globalCss.indexOf('.k-snotes-preview {'), globalCss.indexOf('}', globalCss.indexOf('.k-snotes-preview {')));
+    expect(preview).toContain('var(--subcard');
+    expect(preview).toContain('font-family: var(--font-sans)');
+    expect(globalCss).not.toMatch(/\.k-snotes[^{]*\{[^}]*--font-mono/);
+  });
+
+  it('persona.css: .ps-root no longer covers the viewport and .ps-top shrinks to 50px on mobile', () => {
+    const root = personaCss.slice(personaCss.indexOf('.ps-root {'), personaCss.indexOf('}', personaCss.indexOf('.ps-root {')));
+    expect(root).not.toMatch(/position:\s*fixed/);
+    expect(root).not.toContain('inset: 0');
+    expect(root).not.toContain('var(--safe-t)');
+    expect(root).toContain('flex: 1;');
+    expect(root).toContain('min-height: 0;');
+    expect(personaCss).toMatch(/@media \(max-width: 767px\) \{\s*\.ps-top \{[^}]*min-height: 50px;/);
   });
 });

@@ -655,13 +655,31 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
                 <span>便签</span>
               </button>
             </div>
-            <button type="button" className="k-foot-btn" onClick={() => (actions.setUi({ screen: 'studio', drawerOpen: false }), go())}>
+            <button
+              type="button"
+              className={'k-foot-btn' + (screen === 'studio' ? ' is-active' : '')}
+              data-testid="sidebar-studio-btn"
+              aria-current={screen === 'studio' ? 'page' : undefined}
+              onClick={() => (actions.setUi({ screen: 'studio', drawerOpen: false }), go())}
+            >
               <Avatar src={activeAvatarSrc} name={activePersona?.display_name ?? roleFallbackName(activeRole)} size={22} ai={activePersona?.avatar_ai} /> 角色与形象工坊
             </button>
-            <button type="button" className="k-foot-btn" onClick={() => (actions.setUi({ screen: 'files', drawerOpen: false }), go())}>
+            <button
+              type="button"
+              className={'k-foot-btn' + (screen === 'files' ? ' is-active' : '')}
+              data-testid="sidebar-files-btn"
+              aria-current={screen === 'files' ? 'page' : undefined}
+              onClick={() => (actions.setUi({ screen: 'files', drawerOpen: false }), go())}
+            >
               <UiIcon name="folder" size={20} /> 文件管理
             </button>
-            <button type="button" className="k-foot-btn" onClick={() => (actions.setUi({ screen: 'settings', drawerOpen: false }), go())}>
+            <button
+              type="button"
+              className={'k-foot-btn' + (screen === 'settings' ? ' is-active' : '')}
+              data-testid="sidebar-settings-btn"
+              aria-current={screen === 'settings' ? 'page' : undefined}
+              onClick={() => (actions.setUi({ screen: 'settings', drawerOpen: false }), go())}
+            >
               <UiIcon name="sliders" size={20} /> 设置
             </button>
             <div className="k-conn-line">

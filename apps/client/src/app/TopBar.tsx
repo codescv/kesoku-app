@@ -3,7 +3,6 @@ import { MODEL_CATALOG, THINKING_LEVELS, type LlmOverride, type ModeId, type Thi
 import { Avatar, Capsule, ModeIcon, Sheet, UiIcon, modeMeta } from '@kesoku/ui';
 import { kesoku } from '../lib/client';
 import { actions, useStore } from '../lib/store';
-import { PolicySegmented } from '../features/memory/PolicySegmented';
 import { useAvatarUrl } from '../features/persona/avatar';
 import { fallbackRoleId, roleAvatarRef, roleFallbackName, sortRoles } from '../features/persona/model';
 
@@ -151,18 +150,6 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
               </button>
             ))}
           </div>
-          <button type="button" className="k-link-row" onClick={() => (setOpen(false), actions.setUi({ screen: 'studio' }))}>
-            <span>
-              <UiIcon name="persona" size={18} /> 角色与形象工坊
-            </span>
-            <UiIcon name="chevron-right" size={18} />
-          </button>
-          <button type="button" className="k-link-row" onClick={() => (setOpen(false), actions.setUi({ screen: 'memory' }))}>
-            <span>
-              <UiIcon name="brain" size={18} /> 记忆库
-            </span>
-            <UiIcon name="chevron-right" size={18} />
-          </button>
           {sessionId && (
             <button
               type="button"
@@ -171,47 +158,30 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
               onClick={() => (setOpen(false), actions.setUi({ sessionNotesId: sessionId }))}
             >
               <span>
-                <UiIcon name="pin" size={18} /> 当前会话置顶 Notes
+                <UiIcon name="pin" size={18} /> 置顶 Notes
                 {sessionNotesPinned && <span className="k-pill k-pill-primary k-pill-sm">已置顶</span>}
               </span>
               <UiIcon name="chevron-right" size={18} />
             </button>
           )}
-          <button
-            type="button"
-            className="k-link-row"
-            data-testid="topbar-notes-btn"
-            onClick={() => (setOpen(false), actions.setUi({ screen: 'notes' }))}
-          >
-            <span>
-              <UiIcon name="note" size={18} /> 简易便签 (全局)
-            </span>
-            <UiIcon name="chevron-right" size={18} />
-          </button>
         </section>
-        <section className="k-rm-section">
-          <h3>
-            当前模式 ·{' '}
-            <span style={{ color: meta.color }}>
-              <ModeIcon mode={effectiveMode} size={20} /> {meta.title}
-            </span>
-          </h3>
-          <div className="k-rm-actions">
-            {effectiveMode !== 'chat' && sessionId && (
-              <button type="button" className="k-btn k-btn-ghost" onClick={() => (setOpen(false), void kesoku.stopMode(sessionId))}>
-                退出模式
+        {sessionId && effectiveMode !== 'chat' && (
+          <section className="k-rm-section k-rm-mode" data-testid="topbar-mode-section">
+            <div className="k-rm-mode-row">
+              <span className="k-rm-mode-name" style={{ color: meta.color }}>
+                <ModeIcon mode={effectiveMode} size={20} /> {meta.title}
+              </span>
+              <button
+                type="button"
+                className="k-btn k-btn-ghost k-btn-sm"
+                data-testid="topbar-stop-mode"
+                onClick={() => (setOpen(false), void kesoku.stopMode(sessionId))}
+              >
+                退出当前模式
               </button>
-            )}
-            <button type="button" className="k-btn k-btn-primary" onClick={() => (setOpen(false), actions.setUi({ launchpad: true, screen: 'chat' }))}>
-              切换模式
-            </button>
-          </div>
-          <div className="k-rm-policy">
-            <span>当前模式记忆：</span>
-            <PolicySegmented modeId={effectiveMode} size="sm" />
-          </div>
-          <p className="k-sheet-note">仅改当前模式 · 其余模式可在 设置 → 记忆策略 中调整</p>
-        </section>
+            </div>
+          </section>
+        )}
       </Sheet>
     </>
   );

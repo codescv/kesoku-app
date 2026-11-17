@@ -48,7 +48,7 @@ export function PersonaStudio({ onClose, initialTab = 'roles' }: PersonaStudioPr
   }, []);
 
   return (
-    <div className="ps-root" role="dialog" aria-modal="true" aria-label="角色与形象工坊">
+    <div className="ps-root" role="region" data-testid="persona-studio" aria-label="角色与形象工坊">
       <header className="ps-top">
         <button type="button" className="ps-back" aria-label="返回" onClick={onClose}>
           <UiIcon name="arrow-left" size={20} />
