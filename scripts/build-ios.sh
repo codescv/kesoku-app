@@ -9,6 +9,10 @@
 # Neither needs push certificates or App Store review. Output: apps/client/ios/App/output/
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/dev-env.sh
+. "$ROOT/scripts/dev-env.sh"
+
 METHOD="${1:-development}"
 case "$METHOD" in
   development|ad-hoc) ;;
@@ -29,7 +33,6 @@ if [[ ! "$TEAM" =~ ^[A-Z0-9]{10}$ ]]; then
   exit 1
 fi
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLIENT="$ROOT/apps/client"
 IOS_APP="$CLIENT/ios/App"
 BUILD_DIR="$IOS_APP/build"

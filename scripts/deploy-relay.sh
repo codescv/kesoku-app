@@ -25,6 +25,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/dev-env.sh
+. "$ROOT/scripts/dev-env.sh"
 BOOTSTRAP=0
 LOCAL_BUILD=0
 for arg in "$@"; do

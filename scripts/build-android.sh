@@ -13,6 +13,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/dev-env.sh
+. "$ROOT/scripts/dev-env.sh"
 CLIENT="$ROOT/apps/client"
 ANDROID_DIR="$CLIENT/android"
 PROPS="$ANDROID_DIR/keystore.properties"

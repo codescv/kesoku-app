@@ -20,6 +20,7 @@
     "gen:schema": "pnpm --filter @kesoku/protocol run gen:schema",
     "check:native": "node scripts/check-native-deps.mjs",
     "check:terms": "node scripts/check-terms.mjs",
+    "env:check": "./scripts/dev-env.sh sh -c 'command -v node pnpm'",
     "build:apk": "bash scripts/build-android.sh"
   },
   "devDependencies": {
