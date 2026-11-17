@@ -9,6 +9,7 @@ import type { CardContext, MediaRef } from '../../cards/types';
 import { toMediaRef, useImageUrl } from '../../cards/util';
 import { LexCard, cacheSentenceLex, explainLexCached, findToken, toWordUnits } from '../../segments/BilingualCard';
 import { Markdown, renderInline } from '../../segments/Markdown';
+import { CharacterPickerCard, hasCharacterPortraits } from '../../segments/CharacterPickerCard';
 import { StickerThumb, isStickerMedia, useVoiceStatus } from '../../segments/SegmentRenderer';
 import { parseStreaming } from '../../stream/streamParser';
 
@@ -148,7 +149,7 @@ export function openQuestion(items: ChatItem[]): { seg: QuestionSeg; id: string 
     const segs = Array.isArray(it.segments) ? it.segments : [];
     for (let j = segs.length - 1; j >= 0; j--) {
       const s = segs[j];
-      if (s && s.type === 'question' && Array.isArray(s.choices) && s.choices.length) {
+      if (s && s.type === 'question' && ((Array.isArray(s.choices) && s.choices.length) || hasCharacterPortraits(s))) {
         const id = s.question_message_id || it.message_id || it.key;
         return { seg: s, id };
       }
@@ -436,7 +437,7 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
 
   const startPress = (e: RPointerEvent) => {
     const el = e.target as HTMLElement | null;
-    if (el && typeof el.closest === 'function' && el.closest('button, .gg-box, .gg-choices')) return;
+    if (el && typeof el.closest === 'function' && el.closest('button, .gg-box, .gg-choices, .gg-cpick')) return;
     press.current.y = e.clientY;
     if (press.current.t) clearTimeout(press.current.t);
     press.current.t = setTimeout(() => setUiHidden(true), 600);
@@ -482,7 +483,12 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
       </div>
 
       <div className="gg-bottom">
-        {question && (
+        {question && hasCharacterPortraits(question.seg) && (
+          <div className="gg-cpick" data-testid="gg-cpick">
+            <CharacterPickerCard seg={question.seg} qid={question.id} ctx={ctx} onPick={onPick} variant="stage" />
+          </div>
+        )}
+        {question && !hasCharacterPortraits(question.seg) && (
           <div className="gg-choices" role="group" aria-label={question.seg.prompt || '选项'}>
             {question.seg.choices.map((c, idx) => {
               const on = multi.includes(c);

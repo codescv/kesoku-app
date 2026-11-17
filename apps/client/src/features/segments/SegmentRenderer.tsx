@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CardSegment, DetailsSegment, FileSegment, LexToken, QuestionSegment, Segment } from '@kesoku/protocol';
 import { Skeleton, UiIcon, VoicePill } from '@kesoku/ui';
 import { BilingualCard } from './BilingualCard';
+import { CharacterPickerCard, hasCharacterPortraits } from './CharacterPickerCard';
 import { Markdown, renderInline } from './Markdown';
 import { GenericCardSafe, getCard } from '../cards';
 import type { CardContext } from '../cards/types';
@@ -40,20 +41,24 @@ function QuestionPills({ seg, env }: { seg: QuestionSegment; env: SegmentEnv }) 
   const picked = env.picked;
   const qid = seg.question_message_id ?? env.ctx.messageId;
   const disabled = !!picked?.length || env.readOnly;
-  const max = seg.max ?? (seg.multi ? seg.choices.length : 1);
+  // Rich-item-only questions (no plain `choices`) fall back to the item values as pills.
+  const choices = seg.choices?.length ? seg.choices : (seg.choice_items ?? []).map((it) => it.value);
+  const max = seg.max ?? (seg.multi ? choices.length : 1);
   if (picked?.length) {
-    // Answered: the picked option is shown once as the user's own bubble right below — don't repeat it as a pill.
+    // Answered: the picked option is shown once as the user's own bubble right below — don't repeat it as a pill
+    // (nor the portrait grid of a character picker).
     return seg.prompt ? (
       <div className="k-q is-answered">
         <div className="k-q-prompt">{renderInline(seg.prompt, 'qp')}</div>
       </div>
     ) : null;
   }
+  if (hasCharacterPortraits(seg)) return <CharacterPickerCard seg={seg} qid={qid} ctx={env.ctx} onPick={env.onPick} disabled={disabled} />;
   return (
     <div className="k-q">
       {seg.prompt && <div className="k-q-prompt">{renderInline(seg.prompt, 'qp')}</div>}
       <div className="k-q-choices">
-        {seg.choices.map((c, idx) => {
+        {choices.map((c, idx) => {
           const on = picked ? picked.includes(c) : sel.includes(c);
           return (
             <button

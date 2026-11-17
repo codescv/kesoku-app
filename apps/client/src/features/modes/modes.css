@@ -76,6 +76,30 @@
 .gg-choice:disabled { opacity: 0.5; cursor: not-allowed; }
 .gg-choice-go { margin-left: auto; opacity: 0.7; }
 @keyframes gg-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+/* Character picker on the stage: frosted-glass card above the dialogue box; scrolls so 8 portraits never push the box off-screen. */
+.gg-cpick { flex-shrink: 1; min-height: 0; animation: gg-rise 0.25s ease-out both; }
+.gg-cpick .k-cpick.is-stage {
+  max-height: min(56vh, 440px); overflow-y: auto; overscroll-behavior: contain;
+  padding: 12px 12px 0; border-radius: 20px; border: 1px solid var(--gg-glass-line, rgba(255, 255, 255, 0.18));
+  background: rgba(16, 18, 26, 0.66); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); color: #fff;
+}
+.gg-bottom:has(.gg-box.is-expanded) > .gg-cpick .k-cpick.is-stage { max-height: 30vh; }
+.k-cpick.is-stage .k-cpick-head { position: sticky; top: -12px; z-index: 2; margin: -12px -12px 0; padding: 12px 12px 8px; background: rgba(16, 18, 26, 0.82); }
+.k-cpick.is-stage .k-cpick-prompt { color: #fff; }
+.k-cpick.is-stage .k-cpick-status { border-color: color-mix(in srgb, var(--m-galgame) 60%, transparent); background: color-mix(in srgb, var(--m-galgame) 30%, transparent); color: #fff; }
+.k-cpick.is-stage .k-cpick-card { border-color: rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.06); }
+.k-cpick.is-stage .k-cpick-card.is-selected { border-color: var(--m-galgame); box-shadow: 0 0 0 3px color-mix(in srgb, var(--m-galgame) 35%, transparent); }
+.k-cpick.is-stage .k-cpick-check { background: var(--m-galgame); }
+.k-cpick.is-stage .k-cpick-portrait { background: rgba(255, 255, 255, 0.08); }
+.k-cpick.is-stage .k-cpick-name { color: #fff; }
+.k-cpick.is-stage .k-cpick-sub { color: rgba(255, 255, 255, 0.72); }
+.k-cpick.is-stage .k-cpick-action { border-color: rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.9); }
+.k-cpick.is-stage .k-cpick-action.is-on { border-color: var(--m-galgame); background: color-mix(in srgb, var(--m-galgame) 35%, transparent); color: #fff; }
+.k-cpick.is-stage .k-cpick-bar { position: sticky; bottom: 0; z-index: 2; margin: 0 -12px; padding: 8px 12px 12px; background: rgba(16, 18, 26, 0.82); }
+.k-cpick.is-stage > :last-child:not(.k-cpick-bar) { margin-bottom: 12px; }
+.k-cpick.is-stage .k-cpick-confirm { background: var(--m-galgame); }
+.k-cpick.is-stage .k-cpick-clear { border-color: rgba(255, 255, 255, 0.3); color: rgba(255, 255, 255, 0.85); }
 
 .gg-box {
   display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 14px; border-radius: 20px;

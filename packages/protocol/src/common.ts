@@ -84,14 +84,28 @@ export const BilingualSegmentSchema = z
     tokens: z.array(LexTokenSchema).optional(),
   })
   .passthrough();
+/** Rich option of a question (e.g. a character candidate with a portrait `avatar` media ref). */
+export const ChoiceItemSchema = z.object({
+  value: z.string(),
+  name: z.string().optional(),
+  subtitle: z.string().optional(),
+  avatar: z.string().optional(),
+});
+export type ChoiceItem = z.infer<typeof ChoiceItemSchema>;
+
 export const QuestionSegmentSchema = z
   .object({
     type: z.literal('question'),
     prompt: z.string().default(''),
+    /** Plain option labels (always present; `choice_items[].value` mirrors them when rich items are sent). */
     choices: z.array(z.string()),
     multi: z.boolean().default(false),
     max: z.number().int().positive().optional(),
     question_message_id: z.string().optional(),
+    /** Optional layout hint (e.g. `character_grid`). */
+    layout: z.string().optional(),
+    /** Optional rich options; any item with an `avatar` switches clients to the portrait character picker. */
+    choice_items: z.array(ChoiceItemSchema).optional(),
   })
   .passthrough();
 export const DetailsSegmentSchema = z

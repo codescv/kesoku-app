@@ -29,9 +29,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('v0.1.21 – v0.1.27 · version & mobile small-screen (< 768px) UI optimizations', () => {
-  it('bumps APP_VERSION to 0.1.27', () => {
-    expect(APP_VERSION).toBe('0.1.27');
+describe('v0.1.21 – v0.1.28 · version & mobile small-screen (< 768px) UI optimizations', () => {
+  it('bumps APP_VERSION to 0.1.28', () => {
+    expect(APP_VERSION).toBe('0.1.28');
   });
 
   it('modelShortLabel formats compact model + thinking level labels across all catalog entries', () => {
@@ -362,10 +362,10 @@ describe('v0.1.27 · TopBar declutter, pinned Notes polish & inline 角色与形
   const globalCss = readFileSync(resolve(__dirname, '../src/app/global.css'), 'utf8');
   const personaCss = readFileSync(resolve(__dirname, '../src/features/persona/persona.css'), 'utf8');
 
-  it('Android build.gradle ships versionCode 28 / versionName 0.1.27', () => {
+  it('Android build.gradle ships versionCode 29 / versionName 0.1.28', () => {
     const gradle = readFileSync(resolve(__dirname, '../android/app/build.gradle'), 'utf8');
-    expect(gradle).toMatch(/versionCode 28\b/);
-    expect(gradle).toContain('versionName "0.1.27"');
+    expect(gradle).toMatch(/versionCode 29\b/);
+    expect(gradle).toContain('versionName "0.1.28"');
   });
 
   it('mobile role sheet in a mode session: roles + 置顶 Notes + compact 退出当前模式, nothing else', () => {
