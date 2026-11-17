@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { Segment } from '@kesoku/protocol';
 import { GalgameStage, ModePanel, PeekSheet, latestCg, latestTurn, previewLine } from '../../src/features/modes';
 import type { ChatItem } from '../../src/lib/types';
@@ -267,6 +267,62 @@ describe('ModePanel', () => {
     rerender(<ModePanel panel="travel" stateFiles={sf} modePrefs={{}} ctx={ctx} />);
     expect(screen.getByText('不辣')).toBeTruthy();
     expect(screen.getByText('×2')).toBeTruthy();
+  });
+
+  it('party panel shows structured equipment (object & legacy slots) and heal / guard / buff skills', () => {
+    const ctx = makeCtx();
+    const sf = {
+      'game/party.json': {
+        members: {
+          小张: {
+            hp: 20,
+            max_hp: 24,
+            role: 'player',
+            class: '调查员',
+            equip: {
+              weapon: { name: '强光手电', hit: 1, ac: 0, dmg: '1d6+2', fx: '照破黑暗与幻觉', visual: '银色金属外壳' },
+              armor: { name: '校服外套', hit: 0, ac: 2, dmg: '', fx: '', visual: '深蓝制服' },
+              accessory: { name: '护身符', hit: -1, ac: 0, dmg: '', fx: '' },
+            },
+            skills: [
+              { name: '闪光震慑', type: 'control', dmg: '1d4', status: 'stunned', guard: '', heal: '', buff: '', desc: '' },
+              { name: '急救包扎', type: 'heal', heal: '2d4+2' },
+              { name: '挺身掩护', type: 'guard', guard: true },
+              { name: '鼓舞士气', type: 'buff', buff: '全队命中+1', desc: '持续两回合' },
+            ],
+            inventory: ['绷带'],
+          },
+          斋藤飞鸟: { hp: 18, max_hp: 18, role: 'active', equip: { weapon: '竹刀', armor: '', accessory: { name: '', ac: 3 } } },
+        },
+      },
+    };
+    render(<ModePanel panel="party" stateFiles={sf} modePrefs={{}} ctx={ctx} />);
+    const equipLists = screen.getAllByRole('list', { name: '装备' });
+    expect(equipLists).toHaveLength(2);
+    const zhang = within(equipLists[0]!);
+    expect(zhang.getByText('强光手电')).toBeTruthy();
+    expect(zhang.getByText('命中+1 · 伤害1d6+2 · 照破黑暗与幻觉')).toBeTruthy();
+    expect(zhang.getByText('校服外套')).toBeTruthy();
+    expect(zhang.getByText('AC+2')).toBeTruthy();
+    expect(zhang.getByText('护身符')).toBeTruthy();
+    expect(zhang.getByText('命中-1')).toBeTruthy();
+    expect(zhang.getAllByText(/^(武器|护甲|饰品)$/).map((n) => n.textContent)).toEqual(['武器', '护甲', '饰品']);
+    // Pure visual text is never shown as a bonus.
+    expect(screen.queryByText(/银色金属外壳|深蓝制服/)).toBeNull();
+    // Legacy string slot still renders; empty / nameless slots are skipped.
+    const asuka = within(equipLists[1]!);
+    expect(asuka.getByText('竹刀')).toBeTruthy();
+    expect(asuka.getAllByRole('listitem')).toHaveLength(1);
+    // Skills: heal / guard / buff are included alongside dmg / status / desc.
+    const skills = within(screen.getByRole('list', { name: '配招' }));
+    expect(skills.getByText(/1d4 · 状态:stunned/)).toBeTruthy();
+    expect(skills.getByText(/治疗:2d4\+2/)).toBeTruthy();
+    expect(skills.getByText(/壁垒掩护/)).toBeTruthy();
+    expect(skills.getByText(/战意鼓舞 · 持续两回合/)).toBeTruthy();
+    expect(skills.getByText('治疗')).toBeTruthy(); // type badge
+    expect(skills.getByText('控制')).toBeTruthy();
+    // Inventory no longer mixes in equipped items.
+    expect(screen.getByText('绷带')).toBeTruthy();
   });
 
   it('dex shows pinned matchup + version and reopens history cards; lesson shows outline', () => {

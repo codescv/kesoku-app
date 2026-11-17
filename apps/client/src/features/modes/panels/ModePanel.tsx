@@ -161,6 +161,78 @@ function itemsList(v: unknown): string[] {
     .filter(Boolean);
 }
 
+const EQUIP_SLOTS: ReadonlyArray<readonly [string, string]> = [
+  ['weapon', '武器'],
+  ['armor', '护甲'],
+  ['accessory', '饰品'],
+];
+const SKILL_TYPE_LABEL: Record<string, string> = { attack: '攻击', control: '控制', heal: '治疗', guard: '守护', buff: '增益', transform: '变身', narrative: '叙事' };
+
+/** True for a set flag/text field (`true`, non-empty string other than "false"/"0", non-zero number). */
+function flag(v: unknown): boolean {
+  if (typeof v === 'string') return v.trim() !== '' && !/^(false|0|no)$/i.test(v.trim());
+  if (typeof v === 'number') return v !== 0;
+  return v === true;
+}
+
+function signed(n: number): string {
+  return n >= 0 ? `+${n}` : String(n);
+}
+
+export interface EquipRow {
+  slot: string;
+  name: string;
+  bonuses: string[];
+}
+
+/**
+ * Equipped items per slot. Supports the structured engine shape
+ * (`{ weapon: { name, hit, ac, dmg, fx, visual } }`) and legacy plain-string slots.
+ */
+export function equipRows(equip: unknown): EquipRow[] {
+  const e = obj(equip);
+  const rows: EquipRow[] = [];
+  for (const [slot, label] of EQUIP_SLOTS) {
+    const it = e[slot];
+    if (isObj(it)) {
+      const name = pick(it, 'name', 'label', 'item');
+      if (!name) continue;
+      const hit = num(it.hit);
+      const ac = num(it.ac);
+      const dmg = pick(it, 'dmg');
+      const fx = pick(it, 'fx');
+      const bonuses = [hit ? `命中${signed(hit)}` : '', ac ? `AC${signed(ac)}` : '', dmg ? `伤害${dmg}` : '', fx].filter(Boolean);
+      rows.push({ slot: label, name, bonuses });
+    } else {
+      const name = str(it);
+      if (name) rows.push({ slot: label, name, bonuses: [] });
+    }
+  }
+  return rows;
+}
+
+export interface SkillRow {
+  name: string;
+  type: string;
+  tail: string;
+}
+
+/** Structured skills (`{ name, type, dmg, status, guard, heal, buff, desc }`) or plain strings. */
+export function skillRows(skills: unknown): SkillRow[] {
+  return arr(skills)
+    .map((s) => {
+      if (!isObj(s)) return { name: str(s), type: '', tail: '' };
+      const heal = pick(s, 'heal');
+      const status = pick(s, 'status');
+      const tail = [pick(s, 'dmg'), status ? `状态:${status}` : '', flag(s.guard) ? '壁垒掩护' : '', heal ? `治疗:${heal}` : '', flag(s.buff) ? '战意鼓舞' : '', pick(s, 'desc')]
+        .filter(Boolean)
+        .join(' · ');
+      const type = pick(s, 'type').toLowerCase();
+      return { name: pick(s, 'name'), type: SKILL_TYPE_LABEL[type] ?? '', tail };
+    })
+    .filter((s) => s.name);
+}
+
 function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolean }) {
   const hp = num(rec.hp);
   const max = num(rec.max_hp ?? rec.hp_max) ?? hp;
@@ -172,14 +244,9 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
   const attrRows = Object.entries(ATTR_LABEL)
     .filter(([k]) => k !== 'level' && (typeof attrs[k] === 'number' || (typeof attrs[k] === 'string' && attrs[k] !== '')))
     .map(([k, l]) => [l, String(attrs[k])] as const);
-  const skills = arr(rec.skills)
-    .map((s) => (isObj(s) ? { name: pick(s, 'name'), tail: [pick(s, 'dmg'), pick(s, 'status'), pick(s, 'desc')].filter(Boolean).join(' · ') } : { name: str(s), tail: '' }))
-    .filter((s) => s.name);
-  const equipObj = obj(rec.equip);
-  const equipItems = ['weapon', 'armor', 'accessory']
-    .map((slot) => pick(equipObj, slot))
-    .filter(Boolean);
-  const inv = [...equipItems, ...itemsList(rec.inventory ?? rec.items ?? rec.bag)];
+  const skills = skillRows(rec.skills);
+  const equip = equipRows(rec.equip);
+  const inv = itemsList(rec.inventory ?? rec.items ?? rec.bag);
   return (
     <li className={'km-fighter' + (enemy ? ' is-enemy' : '')}>
       <div className="km-fighter-head">
@@ -210,11 +277,23 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
         </div>
       )}
       {skills.length > 0 && (
-        <ul className="km-skills">
+        <ul className="km-skills" aria-label="配招">
           {skills.map((s, i) => (
             <li key={i}>
               <b>{s.name}</b>
+              {s.type && <span className="kc-badge kc-badge-tag km-skill-type">{s.type}</span>}
               {s.tail && <span> · {s.tail}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {equip.length > 0 && (
+        <ul className="km-equip" aria-label="装备">
+          {equip.map((e) => (
+            <li key={e.slot} className="km-equip-row">
+              <span className="km-equip-slot">{e.slot}</span>
+              <b className="km-equip-name">{e.name}</b>
+              {e.bonuses.length > 0 && <span className="km-equip-bonus">{e.bonuses.join(' · ')}</span>}
             </li>
           ))}
         </ul>
