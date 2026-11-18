@@ -231,4 +231,39 @@ describe('QuestionPills option groups — edge cases', () => {
     expect(screen.getByRole('group', { name: '明日香' })).toBeTruthy();
     expect(screen.getAllByRole('group')).toHaveLength(1);
   });
+
+  it('CharacterPickerCard multi-select enforces per-group exclusion and still honours max across groups', () => {
+    const onPick = vi.fn();
+    const segs: Segment[] = [
+      {
+        type: 'question',
+        prompt: '',
+        multi: true,
+        max: 2,
+        choices: ['a1', 'a2', 'b1', 'c1'],
+        choice_items: [
+          { value: 'a1', avatar: 'ref:a1', group: 'A' },
+          { value: 'a2', avatar: 'ref:a2', group: 'A' },
+          { value: 'b1', avatar: 'ref:b1', group: 'B' },
+          { value: 'c1', avatar: 'ref:c1' },
+        ],
+      },
+    ];
+    const { container } = render(<SegmentList segments={segs} env={env({ onPick })} />);
+    const hit = (v: string) => container.querySelector(`[data-testid="cpick-card"][data-value="${v}"] .k-cpick-hit`) as HTMLElement;
+    const pressed = (v: string) => hit(v).getAttribute('aria-pressed');
+    fireEvent.click(hit('a1'));
+    fireEvent.click(hit('a2'));
+    expect(pressed('a1')).toBe('false');
+    expect(pressed('a2')).toBe('true');
+    fireEvent.click(hit('b1'));
+    // At max=2: an ungrouped card is blocked, an in-group swap is still allowed.
+    fireEvent.click(hit('c1'));
+    expect(pressed('c1')).toBe('false');
+    fireEvent.click(hit('a1'));
+    expect(pressed('a1')).toBe('true');
+    expect(pressed('a2')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: '确认选择 (2/2)' }));
+    expect(onPick).toHaveBeenCalledWith('m1', ['b1', 'a1']);
+  });
 });
