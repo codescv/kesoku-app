@@ -331,8 +331,100 @@ describe('<SegmentList>', () => {
     render(<SegmentList segments={segs} env={env({ onPick })} />);
     fireEvent.click(screen.getByText('A'));
     fireEvent.click(screen.getByText('C'));
+    expect(screen.getByRole('button', { name: '确认选择 (2/2)' })).toBeTruthy();
     fireEvent.click(screen.getByText(/确认选择/));
     expect(onPick).toHaveBeenCalledWith('m1', ['A', 'C']);
+  });
+  it('supports mutually exclusive option groups, subtitles, and ungrouped sections in multi-select QuestionPills', () => {
+    const onPick = vi.fn();
+    const segs: Segment[] = [
+      {
+        type: 'question',
+        prompt: '升级换招',
+        question_message_id: 'q-lvl',
+        multi: true,
+        choices: ['asuka-a', 'asuka-b', 'rei-a', 'rei-b', 'bonus'],
+        choice_items: [
+          { value: 'asuka-a', name: '烈焰风暴', subtitle: '威力 2d8 · 替换火球术', group: '明日香' },
+          { value: 'asuka-b', name: '保留现有 4 招', group: '明日香' },
+          { value: 'rei-a', name: '极寒新星', subtitle: '威力 2d6 · 替换冰箭术', group: '绫波丽' },
+          { value: 'rei-b', name: '零度护盾', subtitle: '护盾 +6 · 替换护罩', group: '绫波丽' },
+          { value: 'bonus', name: '额外：补充药水', subtitle: '消耗 20 金币' },
+        ],
+      },
+    ];
+    const { container } = render(<SegmentList segments={segs} env={env({ onPick })} />);
+
+    // Renders group headers in order of first appearance, plus an ungrouped section without a header.
+    const labels = Array.from(container.querySelectorAll('.k-q-group-label')).map((el) => el.textContent);
+    expect(labels).toEqual(['明日香', '绫波丽']);
+    expect(container.querySelectorAll('.k-q-group')).toHaveLength(3);
+
+    // Renders primary name and muted subtitle text.
+    expect(screen.getByText('烈焰风暴').className).toContain('k-choice-title');
+    expect(screen.getByText('威力 2d8 · 替换火球术').className).toContain('k-choice-sub');
+
+    const confirmBtn = screen.getByRole('button', { name: '确认选择 (0)' }) as HTMLButtonElement;
+    expect(confirmBtn.disabled).toBe(true);
+
+    // Auto-switches within the same group.
+    fireEvent.click(screen.getByText('烈焰风暴'));
+    expect(screen.getByText('烈焰风暴').closest('button')?.classList.contains('is-on')).toBe(true);
+    expect(screen.getByRole('button', { name: '确认选择 (1)' })).toBeTruthy();
+
+    fireEvent.click(screen.getByText('保留现有 4 招'));
+    expect(screen.getByText('烈焰风暴').closest('button')?.classList.contains('is-on')).toBe(false);
+    expect(screen.getByText('保留现有 4 招').closest('button')?.classList.contains('is-on')).toBe(true);
+    expect(screen.getByRole('button', { name: '确认选择 (1)' })).toBeTruthy();
+
+    // Allows simultaneous selection across different groups and ungrouped choices.
+    fireEvent.click(screen.getByText('极寒新星'));
+    fireEvent.click(screen.getByText('额外：补充药水'));
+    expect(screen.getByRole('button', { name: '确认选择 (3)' })).toBeTruthy();
+
+    // Clicking an already-selected choice deselects it.
+    fireEvent.click(screen.getByText('额外：补充药水'));
+    expect(screen.getByText('额外：补充药水').closest('button')?.classList.contains('is-on')).toBe(false);
+    expect(screen.getByRole('button', { name: '确认选择 (2)' })).toBeTruthy();
+
+    // Switching within the second group keeps the first group intact.
+    fireEvent.click(screen.getByText('零度护盾'));
+    expect(screen.getByText('极寒新星').closest('button')?.classList.contains('is-on')).toBe(false);
+    expect(screen.getByText('零度护盾').closest('button')?.classList.contains('is-on')).toBe(true);
+    expect(screen.getByText('保留现有 4 招').closest('button')?.classList.contains('is-on')).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: '确认选择 (2)' }));
+    expect(onPick).toHaveBeenCalledWith('q-lvl', ['asuka-b', 'rei-b']);
+  });
+  it('still respects explicit max for ungrouped choices while allowing in-group switching', () => {
+    const onPick = vi.fn();
+    const segs: Segment[] = [
+      {
+        type: 'question',
+        prompt: '',
+        multi: true,
+        max: 2,
+        choices: ['g1-a', 'g1-b', 'u1', 'u2'],
+        choice_items: [
+          { value: 'g1-a', name: 'G1-A', group: '组1' },
+          { value: 'g1-b', name: 'G1-B', group: '组1' },
+          { value: 'u1', name: 'U1' },
+          { value: 'u2', name: 'U2' },
+        ],
+      },
+    ];
+    render(<SegmentList segments={segs} env={env({ onPick })} />);
+    fireEvent.click(screen.getByText('G1-A'));
+    fireEvent.click(screen.getByText('U1'));
+    // At max (2), another ungrouped choice is ignored.
+    fireEvent.click(screen.getByText('U2'));
+    expect(screen.getByText('U2').closest('button')?.classList.contains('is-on')).toBe(false);
+    // Switching within the already-selected group still works.
+    fireEvent.click(screen.getByText('G1-B'));
+    expect(screen.getByText('G1-A').closest('button')?.classList.contains('is-on')).toBe(false);
+    expect(screen.getByText('G1-B').closest('button')?.classList.contains('is-on')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '确认选择 (2)' }));
+    expect(onPick).toHaveBeenCalledWith('m1', ['u1', 'g1-b']);
   });
   it('renders details collapsed and history refs as tap-to-load', () => {
     const resolveMedia = vi.fn(async () => 'https://media.test/img');

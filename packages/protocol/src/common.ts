@@ -84,12 +84,13 @@ export const BilingualSegmentSchema = z
     tokens: z.array(LexTokenSchema).optional(),
   })
   .passthrough();
-/** Rich option of a question (e.g. a character candidate with a portrait `avatar` media ref). */
+/** Rich option of a question (e.g. a character candidate with a portrait `avatar` media ref, or grouped/annotated choices). */
 export const ChoiceItemSchema = z.object({
   value: z.string(),
   name: z.string().optional(),
   subtitle: z.string().optional(),
   avatar: z.string().optional(),
+  group: z.string().optional(),
 });
 export type ChoiceItem = z.infer<typeof ChoiceItemSchema>;
 

@@ -168,9 +168,17 @@ h1, h2, h3, strong, b { font-weight: 800; }
 
 /* question / details / media */
 .k-q-prompt { font-weight: 800; margin-bottom: 6px; }
+.k-q-groups { display: flex; flex-direction: column; gap: 10px; }
+.k-q-group { display: flex; flex-direction: column; gap: 6px; }
+.k-q-group-label { font-size: 13px; font-weight: 800; color: var(--ink-2); letter-spacing: 0.01em; }
 .k-q-choices { display: flex; flex-wrap: wrap; gap: 8px; }
 .k-choice { min-height: var(--hit); padding: 8px 16px; border-radius: 999px; border: 1.5px solid var(--primary-border); background: var(--primary-soft); color: var(--primary-strong); font-weight: 800; font-size: 16px; }
+.k-choice.has-sub { border-radius: 16px; padding: 8px 14px; }
+.k-choice-body { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.k-choice-title { font-weight: 800; line-height: 1.3; }
+.k-choice-sub { font-size: 12.5px; font-weight: 600; line-height: 1.35; color: var(--ink-2); }
 .k-choice.is-on { background: var(--primary-strong); color: #fff; border-color: var(--primary-strong); }
+.k-choice.is-on .k-choice-sub { color: rgba(255, 255, 255, 0.85); }
 .k-choice:disabled:not(.is-on) { opacity: 0.45; }
 .k-choice-confirm { margin-top: 8px; min-height: 40px; padding: 0 16px; border-radius: 12px; border: 0; background: var(--primary-strong); color: #fff; font-weight: 800; }
 /* Character picker card (question.choice_items with avatars): portrait grid, 2 → 3 → 4 columns by container width. */

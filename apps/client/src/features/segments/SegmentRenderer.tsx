@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { CardSegment, DetailsSegment, FileSegment, LexToken, QuestionSegment, Segment } from '@kesoku/protocol';
+import type { CardSegment, ChoiceItem, DetailsSegment, FileSegment, LexToken, QuestionSegment, Segment } from '@kesoku/protocol';
 import { Skeleton, UiIcon, VoicePill } from '@kesoku/ui';
 import { BilingualCard } from './BilingualCard';
 import { CharacterPickerCard, hasCharacterPortraits } from './CharacterPickerCard';
@@ -40,6 +40,7 @@ function QuestionPills({ seg, env }: { seg: QuestionSegment; env: SegmentEnv }) 
   const [sel, setSel] = useState<string[]>([]);
   const picked = env.picked;
   const qid = seg.question_message_id ?? env.ctx.messageId;
+  useEffect(() => setSel([]), [qid]);
   const disabled = !!picked?.length || env.readOnly;
   // Rich-item-only questions (no plain `choices`) fall back to the item values as pills.
   const choices = seg.choices?.length ? seg.choices : (seg.choice_items ?? []).map((it) => it.value);
@@ -54,31 +55,82 @@ function QuestionPills({ seg, env }: { seg: QuestionSegment; env: SegmentEnv }) 
     ) : null;
   }
   if (hasCharacterPortraits(seg)) return <CharacterPickerCard seg={seg} qid={qid} ctx={env.ctx} onPick={env.onPick} disabled={disabled} />;
+
+  const itemByValue = new Map<string, ChoiceItem>();
+  for (const it of seg.choice_items ?? []) {
+    if (it?.value && !itemByValue.has(it.value)) itemByValue.set(it.value, it);
+  }
+  const groupOf = (v: string): string => (itemByValue.get(v)?.group ?? '').trim();
+
+  const groupMap = new Map<string, string[]>();
+  for (const c of choices) {
+    const g = groupOf(c);
+    const bucket = groupMap.get(g);
+    if (bucket) bucket.push(c);
+    else groupMap.set(g, [c]);
+  }
+  const hasGroups = Array.from(groupMap.keys()).some((g) => g.length > 0);
+  const sections = Array.from(groupMap.entries()).map(([group, items]) => ({ group, items }));
+
+  function toggleChoice(c: string) {
+    if (!seg.multi) return env.onPick(qid, [c]);
+    setSel((s) => {
+      if (s.includes(c)) return s.filter((x) => x !== c);
+      const g = groupOf(c);
+      if (g) {
+        const withoutGroup = s.filter((x) => groupOf(x) !== g);
+        return withoutGroup.length < max ? [...withoutGroup, c] : s;
+      }
+      return s.length < max ? [...s, c] : s;
+    });
+  }
+
+  let choiceIdx = 0;
+  function renderChoiceButton(c: string) {
+    const idx = choiceIdx++;
+    const on = picked ? picked.includes(c) : sel.includes(c);
+    const item = itemByValue.get(c);
+    const label = item?.name || c;
+    const subtitle = item?.subtitle?.trim() || '';
+    return (
+      <button
+        key={c}
+        type="button"
+        className={'k-choice' + (on ? ' is-on' : '') + (subtitle ? ' has-sub' : '')}
+        disabled={disabled}
+        aria-pressed={seg.multi ? on : undefined}
+        onClick={() => toggleChoice(c)}
+      >
+        {subtitle ? (
+          <span className="k-choice-body">
+            <span className="k-choice-title">{renderInline(label, `qc-${idx}`)}</span>
+            <span className="k-choice-sub">{renderInline(subtitle, `qcs-${idx}`)}</span>
+          </span>
+        ) : (
+          renderInline(label, `qc-${idx}`)
+        )}
+      </button>
+    );
+  }
+
   return (
-    <div className="k-q">
+    <div className={'k-q' + (hasGroups ? ' is-grouped' : '')}>
       {seg.prompt && <div className="k-q-prompt">{renderInline(seg.prompt, 'qp')}</div>}
-      <div className="k-q-choices">
-        {choices.map((c, idx) => {
-          const on = picked ? picked.includes(c) : sel.includes(c);
-          return (
-            <button
-              key={c}
-              type="button"
-              className={'k-choice' + (on ? ' is-on' : '')}
-              disabled={disabled}
-              onClick={() => {
-                if (!seg.multi) return env.onPick(qid, [c]);
-                setSel((s) => (s.includes(c) ? s.filter((x) => x !== c) : s.length < max ? [...s, c] : s));
-              }}
-            >
-              {renderInline(c, `qc-${idx}`)}
-            </button>
-          );
-        })}
-      </div>
+      {hasGroups ? (
+        <div className="k-q-groups">
+          {sections.map((section, sIdx) => (
+            <div key={section.group || `__ungrouped-${sIdx}`} className="k-q-group" role="group" aria-label={section.group || undefined}>
+              {section.group && <div className="k-q-group-label">{renderInline(section.group, `qg-${sIdx}`)}</div>}
+              <div className="k-q-choices">{section.items.map(renderChoiceButton)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="k-q-choices">{choices.map(renderChoiceButton)}</div>
+      )}
       {seg.multi && !disabled && (
         <button type="button" className="k-choice-confirm" disabled={!sel.length} onClick={() => env.onPick(qid, sel)}>
-          确认选择 ({sel.length}/{max})
+          {hasGroups ? `确认选择 (${sel.length})` : `确认选择 (${sel.length}/${max})`}
         </button>
       )}
     </div>
