@@ -37,7 +37,7 @@ export function isStickerMedia(media: { mime?: unknown; name?: unknown; ref?: un
 }
 
 function QuestionPills({ seg, env }: { seg: QuestionSegment; env: SegmentEnv }) {
-  const [sel, setSel] = useState<string[]>([]);
+  const [sel, setSel] = useState<number[]>([]);
   const picked = env.picked;
   const qid = seg.question_message_id ?? env.ctx.messageId;
   useEffect(() => setSel([]), [qid]);
@@ -56,58 +56,65 @@ function QuestionPills({ seg, env }: { seg: QuestionSegment; env: SegmentEnv }) 
   }
   if (hasCharacterPortraits(seg)) return <CharacterPickerCard seg={seg} qid={qid} ctx={env.ctx} onPick={env.onPick} disabled={disabled} />;
 
+  const choiceItems = seg.choice_items ?? [];
   const itemByValue = new Map<string, ChoiceItem>();
-  for (const it of seg.choice_items ?? []) {
+  for (const it of choiceItems) {
     if (it?.value && !itemByValue.has(it.value)) itemByValue.set(it.value, it);
   }
-  const groupOf = (v: string): string => (itemByValue.get(v)?.group ?? '').trim();
+  const entries = choices.map((value, idx) => {
+    const posItem = choiceItems[idx];
+    const item = posItem?.value === value ? posItem : itemByValue.get(value);
+    return {
+      idx,
+      value,
+      label: item?.name || value,
+      subtitle: item?.subtitle?.trim() || '',
+      group: (item?.group ?? '').trim(),
+    };
+  });
 
-  const groupMap = new Map<string, string[]>();
-  for (const c of choices) {
-    const g = groupOf(c);
-    const bucket = groupMap.get(g);
-    if (bucket) bucket.push(c);
-    else groupMap.set(g, [c]);
+  const groupMap = new Map<string, typeof entries>();
+  for (const entry of entries) {
+    const bucket = groupMap.get(entry.group);
+    if (bucket) bucket.push(entry);
+    else groupMap.set(entry.group, [entry]);
   }
   const hasGroups = Array.from(groupMap.keys()).some((g) => g.length > 0);
   const sections = Array.from(groupMap.entries()).map(([group, items]) => ({ group, items }));
+  const showMax = !hasGroups || seg.max !== undefined;
 
-  function toggleChoice(c: string) {
-    if (!seg.multi) return env.onPick(qid, [c]);
+  function toggleChoice(idx: number) {
+    const entry = entries[idx];
+    if (!entry) return;
+    if (!seg.multi) return env.onPick(qid, [entry.value]);
     setSel((s) => {
-      if (s.includes(c)) return s.filter((x) => x !== c);
-      const g = groupOf(c);
-      if (g) {
-        const withoutGroup = s.filter((x) => groupOf(x) !== g);
-        return withoutGroup.length < max ? [...withoutGroup, c] : s;
+      if (s.includes(idx)) return s.filter((x) => x !== idx);
+      if (entry.group) {
+        const withoutGroup = s.filter((x) => entries[x]?.group !== entry.group);
+        return withoutGroup.length < max ? [...withoutGroup, idx] : s;
       }
-      return s.length < max ? [...s, c] : s;
+      return s.length < max ? [...s, idx] : s;
     });
   }
 
-  let choiceIdx = 0;
-  function renderChoiceButton(c: string) {
-    const idx = choiceIdx++;
-    const on = picked ? picked.includes(c) : sel.includes(c);
-    const item = itemByValue.get(c);
-    const label = item?.name || c;
-    const subtitle = item?.subtitle?.trim() || '';
+  function renderChoiceButton(entry: (typeof entries)[number]) {
+    const on = sel.includes(entry.idx);
     return (
       <button
-        key={c}
+        key={entry.idx}
         type="button"
-        className={'k-choice' + (on ? ' is-on' : '') + (subtitle ? ' has-sub' : '')}
+        className={'k-choice' + (on ? ' is-on' : '') + (entry.subtitle ? ' has-sub' : '')}
         disabled={disabled}
         aria-pressed={seg.multi ? on : undefined}
-        onClick={() => toggleChoice(c)}
+        onClick={() => toggleChoice(entry.idx)}
       >
-        {subtitle ? (
+        {entry.subtitle ? (
           <span className="k-choice-body">
-            <span className="k-choice-title">{renderInline(label, `qc-${idx}`)}</span>
-            <span className="k-choice-sub">{renderInline(subtitle, `qcs-${idx}`)}</span>
+            <span className="k-choice-title">{renderInline(entry.label, `qc-${entry.idx}`)}</span>
+            <span className="k-choice-sub">{renderInline(entry.subtitle, `qcs-${entry.idx}`)}</span>
           </span>
         ) : (
-          renderInline(label, `qc-${idx}`)
+          renderInline(entry.label, `qc-${entry.idx}`)
         )}
       </button>
     );
@@ -119,18 +126,28 @@ function QuestionPills({ seg, env }: { seg: QuestionSegment; env: SegmentEnv }) 
       {hasGroups ? (
         <div className="k-q-groups">
           {sections.map((section, sIdx) => (
-            <div key={section.group || `__ungrouped-${sIdx}`} className="k-q-group" role="group" aria-label={section.group || undefined}>
+            <div
+              key={section.group || `__ungrouped-${sIdx}`}
+              className="k-q-group"
+              role={section.group ? 'group' : undefined}
+              aria-label={section.group || undefined}
+            >
               {section.group && <div className="k-q-group-label">{renderInline(section.group, `qg-${sIdx}`)}</div>}
               <div className="k-q-choices">{section.items.map(renderChoiceButton)}</div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="k-q-choices">{choices.map(renderChoiceButton)}</div>
+        <div className="k-q-choices">{entries.map(renderChoiceButton)}</div>
       )}
       {seg.multi && !disabled && (
-        <button type="button" className="k-choice-confirm" disabled={!sel.length} onClick={() => env.onPick(qid, sel)}>
-          {hasGroups ? `确认选择 (${sel.length})` : `确认选择 (${sel.length}/${max})`}
+        <button
+          type="button"
+          className="k-choice-confirm"
+          disabled={!sel.length}
+          onClick={() => env.onPick(qid, [...sel].sort((a, b) => a - b).map((idx) => entries[idx].value))}
+        >
+          {showMax ? `确认选择 (${sel.length}/${max})` : `确认选择 (${sel.length})`}
         </button>
       )}
     </div>

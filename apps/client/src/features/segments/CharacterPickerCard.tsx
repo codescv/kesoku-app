@@ -164,11 +164,18 @@ export function CharacterPickerCard({ seg, qid, ctx, onPick, disabled, variant =
   const capLabel = max > 1 ? '/' + max : '';
   const full = multi && max > 1 && sel.length >= max;
 
-  /** Multi-select toggle honouring `max` (a cap of 1 swaps the selection instead of blocking). */
+  const groupOf = (value: string) => (items.find((it) => it.value === value)?.group ?? '').trim();
+
+  /** Multi-select toggle honouring `max` and per-group mutual exclusion (a cap of 1 swaps the selection instead of blocking). */
   function toggle(value: string) {
     setSel((s) => {
       if (s.includes(value)) return s.filter((x) => x !== value);
       if (max === 1) return [value];
+      const g = groupOf(value);
+      if (g) {
+        const withoutGroup = s.filter((x) => groupOf(x) !== g);
+        return max === 0 || withoutGroup.length < max ? [...withoutGroup, value] : s;
+      }
       if (max > 0 && s.length >= max) return s;
       return [...s, value];
     });

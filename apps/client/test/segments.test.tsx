@@ -423,8 +423,53 @@ describe('<SegmentList>', () => {
     fireEvent.click(screen.getByText('G1-B'));
     expect(screen.getByText('G1-A').closest('button')?.classList.contains('is-on')).toBe(false);
     expect(screen.getByText('G1-B').closest('button')?.classList.contains('is-on')).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: '确认选择 (2)' }));
-    expect(onPick).toHaveBeenCalledWith('m1', ['u1', 'g1-b']);
+    // Explicit max is displayed on confirm button, and picks are emitted in choice-index order.
+    fireEvent.click(screen.getByRole('button', { name: '确认选择 (2/2)' }));
+    expect(onPick).toHaveBeenCalledWith('m1', ['g1-b', 'u1']);
+  });
+  it('resolves duplicate choice values across groups by position without cross-group highlight or key collision', () => {
+    const onPick = vi.fn();
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const segs: Segment[] = [
+        {
+          type: 'question',
+          prompt: '升级换招',
+          multi: true,
+          choices: ['烈焰风暴', '保留', '极寒新星', '保留'],
+          choice_items: [
+            { value: '烈焰风暴', name: '烈焰风暴', group: '明日香' },
+            { value: '保留', name: '保留', group: '明日香' },
+            { value: '极寒新星', name: '极寒新星', group: '绫波丽' },
+            { value: '保留', name: '保留', group: '绫波丽' },
+          ],
+        },
+      ];
+      render(<SegmentList segments={segs} env={env({ onPick })} />);
+      const asukaGroup = screen.getByRole('group', { name: '明日香' });
+      const reiGroup = screen.getByRole('group', { name: '绫波丽' });
+      const asukaKeep = asukaGroup.querySelectorAll('button')[1];
+      const reiKeep = reiGroup.querySelectorAll('button')[1];
+      expect(asukaKeep.textContent).toBe('保留');
+      expect(reiKeep.textContent).toBe('保留');
+
+      // Clicking 明日香's 保留 highlights only 明日香's button, not 绫波丽's.
+      fireEvent.click(asukaKeep);
+      expect(asukaKeep.classList.contains('is-on')).toBe(true);
+      expect(reiKeep.classList.contains('is-on')).toBe(false);
+
+      // Selecting 绫波丽's 极寒新星 then switching to 绫波丽's 保留 keeps 明日香's 保留 selected.
+      fireEvent.click(reiGroup.querySelectorAll('button')[0]);
+      fireEvent.click(reiKeep);
+      expect(asukaKeep.classList.contains('is-on')).toBe(true);
+      expect(reiKeep.classList.contains('is-on')).toBe(true);
+
+      fireEvent.click(screen.getByRole('button', { name: '确认选择 (2)' }));
+      expect(onPick).toHaveBeenCalledWith('m1', ['保留', '保留']);
+      expect(errSpy).not.toHaveBeenCalled();
+    } finally {
+      errSpy.mockRestore();
+    }
   });
   it('renders details collapsed and history refs as tap-to-load', () => {
     const resolveMedia = vi.fn(async () => 'https://media.test/img');
