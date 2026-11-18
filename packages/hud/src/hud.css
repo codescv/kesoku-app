@@ -98,6 +98,14 @@ button.k-hud-chip:hover { filter: brightness(0.97); }
   display: inline-flex; align-items: center; gap: 2px; margin-left: 2px; padding: 1px 5px; border-radius: 999px;
   background: var(--danger-soft); border: 1px solid var(--danger-border); color: var(--danger); font: 800 11.5px/1.2 var(--font-sans);
 }
+.k-hud-party-combo {
+  display: inline-flex; align-items: center; margin-left: 2px; padding: 1px 6px; border-radius: 999px; white-space: nowrap;
+  background: var(--pill); border: 1px solid var(--line); color: var(--ink-2); font: 800 11.5px/1.2 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+.k-hud-party-combo.is-ready {
+  background: color-mix(in srgb, var(--mode) 16%, transparent); border-color: var(--mode); color: var(--mode);
+}
 /* Defense in depth: the desktop right sidebar already shows the party panel. */
 .k-shell.is-desktop .k-hud[data-mode="trpg"] .k-hud-squad,
 .k-shell.is-desktop .k-hud[data-mode="trpg"] .k-hud-collapse,

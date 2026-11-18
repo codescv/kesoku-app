@@ -258,6 +258,14 @@
 .km-equip-slot { flex-shrink: 0; font-size: 11.5px; font-weight: 800; padding: 1px 6px; border-radius: 6px; background: var(--card); border: 1px solid var(--line); color: var(--ink-2); }
 .km-equip-name { min-width: 0; overflow-wrap: anywhere; }
 .km-equip-bonus { color: var(--ink-2); font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.km-equip-tags { display: flex; gap: 4px; flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.km-equip-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
+.km-bond { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.km-bond b { min-width: 0; overflow-wrap: anywhere; }
+.km-bond-goal { min-width: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+.km-combo-gauge { font-variant-numeric: tabular-nums; letter-spacing: 0.5px; color: var(--mode); }
+.km-combo-row { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; min-width: 0; font-size: 13px; }
+.km-combo-row b { min-width: 0; overflow-wrap: anywhere; }
 
 .km-dex-pinned { display: flex; flex-direction: column; gap: 8px; }
 .km-dex-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 18px; }

@@ -12,6 +12,8 @@ export {
   formatRemaining,
   mistakesCount,
   squad,
+  comboGauge,
+  partyCombos,
   TRANSLATOR_LANGS,
   DEFAULT_NATIVE_LANG,
   DEFAULT_FOREIGN_LANGS,
@@ -22,6 +24,6 @@ export {
   normalizeForeignLangs,
   resolveTranslatorPair,
 } from './ModeHud';
-export type { ModeHudProps, HudPanel, GameVersion, TranslatorLang, TranslatorPair } from './ModeHud';
+export type { ModeHudProps, HudPanel, GameVersion, TranslatorLang, TranslatorPair, ComboInfo } from './ModeHud';
 export { PolicyBadge } from './PolicyBadge';
 export type { PolicyBadgeProps } from './PolicyBadge';

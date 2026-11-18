@@ -1,6 +1,6 @@
 import { Component, useState, type ReactNode } from 'react';
 import { HpBar, ProgressBar } from '@kesoku/ui';
-import { VERSION_LABELS, resolveGameVersion, type HudPanel } from '@kesoku/hud';
+import { VERSION_LABELS, comboGauge, partyCombos, resolveGameVersion, type HudPanel } from '@kesoku/hud';
 import type { CardContext } from '../../cards/types';
 import { MatchupRows, TypeBadge, matchupOf } from '../../cards/pokemon';
 import { PokemonDex } from '../../cards/kinds/PokemonDex';
@@ -179,10 +179,37 @@ function signed(n: number): string {
   return n >= 0 ? `+${n}` : String(n);
 }
 
+export interface EquipTag {
+  kind: 'miss' | 'crit' | 'combo';
+  text: string;
+}
+
 export interface EquipRow {
   slot: string;
   name: string;
   bonuses: string[];
+  /** Exclusive (专属) gear granted by a personal quest. */
+  exclusive: boolean;
+  /** Trigger affixes: on-miss / on-crit text and combo-gauge gain. */
+  tags: EquipTag[];
+}
+
+const COMBO_GAIN_TEXT: Record<string, string> = { hit: '命中+1格', crit: '暴击+1格' };
+
+/** Trigger text from the current `{ text, status, hp }` object or a legacy plain string. */
+function triggerText(v: unknown): string {
+  return isObj(v) ? pick(v, 'text') : str(v);
+}
+
+function equipTags(it: Dict): EquipTag[] {
+  const tags: EquipTag[] = [];
+  const miss = triggerText(it.on_miss);
+  const crit = triggerText(it.on_crit);
+  const gain = COMBO_GAIN_TEXT[str(it.combo_gain).toLowerCase()];
+  if (miss) tags.push({ kind: 'miss', text: miss });
+  if (crit) tags.push({ kind: 'crit', text: crit });
+  if (gain) tags.push({ kind: 'combo', text: gain });
+  return tags;
 }
 
 /**
@@ -202,10 +229,10 @@ export function equipRows(equip: unknown): EquipRow[] {
       const dmg = pick(it, 'dmg');
       const fx = pick(it, 'fx');
       const bonuses = [hit ? `命中${signed(hit)}` : '', ac ? `AC${signed(ac)}` : '', dmg ? `伤害${dmg}` : '', fx].filter(Boolean);
-      rows.push({ slot: label, name, bonuses });
+      rows.push({ slot: label, name, bonuses, exclusive: it.exclusive === true, tags: equipTags(it) });
     } else {
       const name = str(it);
-      if (name) rows.push({ slot: label, name, bonuses: [] });
+      if (name) rows.push({ slot: label, name, bonuses: [], exclusive: false, tags: [] });
     }
   }
   return rows;
@@ -233,6 +260,65 @@ export function skillRows(skills: unknown): SkillRow[] {
     .filter((s) => s.name);
 }
 
+export interface GrowthInfo {
+  traits: string[];
+  stats: string[];
+}
+
+/** Permanent personal-quest growth (`{ max_hp, hit, ac, dmg, traits }`); null when absent / empty. */
+export function growthInfo(growth: unknown): GrowthInfo | null {
+  if (!isObj(growth)) return null;
+  const stats = (
+    [
+      ['max_hp', 'HP'],
+      ['hit', '命中'],
+      ['ac', 'AC'],
+      ['dmg', '伤害'],
+    ] as const
+  )
+    .map(([k, l]) => {
+      const n = num(growth[k]);
+      return n ? `${l}${signed(n)}` : '';
+    })
+    .filter(Boolean);
+  const traits = strList(growth.traits);
+  return traits.length || stats.length ? { traits, stats } : null;
+}
+
+const PENDING_LABEL: Record<string, string> = { gear: '专属装备', combo: '新合体技' };
+
+export interface BondInfo {
+  title: string;
+  goal: string;
+  done: boolean;
+  /** `stage/stages`, `完结`, or '' when the counters are missing. */
+  progress: string;
+  /** Completed acts for the progress bar; null when `stage` / `stages` are not numbers. */
+  bar: { value: number; max: number } | null;
+  pending: string[];
+}
+
+/** Multi-act personal quest (`{ title, stages, stage, goal, done, pending }`); null when absent. */
+export function bondInfo(bond: unknown): BondInfo | null {
+  if (!isObj(bond)) return null;
+  const title = pick(bond, 'title');
+  const done = bond.done === true;
+  const goal = done ? '' : pick(bond, 'goal');
+  const pending = strList(bond.pending).map((p) => PENDING_LABEL[p] ?? p);
+  if (!title && !goal && !pending.length) return null;
+  const stages = typeof bond.stages === 'number' && Number.isFinite(bond.stages) && bond.stages > 0 ? Math.floor(bond.stages) : null;
+  const stage = typeof bond.stage === 'number' && Number.isFinite(bond.stage) ? Math.floor(bond.stage) : null;
+  const bar = stages !== null && stage !== null ? { value: done ? stages : Math.max(0, Math.min(stages, stage - 1)), max: stages } : null;
+  const progress = done ? '完结' : bar ? `${Math.max(1, Math.min(stages!, stage!))}/${stages}` : '';
+  return { title, goal, done, progress, bar, pending };
+}
+
+const EQUIP_TAG_STYLE: Record<EquipTag['kind'], readonly [string, string]> = {
+  miss: ['kc-badge-warn', '打空'],
+  crit: ['kc-badge-primary', '暴击'],
+  combo: ['kc-badge-mode', '连携'],
+};
+
 function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolean }) {
   const hp = num(rec.hp);
   const max = num(rec.max_hp ?? rec.hp_max) ?? hp;
@@ -247,6 +333,8 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
   const skills = skillRows(rec.skills);
   const equip = equipRows(rec.equip);
   const inv = itemsList(rec.inventory ?? rec.items ?? rec.bag);
+  const growth = growthInfo(rec.growth);
+  const bond = bondInfo(rec.bond);
   return (
     <li className={'km-fighter' + (enemy ? ' is-enemy' : '')}>
       <div className="km-fighter-head">
@@ -276,6 +364,32 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
           ))}
         </div>
       )}
+      {growth && (
+        <div className="kc-chips km-growth" aria-label="觉醒">
+          <span className="kc-chip-k">觉醒</span>
+          {growth.traits.map((t) => (
+            <span key={t} className="kc-badge kc-badge-mode">
+              {t}
+            </span>
+          ))}
+          {growth.stats.map((s) => (
+            <span key={s} className="km-attr">
+              {s}
+            </span>
+          ))}
+        </div>
+      )}
+      {bond && (
+        <div className="km-bond" aria-label="个人任务">
+          <div className="kc-chips">
+            {bond.title && <b>《{bond.title}》</b>}
+            {bond.progress && <span className={'kc-badge ' + (bond.done ? 'kc-badge-primary' : 'kc-badge-tag')}>{bond.progress}</span>}
+            {bond.goal && <span className="km-bond-goal">{bond.goal}</span>}
+            {bond.pending.length > 0 && <span className="kc-badge kc-badge-warn">待领 {bond.pending.join(' / ')}</span>}
+          </div>
+          {bond.bar && <ProgressBar value={bond.bar.value} max={bond.bar.max} />}
+        </div>
+      )}
       {skills.length > 0 && (
         <ul className="km-skills" aria-label="配招">
           {skills.map((s, i) => (
@@ -292,8 +406,24 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
           {equip.map((e) => (
             <li key={e.slot} className="km-equip-row">
               <span className="km-equip-slot">{e.slot}</span>
-              <b className="km-equip-name">{e.name}</b>
+              <b className="km-equip-name">
+                {e.exclusive && '★'}
+                {e.name}
+              </b>
+              {e.exclusive && <span className="kc-badge kc-badge-primary">专属</span>}
               {e.bonuses.length > 0 && <span className="km-equip-bonus">{e.bonuses.join(' · ')}</span>}
+              {e.tags.length > 0 && (
+                <span className="km-equip-tags">
+                  {e.tags.map((t) => {
+                    const [tone, prefix] = EQUIP_TAG_STYLE[t.kind];
+                    return (
+                      <span key={t.kind} className={`kc-badge ${tone} km-equip-tag`} title={`${prefix}：${t.text}`}>
+                        {prefix} {t.text}
+                      </span>
+                    );
+                  })}
+                </span>
+              )}
             </li>
           ))}
         </ul>
@@ -320,6 +450,8 @@ function PartyPanel({ stateFiles }: { stateFiles: Record<string, unknown> }) {
   members.sort((a, b) => Number(b[1].role === 'player') - Number(a[1].role === 'player'));
   const shared = itemsList(party.inventory ?? party.bag ?? party.loot);
   const gold = num(obj(ledger.global).gold ?? party.gold);
+  const combos = partyCombos(party);
+  const gauge = comboGauge(party);
   return (
     <Panel title="⚔️ 小队" className="km-party">
       {!members.length && !enemies.length && <Empty>暂无队伍数据</Empty>}
@@ -329,6 +461,30 @@ function PartyPanel({ stateFiles }: { stateFiles: Record<string, unknown> }) {
             <Fighter key={k} name={k} rec={m} />
           ))}
         </ul>
+      )}
+      {combos.length > 0 && (
+        <>
+          <div className="km-sub">
+            合体技{' '}
+            <span className="km-combo-gauge" aria-label={`连携槽 ${gauge.value}/${gauge.max}`}>
+              {'▰'.repeat(gauge.value) + '▱'.repeat(gauge.max - gauge.value)} {gauge.value}/{gauge.max}
+            </span>
+          </div>
+          <ul className="km-list" aria-label="合体技">
+            {combos.map((c, i) => (
+              <li key={`${c.name}#${i}`} className="km-combo-row" title={c.fx}>
+                <b>{c.name}</b>
+                <span>· {c.members.join('×')}</span>
+                <span>· {c.cost}格</span>
+                {(SKILL_TYPE_LABEL[c.type] ?? c.type) && <span className="kc-badge kc-badge-tag">{SKILL_TYPE_LABEL[c.type] ?? c.type}</span>}
+                {c.tail && <span>· {c.tail}</span>}
+                {c.state === 'ready' && <span className="kc-badge kc-badge-primary">可发动</span>}
+                {c.state === 'need' && <span className="kc-badge kc-badge-tag">需{c.cost}格</span>}
+                {c.state === 'missing' && <span className="kc-badge kc-badge-warn">缺员:{c.missing.join('、')}</span>}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
       {enemies.length > 0 && (
         <>

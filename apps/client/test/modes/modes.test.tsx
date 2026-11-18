@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import type { Segment } from '@kesoku/protocol';
 import { GalgameStage, ModePanel, PeekSheet, latestCg, latestTurn, previewLine } from '../../src/features/modes';
 import type { ChatItem } from '../../src/lib/types';
 import { useStore } from '../../src/lib/store';
+import { bondInfo, equipRows, growthInfo } from '../../src/features/modes/panels/ModePanel';
 import { makeCtx } from '../cards/ctx';
 
 function assistant(key: string, segments: Segment[], extra: Partial<ChatItem> = {}): ChatItem {
@@ -347,6 +348,146 @@ describe('ModePanel', () => {
     expect(screen.getByText('📘 初级 第21课')).toBeTruthy();
     expect(screen.getByText('2/3')).toBeTruthy();
     expect(screen.getByText('居酒屋')).toBeTruthy();
+  });
+
+  it('equipRows: exclusive flag and trigger tags (object & legacy string triggers)', () => {
+    const rows = equipRows({
+      weapon: { name: '武器甲', hit: 1, dmg: '1d10+2', fx: '特效', on_miss: { text: '打空词条', status: 'weakened', hp: 0 }, on_crit: { text: '暴击词条', status: 'staggered' }, combo_gain: 'crit', exclusive: true },
+      armor: { name: '护甲乙', ac: 2, on_miss: '旧版打空', on_crit: '旧版暴击', combo_gain: 'hit' },
+      accessory: { name: '饰品丙', on_miss: { status: 'exposed' }, combo_gain: 'nope', exclusive: 'yes' },
+    });
+    expect(rows[0]).toEqual({
+      slot: '武器',
+      name: '武器甲',
+      bonuses: ['命中+1', '伤害1d10+2', '特效'],
+      exclusive: true,
+      tags: [
+        { kind: 'miss', text: '打空词条' },
+        { kind: 'crit', text: '暴击词条' },
+        { kind: 'combo', text: '暴击+1格' },
+      ],
+    });
+    expect(rows[1]).toMatchObject({ exclusive: false, tags: [{ kind: 'miss', text: '旧版打空' }, { kind: 'crit', text: '旧版暴击' }, { kind: 'combo', text: '命中+1格' }] });
+    expect(rows[2]).toMatchObject({ exclusive: false, tags: [] });
+    // Legacy plain-string slot.
+    expect(equipRows({ weapon: '木刀' })).toEqual([{ slot: '武器', name: '木刀', bonuses: [], exclusive: false, tags: [] }]);
+  });
+
+  it('growthInfo / bondInfo: defensive defaults', () => {
+    expect(growthInfo(undefined)).toBeNull();
+    expect(growthInfo('x')).toBeNull();
+    expect(growthInfo({ max_hp: 0, traits: [] })).toBeNull();
+    expect(growthInfo({ max_hp: 4, hit: 1, ac: 0, dmg: 2, traits: ['特性甲'] })).toEqual({ traits: ['特性甲'], stats: ['HP+4', '命中+1', '伤害+2'] });
+    expect(bondInfo(undefined)).toBeNull();
+    expect(bondInfo([])).toBeNull();
+    expect(bondInfo({ title: '系列甲', stages: 3, stage: 2, goal: '目标甲', done: false, pending: ['gear', 'combo'] })).toEqual({
+      title: '系列甲',
+      goal: '目标甲',
+      done: false,
+      progress: '2/3',
+      bar: { value: 1, max: 3 },
+      pending: ['专属装备', '新合体技'],
+    });
+    expect(bondInfo({ title: '系列乙', stages: 3, stage: 3, goal: '', done: true })).toMatchObject({ progress: '完结', bar: { value: 3, max: 3 } });
+    // Non-numeric counters → no progress bar and no fraction.
+    expect(bondInfo({ title: '系列丙', stages: '3', stage: 'two', goal: '目标丙' })).toMatchObject({ progress: '', bar: null });
+  });
+
+  it('party panel: 专属 badge, trigger tags, 觉醒 row, personal quest with progress + 待领, and the 合体技 section', () => {
+    const ctx = makeCtx();
+    const sf = {
+      'game/party.json': {
+        combo: 2,
+        combo_max: 3,
+        members: {
+          甲: {
+            hp: 20,
+            max_hp: 24,
+            role: 'player',
+            equip: { weapon: { name: '武器甲', hit: 1, dmg: '1d10+2', on_miss: { text: '打空词条' }, on_crit: '暴击词条', combo_gain: 'crit', exclusive: true } },
+            growth: { max_hp: 4, hit: 1, ac: 0, dmg: 2, traits: ['特性甲'] },
+            bond: { title: '系列甲', stages: 3, stage: 2, goal: '目标甲', done: false, pending: ['gear'] },
+            skills: [{ name: '招式甲', type: 'attack', dmg: '1d8' }],
+          },
+          乙: { hp: 18, max_hp: 18, role: 'active', bond: { title: '系列乙', stages: 'x', stage: 1, goal: '目标乙' }, growth: 'bad' },
+          丙: { hp: 0, max_hp: 16, role: 'active' },
+        },
+        combos: [
+          { name: '合技一', members: ['甲', '乙'], type: 'attack', cost: 2, dmg: '2d8+4', status: 'staggered', fx: '双刃交错' },
+          { name: '合技二', members: ['甲', '乙'], type: 'heal', cost: 3, heal: '2d6+2' },
+          { name: '合技三', members: ['乙', '丙'], type: 'control', cost: 1 },
+        ],
+        enemies: { 敌一: { hp: 30, max_hp: 30 } },
+      },
+    };
+    const { container } = render(<ModePanel panel="party" stateFiles={sf} modePrefs={{}} ctx={ctx} />);
+    const equip = within(screen.getAllByRole('list', { name: '装备' })[0]!);
+    expect(equip.getByText('★武器甲')).toBeTruthy();
+    expect(equip.getByText('专属').className).toBe('kc-badge kc-badge-primary');
+    const miss = equip.getByText('打空 打空词条');
+    expect(miss.className).toBe('kc-badge kc-badge-warn km-equip-tag');
+    expect(miss.getAttribute('title')).toBe('打空：打空词条');
+    expect(equip.getByText('暴击 暴击词条').className).toContain('kc-badge-primary');
+    expect(equip.getByText('连携 暴击+1格').className).toContain('kc-badge-mode');
+    // 觉醒 row: only the member with a growth object.
+    const growth = screen.getAllByLabelText('觉醒');
+    expect(growth).toHaveLength(1);
+    expect(within(growth[0]!).getByText('特性甲').className).toBe('kc-badge kc-badge-mode');
+    expect(growth[0]!.textContent).toBe('觉醒特性甲HP+4命中+1伤害+2');
+    // Personal quests: progress bar only when counters are numbers.
+    const bonds = screen.getAllByLabelText('个人任务');
+    expect(bonds).toHaveLength(2);
+    expect(within(bonds[0]!).getByText('《系列甲》')).toBeTruthy();
+    expect(within(bonds[0]!).getByText('2/3')).toBeTruthy();
+    expect(within(bonds[0]!).getByText('目标甲')).toBeTruthy();
+    expect(within(bonds[0]!).getByText('待领 专属装备').className).toBe('kc-badge kc-badge-warn');
+    const bar = within(bonds[0]!).getByRole('progressbar');
+    expect(bar.getAttribute('aria-valuenow')).toBe('1');
+    expect(bar.getAttribute('aria-valuemax')).toBe('3');
+    expect(within(bonds[1]!).queryByRole('progressbar')).toBeNull();
+    expect(within(bonds[1]!).getByText('目标乙')).toBeTruthy();
+    // 合体技 section between members and enemies.
+    const combos = screen.getByRole('list', { name: '合体技' });
+    const subs = [...container.querySelectorAll('.km-sub')].map((n) => n.textContent);
+    expect(subs).toEqual(['合体技 ▰▰▱ 2/3', '敌方']);
+    const rows = within(combos).getAllByRole('listitem');
+    expect(rows).toHaveLength(3);
+    expect(rows[0]!.className).toBe('km-combo-row');
+    expect(rows[0]!.getAttribute('title')).toBe('双刃交错');
+    expect(rows[0]!.textContent).toBe('合技一· 甲×乙· 2格攻击· 2d8+4 · 失衡可发动');
+    expect(within(rows[0]!).getByText('可发动').className).toBe('kc-badge kc-badge-primary');
+    expect(within(rows[1]!).getByText('需3格').className).toBe('kc-badge kc-badge-tag');
+    expect(within(rows[1]!).getByText('· 治疗 2d6+2')).toBeTruthy();
+    expect(within(rows[2]!).getByText('缺员:丙').className).toBe('kc-badge kc-badge-warn');
+  });
+
+  it('party panel: with none of the new fields the output is unchanged', () => {
+    const ctx = makeCtx();
+    const base = {
+      members: {
+        甲: { hp: 20, max_hp: 24, role: 'player', level: 2, equip: { weapon: { name: '武器甲', hit: 1, dmg: '1d6' }, armor: '护甲乙' }, skills: [{ name: '招式甲', dmg: '1d8' }], inventory: ['药水'] },
+      },
+      enemies: { 敌一: { hp: 30, max_hp: 30 } },
+    };
+    const { container } = render(<ModePanel panel="party" stateFiles={{ 'game/party.json': base }} modePrefs={{}} ctx={ctx} />);
+    expect(container.querySelector('.km-combo-row, .km-bond, .km-growth, .km-equip-tags')).toBeNull();
+    expect(screen.queryByText(/专属|★|合体技|觉醒|待领/)).toBeNull();
+    expect([...container.querySelectorAll('.km-sub')].map((n) => n.textContent)).toEqual(['敌方']);
+    const html = container.innerHTML;
+    cleanup();
+    // Malformed new fields render exactly like missing ones.
+    const malformed = {
+      ...base,
+      combo: 'x',
+      combos: 'nope',
+      members: { 甲: { ...base.members.甲, growth: [1], bond: 'x' } },
+    };
+    const again = render(<ModePanel panel="party" stateFiles={{ 'game/party.json': malformed }} modePrefs={{}} ctx={ctx} />);
+    expect(again.container.innerHTML).toBe(html);
+    cleanup();
+    // An empty combos list renders no section either.
+    const empty = render(<ModePanel panel="party" stateFiles={{ 'game/party.json': { ...base, combo: 2, combos: [] } }} modePrefs={{}} ctx={ctx} />);
+    expect(empty.container.innerHTML).toBe(html);
   });
 
   it('malformed state never crashes; memory → null', () => {

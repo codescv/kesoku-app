@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { MemoryPolicy, ModeId } from '@kesoku/protocol';
-import { HUD_PANELS, ModeHud, PolicyBadge, formatRemaining, type ModeHudProps } from '../src';
+import { HUD_PANELS, ModeHud, PolicyBadge, comboGauge, formatRemaining, partyCombos, type ModeHudProps } from '../src';
 
 afterEach(() => {
   cleanup();
@@ -261,6 +261,83 @@ describe('ModeHud', () => {
       expect(screen.getByRole('button', { name: /记忆：确认/ })).toBeTruthy();
       cleanup();
     }
+  });
+
+  const COMBO_PARTY = {
+    combo: 2,
+    combo_max: 3,
+    members: {
+      甲: { hp: 20, max_hp: 20, role: 'player' },
+      乙: { hp: 15, max_hp: 18, role: 'active' },
+      丙: { hp: 0, max_hp: 16, role: 'active' },
+    },
+    combos: [
+      { name: '合技一', members: ['甲', '乙'], type: 'attack', cost: 2, dmg: '2d8+4', aoe: false, status: 'staggered', heal: '', fx: '双刃交错' },
+      { name: '合技二', members: ['甲', '乙'], type: 'heal', cost: 3, heal: '2d6+2' },
+      { name: '合技三', members: ['乙', '丙', '丁'], type: 'control', cost: 1, dmg: '1d6', aoe: true, status: 'exposed' },
+    ],
+  };
+
+  it('partyCombos: ready / need / missing (absent, off-field role, hp ≤ 0) and effect tails', () => {
+    expect(comboGauge(COMBO_PARTY)).toEqual({ value: 2, max: 3 });
+    const [a, b, c] = partyCombos(COMBO_PARTY);
+    expect(a).toMatchObject({ name: '合技一', members: ['甲', '乙'], cost: 2, type: 'attack', tail: '2d8+4 · 失衡', fx: '双刃交错', state: 'ready', missing: [] });
+    expect(b).toMatchObject({ name: '合技二', cost: 3, type: 'heal', tail: '治疗 2d6+2', state: 'need', missing: [] });
+    expect(c).toMatchObject({ name: '合技三', tail: '1d6 · 群体 · 破绽', state: 'missing', missing: ['丙', '丁'] });
+    // Roles outside player / active / support count as missing; support is on the field.
+    const roles = { ...COMBO_PARTY, members: { 甲: { role: 'narrator' }, 乙: { role: 'support' } } };
+    expect(partyCombos(roles)[0]).toMatchObject({ state: 'missing', missing: ['甲'] });
+    const sup = { ...COMBO_PARTY, members: { 甲: { role: 'player' }, 乙: { role: 'support', hp: 'x' } } };
+    expect(partyCombos(sup)[0]!.state).toBe('ready');
+  });
+
+  it('comboGauge / partyCombos tolerate malformed input', () => {
+    expect(comboGauge(undefined)).toEqual({ value: 0, max: 3 });
+    expect(comboGauge({ combo: 9, combo_max: 3 })).toEqual({ value: 3, max: 3 });
+    expect(comboGauge({ combo: -2, combo_max: 'x' })).toEqual({ value: 0, max: 3 });
+    expect(comboGauge({ combo: '1', combo_max: 0 })).toEqual({ value: 1, max: 3 });
+    expect(partyCombos(undefined)).toEqual([]);
+    expect(partyCombos({ combos: 'nope' })).toEqual([]);
+    expect(partyCombos({ combos: { name: 'x' } })).toEqual([]);
+    const list = partyCombos({
+      combo: 3,
+      members: { 甲: { role: 'player' }, 乙: { role: 'active' } },
+      combos: [null, 5, { name: '无成员' }, { name: '坏成员', members: 'x' }, { name: '混入数字', members: ['甲', 7] }, { members: ['甲', '乙'] }, { name: '默认消耗', members: ['甲', '乙'], cost: 'big' }],
+    });
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ name: '默认消耗', cost: 2, type: '', tail: '', state: 'ready', missing: [] });
+    expect(list[0]!.fx).toBeUndefined();
+  });
+
+  it('trpg: combo pill sits inside the 小队 button (still one row); is-ready when a combo can fire', () => {
+    const files = { 'game/games.json': TRPG_FILES['game/games.json'], 'game/party.json': COMBO_PARTY };
+    const { container } = setup('trpg', files);
+    expect(container.querySelectorAll('.k-hud-row')).toHaveLength(1);
+    const pill = screen.getByTestId('trpg-party-combo');
+    expect(screen.getByTestId('trpg-party-btn').contains(pill)).toBe(true);
+    expect(pill.textContent).toBe('2/3');
+    expect(pill.classList.contains('is-ready')).toBe(true);
+    expect(pill.getAttribute('aria-label')).toBe('连携槽 2/3，1 个合体技可发动');
+    expect(screen.queryAllByRole('meter')).toHaveLength(0);
+    cleanup();
+    // Gauge > 0 but nothing can fire → plain pill.
+    setup('trpg', { 'game/party.json': { ...COMBO_PARTY, combo: 1 } });
+    const plain = screen.getByTestId('trpg-party-combo');
+    expect(plain.classList.contains('is-ready')).toBe(false);
+    expect(plain.getAttribute('aria-label')).toBe('连携槽 1/3');
+    cleanup();
+    // Empty gauge with enemies on the field still shows 0/max (existing fixture has no combo fields).
+    setup('trpg', TRPG_FILES);
+    expect(screen.getByTestId('trpg-party-combo').textContent).toBe('0/3');
+    cleanup();
+    // Empty gauge, no enemies → no pill.
+    setup('trpg', { 'game/party.json': { members: COMBO_PARTY.members } });
+    expect(screen.queryByTestId('trpg-party-combo')).toBeNull();
+    cleanup();
+    // Inherits !inspectorVisible: the desktop sidebar hides the whole button, pill included.
+    const desk = setup('trpg', files, { inspectorVisible: true });
+    expect(screen.queryByTestId('trpg-party-combo')).toBeNull();
+    expect(desk.container.querySelectorAll('.k-hud-row')).toHaveLength(1);
   });
 
   it('formats remaining time compactly', () => {

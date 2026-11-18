@@ -588,10 +588,85 @@ export function squad(party: Obj | undefined): { members: Fighter[]; enemies: Fi
   return { members, enemies };
 }
 
+// Named combo techniques (合体技). Same availability rule as the engine's `combo_missing`.
+const COMBO_FIELD_ROLES = new Set(['player', 'active', 'support']);
+const COMBO_DEFAULT_COST = 2;
+const COMBO_DEFAULT_MAX = 3;
+const COMBO_STATUS_LABEL: Record<string, string> = { exposed: '破绽', staggered: '失衡', weakened: '受制' };
+
+export interface ComboInfo {
+  name: string;
+  members: string[];
+  cost: number;
+  type: string;
+  /** Effect summary, e.g. `2d8+4 · 失衡` / `治疗 2d6+2`. */
+  tail: string;
+  fx?: string;
+  state: 'ready' | 'need' | 'missing';
+  /** Participants that are absent, off the field (role) or down (hp ≤ 0). */
+  missing: string[];
+}
+
+/** Party combo gauge: `combo` / `combo_max` (defaults 0 / 3), clamped to `0..max`. */
+export function comboGauge(party: Obj | undefined): { value: number; max: number } {
+  const rawMax = num(party?.combo_max);
+  const max = rawMax !== undefined && rawMax > 0 ? Math.floor(rawMax) : COMBO_DEFAULT_MAX;
+  const value = Math.max(0, Math.min(max, Math.floor(num(party?.combo) ?? 0)));
+  return { value, max };
+}
+
+function comboTail(c: Obj): string {
+  const status = str(c.status);
+  const heal = str(c.heal);
+  return [str(c.dmg), c.aoe === true ? '群体' : '', status ? (COMBO_STATUS_LABEL[status.toLowerCase()] ?? status) : '', heal ? `治疗 ${heal}` : '']
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** Named combos from `game/party.json` with their availability against the current gauge and roster. */
+export function partyCombos(party: Obj | undefined): ComboInfo[] {
+  const list = party?.combos;
+  if (!Array.isArray(list)) return [];
+  const roster = new Map(entries(party?.members));
+  const { value } = comboGauge(party);
+  const out: ComboInfo[] = [];
+  for (const raw of list) {
+    const c = obj(raw);
+    if (!c) continue;
+    const name = str(c.name);
+    const ms = c.members;
+    if (!name || !Array.isArray(ms) || !ms.length || ms.some((m) => typeof m !== 'string' || !m.trim())) continue;
+    const members = (ms as string[]).map((m) => m.trim());
+    const cost = typeof c.cost === 'number' && Number.isFinite(c.cost) ? c.cost : COMBO_DEFAULT_COST;
+    const missing = members.filter((m) => {
+      const rec = roster.get(m);
+      if (!rec) return true;
+      const role = str(rec.role);
+      if (!role || !COMBO_FIELD_ROLES.has(role)) return true;
+      const hp = num(rec.hp);
+      return hp !== undefined && hp <= 0;
+    });
+    out.push({
+      name,
+      members,
+      cost,
+      type: (str(c.type) ?? '').toLowerCase(),
+      tail: comboTail(c),
+      fx: str(c.fx),
+      state: missing.length ? 'missing' : value >= cost ? 'ready' : 'need',
+      missing,
+    });
+  }
+  return out;
+}
+
 function TrpgHud({ stateFiles, badge, onOpenPanel, instance, inspectorVisible }: HudCtx) {
   const world = label(slot(instance, 'world'));
   const scenario = label(slot(instance, 'scenario')) ?? label(slot(instance, 'chapter'));
-  const { members, enemies } = squad(file(stateFiles, 'game/party.json'));
+  const party = file(stateFiles, 'game/party.json');
+  const { members, enemies } = squad(party);
+  const gauge = comboGauge(party);
+  const readyCount = partyCombos(party).filter((c) => c.state === 'ready').length;
   // Always one compact row: no live HP strip. Full HP / stats / equipment live in the party panel —
   // the desktop right sidebar shows it permanently; elsewhere a small 小队 button opens it on demand.
   return (
@@ -610,6 +685,17 @@ function TrpgHud({ stateFiles, badge, onOpenPanel, instance, inspectorVisible }:
             <span className="k-hud-party-enemy" aria-label={`${enemies.length} 个敌人`} data-testid="trpg-party-enemies">
               <UiIcon name="target" size={12} />
               <span className="k-hud-num">{enemies.length}</span>
+            </span>
+          )}
+          {(gauge.value > 0 || enemies.length > 0) && (
+            <span
+              className={'k-hud-party-combo' + (readyCount > 0 ? ' is-ready' : '')}
+              aria-label={`连携槽 ${gauge.value}/${gauge.max}` + (readyCount > 0 ? `，${readyCount} 个合体技可发动` : '')}
+              data-testid="trpg-party-combo"
+            >
+              <span className="k-hud-num">
+                {gauge.value}/{gauge.max}
+              </span>
             </span>
           )}
         </Chip>
