@@ -41,10 +41,14 @@ export function MarkdownEditable({
   const [editing, setEditing] = useState(Boolean(defaultEditing));
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const focusNext = useRef(false);
+  const prevResetKey = useRef(resetKey);
   const show = editing || !!invalid;
 
   useEffect(() => {
-    setEditing(Boolean(defaultEditing));
+    if (prevResetKey.current !== resetKey) {
+      prevResetKey.current = resetKey;
+      setEditing(Boolean(defaultEditing));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetKey]);
 

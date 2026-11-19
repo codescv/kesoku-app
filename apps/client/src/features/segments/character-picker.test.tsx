@@ -363,14 +363,15 @@ describe('character picker styles & version', () => {
     expect(modesCss).toContain('max-height: min(56vh, 440px); overflow-y: auto;');
   });
 
-  it('bumps to 0.1.28 (versionCode / CFBundleVersion 29)', () => {
-    expect(APP_VERSION).toBe('0.1.28');
+  it('keeps APP_VERSION, Android build.gradle, and iOS project.pbxproj aligned with package.json', () => {
+    const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { version: string };
+    expect(APP_VERSION).toBe(pkg.version);
     const gradle = readFileSync(resolve(root, 'android/app/build.gradle'), 'utf8');
-    expect(gradle).toMatch(/versionCode 29\b/);
-    expect(gradle).toContain('versionName "0.1.28"');
+    const codeMatch = gradle.match(/versionCode (\d+)\b/);
+    expect(Number(codeMatch?.[1] ?? 0)).toBeGreaterThanOrEqual(30);
+    expect(gradle).toContain(`versionName "${pkg.version}"`);
     const pbx = readFileSync(resolve(root, 'ios/App/App.xcodeproj/project.pbxproj'), 'utf8');
-    expect(pbx).toContain('MARKETING_VERSION = 0.1.28;');
-    expect(pbx).toContain('CURRENT_PROJECT_VERSION = 29;');
-    expect(pbx).not.toContain('CURRENT_PROJECT_VERSION = 28;');
+    expect(pbx).toContain(`MARKETING_VERSION = ${pkg.version};`);
+    expect(pbx).toContain(`CURRENT_PROJECT_VERSION = ${codeMatch![1]};`);
   });
 });
