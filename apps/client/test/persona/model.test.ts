@@ -59,13 +59,12 @@ describe('persona model', () => {
 
   it('sorts builtin roles first', () => {
     const r = (role_id: string, builtin = false) => ({ role_id, display_name: role_id, tagline: '', builtin, avatar_rev: 0 });
-    expect(sortRoles([r('zed'), r('default', true), r('asuka', true), r('coder', true)]).map((x) => x.role_id)).toEqual(['asuka', 'coder', 'default', 'zed']);
+    expect(sortRoles([r('zed'), r('default', true), r('asuka', true)]).map((x) => x.role_id)).toEqual(['asuka', 'default', 'zed']);
   });
 
   it('falls back to the first role in display order, else the generic default role', () => {
     expect(fallbackRoleId([])).toBe('default');
     expect(fallbackRoleId([{ role_id: 'zed', display_name: 'Zed', tagline: '', builtin: false, avatar_rev: 0 }])).toBe('zed');
-    expect(roleFallbackName('coder')).toBe('Coder');
     expect(roleFallbackName('mio')).toBe('mio');
     expect(roleFallbackName(undefined)).toBe('AI 助手');
   });

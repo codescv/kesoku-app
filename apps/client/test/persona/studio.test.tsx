@@ -20,7 +20,6 @@ import { actions, initialState, useStore } from '../../src/lib/store';
 const ROLES: PersonaSummary[] = [
   { role_id: 'default', display_name: 'Default', tagline: '', builtin: true, avatar_rev: 0, avatar_ref: null },
   { role_id: 'asuka', display_name: '斋藤飞鸟 Asuka', tagline: '毒舌傲娇的专属伴游', builtin: true, avatar_rev: 2, voice_preset: 'cherry' },
-  { role_id: 'coder', display_name: 'Coder', tagline: '', builtin: true, avatar_rev: 0, avatar_ref: null },
   { role_id: 'nao', display_name: '私教 Nao', tagline: '日语私教', builtin: false, avatar_rev: 0, avatar_ref: null },
 ];
 
@@ -33,7 +32,7 @@ function defaultRpc(type: string, payload: Record<string, unknown>) {
   switch (type) {
     case 'persona.get': {
       const r = ROLES.find((x) => x.role_id === payload.role_id)!;
-      return Promise.resolve({ ...r, intro_md: `intro of ${r.role_id}`, preferences_md: 'prefs', readonly_notes: r.role_id === 'coder' ? '~/work (只读)' : undefined });
+      return Promise.resolve({ ...r, intro_md: `intro of ${r.role_id}`, preferences_md: 'prefs' });
     }
     case 'persona.upsert':
       return Promise.resolve({ ok: true, role: { builtin: false, avatar_rev: 0, ...ROLES.find((x) => x.role_id === payload.role_id), ...payload } });
@@ -106,7 +105,7 @@ describe('PersonaStudio · Screen 15 roles', () => {
     const name = await openRoles();
     expect(name.value).toBe('斋藤飞鸟 Asuka');
     expect(calls('persona.get')[0]![1]).toEqual({ role_id: 'asuka' });
-    expect(screen.getByRole('radio', { name: 'AI 角色 (4)' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'AI 角色 (3)' })).toBeTruthy();
     const strip = screen.getByRole('group', { name: 'AI 角色' });
     const chips = within(strip).getAllByRole('button').map((b) => b.textContent);
     expect(chips[0]).toContain('斋藤飞鸟 Asuka');
@@ -209,13 +208,6 @@ describe('PersonaStudio · Screen 15 roles', () => {
     expect(p.role_id).toBeUndefined();
     expect(p.display_name).toBe('旅伴 Mio');
     await waitFor(() => expect(useStore.getState().personas.some((r) => r.role_id === 'mio')).toBe(true));
-  });
-
-  it('shows the read-only delegation note for Coder', async () => {
-    await openRoles();
-    fireEvent.click(screen.getByRole('button', { name: /^Coder/ }));
-    expect(await screen.findByText('将编码任务委派给引擎主机上的本地 CLI 编码代理')).toBeTruthy();
-    expect(screen.getByText('~/work (只读)')).toBeTruthy();
   });
 
   it('voice preview performs no rpc until tapped', async () => {

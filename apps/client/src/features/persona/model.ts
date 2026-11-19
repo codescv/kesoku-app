@@ -11,7 +11,7 @@ import {
 } from '@kesoku/protocol';
 
 /** Built-in roles render first, in this order. */
-export const BUILTIN_ORDER = ['asuka', 'coder', 'default'] as const;
+export const BUILTIN_ORDER = ['asuka', 'default'] as const;
 
 /** Soft UI hint for the tagline (the hard protocol limit is LIMITS.TAGLINE_MAX). */
 export const TAGLINE_HINT = 40;
@@ -98,8 +98,6 @@ export const INTRO_TEMPLATES: ReadonlyArray<{ id: string; label: string; text: s
   { id: 'blank', label: '空白', text: '' },
 ]);
 
-export const CODER_NOTE = '将编码任务委派给引擎主机上的本地 CLI 编码代理';
-
 export function utf8Bytes(s: string): number {
   return new TextEncoder().encode(s).length;
 }
@@ -182,7 +180,6 @@ export function fallbackRoleId(list: readonly PersonaSummary[]): string {
 
 /** Readable name for a role id when its persona summary is not loaded (generic, no persona-specific names). */
 export function roleFallbackName(roleId: string | null | undefined): string {
-  if (roleId === 'coder') return 'Coder';
   return roleId || 'AI 助手';
 }
 

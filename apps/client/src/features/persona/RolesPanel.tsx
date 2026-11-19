@@ -6,7 +6,6 @@ import { actions, useStore } from '../../lib/store';
 import { useAvatarUrl } from './avatar';
 import { AvatarSheet, type AvatarSource } from './AvatarSheet';
 import {
-  CODER_NOTE,
   INTRO_TEMPLATES,
   TAGLINE_HINT,
   emptyDraft,
@@ -384,20 +383,6 @@ export function RolesPanel({
                 <FieldError id="ps-err-tag" text={errors.tagline ?? (draft.tagline.length > TAGLINE_HINT ? `建议 ≤ ${TAGLINE_HINT} 字，切换面板会截断` : undefined)} />
               </label>
             </section>
-
-            {sel === 'coder' && (
-              <section className="ps-card ps-note">
-                <div className="ps-row">
-                  <span className="ps-title ps-icon-label">
-                    <UiIcon name="file-code" size={17} /> 委派说明
-                  </span>
-                  <Pill size="sm">只读</Pill>
-                </div>
-                <div className="ps-note-text">{CODER_NOTE}</div>
-                {detail?.readonly_notes && <pre className="ps-note-pre">{detail.readonly_notes}</pre>}
-                <span className="ps-sub">工作目录白名单需在引擎主机配置</span>
-              </section>
-            )}
 
             <section className="ps-card">
               <MarkdownEditable

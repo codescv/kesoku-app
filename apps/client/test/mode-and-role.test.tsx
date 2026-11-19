@@ -16,7 +16,6 @@ const now = () => Date.now() / 1000;
 
 const PERSONAS = [
   { role_id: 'asuka', display_name: '飞鸟', tagline: '日语老师', builtin: true, avatar_rev: 0 },
-  { role_id: 'coder', display_name: 'Coder', tagline: '编码代理', builtin: true, avatar_rev: 0 },
   { role_id: 'default', display_name: 'Kesoku Agent', tagline: '', builtin: true, avatar_rev: 0 },
 ];
 
@@ -145,31 +144,31 @@ describe('v0.1.14 · role selection on New Session', () => {
     const capsule = screen.getByRole('button', { name: '角色与模式' });
     expect(capsule.textContent).toContain('飞鸟');
     fireEvent.click(capsule);
-    const btn = screen.getByTestId('topbar-role-coder') as HTMLButtonElement;
+    const btn = screen.getByTestId('topbar-role-default') as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
     for (const b of document.querySelectorAll<HTMLButtonElement>('.k-rm-role')) expect(b.disabled).toBe(false);
     fireEvent.click(btn);
-    expect(useStore.getState().ui.draftRole).toBe('coder');
-    expect(screen.getByRole('button', { name: '角色与模式' }).textContent).toContain('Coder');
+    expect(useStore.getState().ui.draftRole).toBe('default');
+    expect(screen.getByRole('button', { name: '角色与模式' }).textContent).toContain('Kesoku');
     const ta = document.querySelector<HTMLTextAreaElement>('.k-composer textarea, textarea')!;
-    expect(ta.placeholder).toContain('Coder');
+    expect(ta.placeholder).toContain('Kesoku');
   });
 
-  it('Launchpad renders a role picker; picking coder then a mode tile creates the session as coder', async () => {
+  it('Launchpad renders a role picker; picking default then a mode tile creates the session as default', async () => {
     seedNewSession();
     const rpc = fakeSocket();
     render(<Launchpad />);
     const picker = screen.getByTestId('launchpad-role-picker');
-    expect(within(picker).getAllByRole('radio')).toHaveLength(3);
+    expect(within(picker).getAllByRole('radio')).toHaveLength(2);
     expect(screen.getByTestId('launchpad-role-asuka').className).toContain('is-on');
-    fireEvent.click(screen.getByTestId('launchpad-role-coder'));
-    expect(useStore.getState().ui.draftRole).toBe('coder');
-    expect(screen.getByTestId('launchpad-role-coder').className).toContain('is-on');
+    fireEvent.click(screen.getByTestId('launchpad-role-default'));
+    expect(useStore.getState().ui.draftRole).toBe('default');
+    expect(screen.getByTestId('launchpad-role-default').className).toContain('is-on');
     fireEvent.click(screen.getByRole('button', { name: CLASSROOM }));
     await flush();
-    expect(callsOf(rpc, 'session.create')[0]).toMatchObject({ role: 'coder', mode: 'jp_classroom' });
+    expect(callsOf(rpc, 'session.create')[0]).toMatchObject({ role: 'default', mode: 'jp_classroom' });
     expect(useStore.getState().currentSessionId).toBe('new1');
-    expect(useStore.getState().sessions.new1!.role).toBe('coder');
+    expect(useStore.getState().sessions.new1!.role).toBe('default');
   });
 
   it('chat tile and the long-press info sheet also use the picked role', async () => {
@@ -187,27 +186,27 @@ describe('v0.1.14 · role selection on New Session', () => {
   it('direct typing (ensureSession) creates the session with the picked role', async () => {
     seedNewSession();
     const rpc = fakeSocket();
-    act(() => actions.setUi({ draftRole: 'coder' }));
+    act(() => actions.setUi({ draftRole: 'default' }));
     await act(async () => {
       await kesoku.ensureSession();
     });
-    expect(callsOf(rpc, 'session.create')[0]).toMatchObject({ role: 'coder', mode: 'chat' });
+    expect(callsOf(rpc, 'session.create')[0]).toMatchObject({ role: 'default', mode: 'chat' });
   });
 
   it('+ 新会话 carries the role filter / current session role into draftRole', () => {
     useStore.setState({
-      sessions: { s1: { session_id: 's1', title: 'Coder 会话', role: 'coder', mode_id: 'chat', chatbot_id: 'app', updated_at: now() } as never },
+      sessions: { s1: { session_id: 's1', title: 'Agent 会话', role: 'default', mode_id: 'chat', chatbot_id: 'app', updated_at: now() } as never },
       currentSessionId: 's1',
     });
     fakeSocket();
     render(<SessionPanel />);
     fireEvent.click(screen.getByTestId('new-session'));
     expect(useStore.getState().currentSessionId).toBeNull();
-    expect(useStore.getState().ui.draftRole).toBe('coder');
+    expect(useStore.getState().ui.draftRole).toBe('default');
     // Role filter chip inside the 全部会话 sub-view also picks the draft role when on New Session.
     fireEvent.click(screen.getByTestId('all-sessions-btn'));
-    fireEvent.click(screen.getByRole('tab', { name: 'Kesoku Agent' }));
-    expect(useStore.getState().ui.draftRole).toBe('default');
+    fireEvent.click(screen.getByRole('tab', { name: '飞鸟' }));
+    expect(useStore.getState().ui.draftRole).toBe('asuka');
   });
 
   it('clicking a mode on New Session (or empty session) does not auto-send a message or start a rollback timer', async () => {
@@ -235,7 +234,7 @@ describe('v0.1.14 · role selection on New Session', () => {
   it('opening an existing session drops the draft role (its own role wins)', async () => {
     seedNewSession();
     fakeSocket();
-    act(() => actions.setUi({ draftRole: 'coder' }));
+    act(() => actions.setUi({ draftRole: 'default' }));
     await act(async () => {
       await kesoku.openSession('s1');
     });
