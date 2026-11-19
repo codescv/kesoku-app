@@ -446,10 +446,10 @@ describe('ModePanel', () => {
     expect(bar.getAttribute('aria-valuemax')).toBe('3');
     expect(within(bonds[1]!).queryByRole('progressbar')).toBeNull();
     expect(within(bonds[1]!).getByText('目标乙')).toBeTruthy();
-    // 合体技 section between members and enemies.
+    // Combat order: 上场队友 -> 敌方 -> 合体技.
     const combos = screen.getByRole('list', { name: '合体技' });
     const subs = [...container.querySelectorAll('.km-sub')].map((n) => n.textContent);
-    expect(subs).toEqual(['合体技 ▰▰▱ 2/3', '敌方']);
+    expect(subs).toEqual(['敌方', '合体技 ▰▰▱ 2/3']);
     const rows = within(combos).getAllByRole('listitem');
     expect(rows).toHaveLength(3);
     expect(rows[0]!.className).toBe('km-combo-row');
@@ -488,6 +488,54 @@ describe('ModePanel', () => {
     // An empty combos list renders no section either.
     const empty = render(<ModePanel panel="party" stateFiles={{ 'game/party.json': { ...base, combo: 2, combos: [] } }} modePrefs={{}} ctx={ctx} />);
     expect(empty.container.innerHTML).toBe(html);
+  });
+
+  it('party panel: phase-aware roster ordering (normal: active only; combat: active -> enemies; camp: active -> reserve)', () => {
+    const ctx = makeCtx();
+    const party = {
+      combo: 2,
+      combo_max: 3,
+      members: {
+        乙: { hp: 18, max_hp: 18, role: 'active' },
+        丙: { hp: 20, max_hp: 20, role: 'reserve' },
+        甲: { hp: 24, max_hp: 24, role: 'player' },
+        丁: { hp: 15, max_hp: 15, role: 'support' },
+        旁白: { role: 'narrator' },
+      },
+      combos: [{ name: '合技一', members: ['甲', '乙'], type: 'attack', cost: 2, dmg: '2d8' }],
+      enemies: { 敌一: { hp: 30, max_hp: 30 } },
+    };
+    const games = (phase: string) => ({ instances: [{ game: 'trpg', active: true, slots: { phase: { value: phase } } }] });
+
+    // 1. 平时 (expedition, no enemies): only 上场队友 (player -> active -> support), no reserve, no narrator, no enemies.
+    const { container, rerender } = render(
+      <ModePanel panel="party" stateFiles={{ 'game/games.json': games('expedition'), 'game/party.json': { ...party, enemies: {} } }} modePrefs={{}} ctx={ctx} />,
+    );
+    const activeNames = () => [...screen.getByRole('list', { name: '上场队友' }).querySelectorAll('.km-fighter-head b')].map((n) => n.textContent);
+    expect(activeNames()).toEqual(['甲', '乙', '丁']);
+    expect(screen.queryByText('丙')).toBeNull();
+    expect(screen.queryByText('旁白')).toBeNull();
+    expect(screen.queryByRole('list', { name: '敌方' })).toBeNull();
+    expect(screen.queryByRole('list', { name: '场下队友（营地）' })).toBeNull();
+
+    // 2. 战斗状态中 (combat): 上场队友 -> 敌方 (before 合体技), reserve hidden.
+    rerender(<ModePanel panel="party" stateFiles={{ 'game/games.json': games('combat'), 'game/party.json': party }} modePrefs={{}} ctx={ctx} />);
+    expect(activeNames()).toEqual(['甲', '乙', '丁']);
+    expect(screen.queryByText('丙')).toBeNull();
+    expect(screen.queryByRole('list', { name: '场下队友（营地）' })).toBeNull();
+    const combatLists = [...container.querySelectorAll('ul.km-list')].map((el) => el.getAttribute('aria-label'));
+    expect(combatLists).toEqual(['上场队友', '敌方', '合体技']);
+    expect([...container.querySelectorAll('.km-sub')].map((n) => n.textContent)).toEqual(['敌方', '合体技 ▰▰▱ 2/3']);
+
+    // 3. 营地 (camp): 上场队友 -> 场下队友（营地） (before 合体技), enemies hidden even if stale entries remain.
+    rerender(<ModePanel panel="party" stateFiles={{ 'game/games.json': games('camp'), 'game/party.json': party }} modePrefs={{}} ctx={ctx} />);
+    expect(activeNames()).toEqual(['甲', '乙', '丁']);
+    expect([...screen.getByRole('list', { name: '场下队友（营地）' }).querySelectorAll('.km-fighter-head b')].map((n) => n.textContent)).toEqual(['丙']);
+    expect(screen.queryByRole('list', { name: '敌方' })).toBeNull();
+    expect(screen.queryByText('敌一')).toBeNull();
+    const campLists = [...container.querySelectorAll('ul.km-list')].map((el) => el.getAttribute('aria-label'));
+    expect(campLists).toEqual(['上场队友', '场下队友（营地）', '合体技']);
+    expect([...container.querySelectorAll('.km-sub')].map((n) => n.textContent)).toEqual(['场下队友（营地）', '合体技 ▰▰▱ 2/3']);
   });
 
   it('malformed state never crashes; memory → null', () => {

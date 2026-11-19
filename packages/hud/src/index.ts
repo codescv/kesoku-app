@@ -12,6 +12,7 @@ export {
   formatRemaining,
   mistakesCount,
   squad,
+  trpgPhase,
   comboGauge,
   partyCombos,
   TRANSLATOR_LANGS,

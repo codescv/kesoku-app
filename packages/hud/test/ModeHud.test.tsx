@@ -340,6 +340,16 @@ describe('ModeHud', () => {
     expect(desk.container.querySelectorAll('.k-hud-row')).toHaveLength(1);
   });
 
+  it('trpg: camp phase hides enemy indicator even if stale enemies exist', () => {
+    const campFiles = {
+      'game/games.json': { instances: [{ game: 'trpg', active: true, slots: { world: '遗迹', phase: { value: 'camp' } } }] },
+      'game/party.json': TRPG_FILES['game/party.json'],
+    };
+    setup('trpg', campFiles);
+    expect(screen.queryByTestId('trpg-party-enemies')).toBeNull();
+    expect(screen.queryByTestId('trpg-party-combo')).toBeNull();
+  });
+
   it('formats remaining time compactly', () => {
     expect(formatRemaining(45_000)).toBe('45s');
     expect(formatRemaining(12 * 60_000)).toBe('12m');

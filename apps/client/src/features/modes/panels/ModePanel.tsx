@@ -1,6 +1,6 @@
 import { Component, useState, type ReactNode } from 'react';
 import { HpBar, ProgressBar } from '@kesoku/ui';
-import { VERSION_LABELS, comboGauge, partyCombos, resolveGameVersion, type HudPanel } from '@kesoku/hud';
+import { VERSION_LABELS, comboGauge, partyCombos, resolveGameVersion, trpgPhase, type HudPanel } from '@kesoku/hud';
 import type { CardContext } from '../../cards/types';
 import { MatchupRows, TypeBadge, matchupOf } from '../../cards/pokemon';
 import { PokemonDex } from '../../cards/kinds/PokemonDex';
@@ -442,25 +442,64 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
   );
 }
 
+const FIELD_ROLE_ORDER: Record<string, number> = { player: 0, active: 1, support: 2 };
+
 function PartyPanel({ stateFiles }: { stateFiles: Record<string, unknown> }) {
   const party = file(stateFiles, 'game/party.json');
   const ledger = file(stateFiles, 'game/ledger.json');
-  const members = Object.entries(obj(party.members)).filter(([, v]) => isObj(v)) as Array<[string, Dict]>;
+  const allMembers = Object.entries(obj(party.members)).filter(([, v]) => isObj(v)) as Array<[string, Dict]>;
+  const activeMembers: Array<[string, Dict]> = [];
+  const reserveMembers: Array<[string, Dict]> = [];
+  for (const entry of allMembers) {
+    const role = str(entry[1].role).toLowerCase();
+    if (role === 'narrator') continue;
+    if (role === 'reserve') reserveMembers.push(entry);
+    else activeMembers.push(entry);
+  }
+  activeMembers.sort((a, b) => {
+    const ra = FIELD_ROLE_ORDER[str(a[1].role).toLowerCase()] ?? 1;
+    const rb = FIELD_ROLE_ORDER[str(b[1].role).toLowerCase()] ?? 1;
+    return ra - rb;
+  });
   const enemies = Object.entries(obj(party.enemies)).filter(([, v]) => isObj(v)) as Array<[string, Dict]>;
-  members.sort((a, b) => Number(b[1].role === 'player') - Number(a[1].role === 'player'));
+  const phase = trpgPhase(stateFiles);
+  const inCamp = phase === 'camp';
+  const inCombat = !inCamp && (phase === 'combat' || enemies.length > 0);
+  const showEnemies = inCombat && enemies.length > 0;
+  const showReserve = inCamp && reserveMembers.length > 0;
   const shared = itemsList(party.inventory ?? party.bag ?? party.loot);
   const gold = num(obj(ledger.global).gold ?? party.gold);
   const combos = partyCombos(party);
   const gauge = comboGauge(party);
   return (
     <Panel title="⚔️ 小队" className="km-party">
-      {!members.length && !enemies.length && <Empty>暂无队伍数据</Empty>}
-      {members.length > 0 && (
-        <ul className="km-list">
-          {members.map(([k, m]) => (
+      {!activeMembers.length && !showEnemies && !showReserve && <Empty>暂无队伍数据</Empty>}
+      {activeMembers.length > 0 && (
+        <ul className="km-list" aria-label="上场队友">
+          {activeMembers.map(([k, m]) => (
             <Fighter key={k} name={k} rec={m} />
           ))}
         </ul>
+      )}
+      {showEnemies && (
+        <>
+          <div className="km-sub">敌方</div>
+          <ul className="km-list" aria-label="敌方">
+            {enemies.map(([k, e]) => (
+              <Fighter key={k} name={k} rec={e} enemy />
+            ))}
+          </ul>
+        </>
+      )}
+      {showReserve && (
+        <>
+          <div className="km-sub">场下队友（营地）</div>
+          <ul className="km-list" aria-label="场下队友（营地）">
+            {reserveMembers.map(([k, m]) => (
+              <Fighter key={k} name={k} rec={m} />
+            ))}
+          </ul>
+        </>
       )}
       {combos.length > 0 && (
         <>
@@ -482,16 +521,6 @@ function PartyPanel({ stateFiles }: { stateFiles: Record<string, unknown> }) {
                 {c.state === 'need' && <span className="kc-badge kc-badge-tag">需{c.cost}格</span>}
                 {c.state === 'missing' && <span className="kc-badge kc-badge-warn">缺员:{c.missing.join('、')}</span>}
               </li>
-            ))}
-          </ul>
-        </>
-      )}
-      {enemies.length > 0 && (
-        <>
-          <div className="km-sub">敌方</div>
-          <ul className="km-list">
-            {enemies.map(([k, e]) => (
-              <Fighter key={k} name={k} rec={e} enemy />
             ))}
           </ul>
         </>

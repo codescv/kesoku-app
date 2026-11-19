@@ -660,11 +660,20 @@ export function partyCombos(party: Obj | undefined): ComboInfo[] {
   return out;
 }
 
+/** Active TRPG phase slot (`setup` | `camp` | `expedition` | `combat` | `''`), lowercased. */
+export function trpgPhase(stateFiles: Record<string, unknown> | undefined): string {
+  const inst = findInstance(stateFiles ?? {}, 'trpg');
+  return (label(slot(inst, 'phase')) ?? '').trim().toLowerCase();
+}
+
 function TrpgHud({ stateFiles, badge, onOpenPanel, instance, inspectorVisible }: HudCtx) {
   const world = label(slot(instance, 'world'));
   const scenario = label(slot(instance, 'scenario')) ?? label(slot(instance, 'chapter'));
+  const phase = (label(slot(instance, 'phase')) ?? '').trim().toLowerCase();
+  const inCamp = phase === 'camp';
   const party = file(stateFiles, 'game/party.json');
   const { members, enemies } = squad(party);
+  const showEnemies = !inCamp && enemies.length > 0;
   const gauge = comboGauge(party);
   const readyCount = partyCombos(party).filter((c) => c.state === 'ready').length;
   // Always one compact row: no live HP strip. Full HP / stats / equipment live in the party panel —
@@ -681,13 +690,13 @@ function TrpgHud({ stateFiles, badge, onOpenPanel, instance, inspectorVisible }:
         <Chip tone="primary" className="k-hud-party-btn" onClick={() => onOpenPanel('party')} title="查看小队血量与装备" testId="trpg-party-btn">
           <UiIcon name="shield" size={14} />
           <span className="k-hud-party-label">{members.length > 0 ? `小队 (${members.length})` : '小队·装备'}</span>
-          {enemies.length > 0 && (
+          {showEnemies && (
             <span className="k-hud-party-enemy" aria-label={`${enemies.length} 个敌人`} data-testid="trpg-party-enemies">
               <UiIcon name="target" size={12} />
               <span className="k-hud-num">{enemies.length}</span>
             </span>
           )}
-          {(gauge.value > 0 || enemies.length > 0) && (
+          {(gauge.value > 0 || showEnemies) && (
             <span
               className={'k-hud-party-combo' + (readyCount > 0 ? ' is-ready' : '')}
               aria-label={`连携槽 ${gauge.value}/${gauge.max}` + (readyCount > 0 ? `，${readyCount} 个合体技可发动` : '')}
