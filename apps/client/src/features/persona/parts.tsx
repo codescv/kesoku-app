@@ -161,6 +161,7 @@ export function CropSheet({ file, onCancel, onConfirm }: { file: File; onCancel:
       <div className="ps-crop-body">
         <div
           className="ps-crop-view"
+          data-sheet-no-drag
           style={{ width: VIEW, height: VIEW }}
           onPointerDown={onDown}
           onPointerMove={onMove}

@@ -361,7 +361,7 @@ describe('entry points', () => {
     expect(screen.getByTestId('topbar-session-notes-btn').querySelector('.k-pill-primary')?.textContent).toBe('已置顶');
     fireEvent.click(screen.getByTestId('topbar-session-notes-btn'));
     expect(useStore.getState().ui.sessionNotesId).toBe('s1');
-    expect(screen.queryByTestId('topbar-session-notes-btn')).toBeNull(); // RoleMode sheet closed
+    expect(screen.queryByRole('dialog')).toBeNull(); // RoleMode sheet closed
     unmount();
   });
 
