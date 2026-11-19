@@ -63,7 +63,7 @@ export const MODEL_CATALOG: readonly ModelCatalogEntry[] = Object.freeze([
   { model_name: 'gemini-4-neon', llm: 'gemini', label: 'Neon', supports_explicit_cache: false },
   { model_name: 'gemini-4-hydrogen', llm: 'gemini', label: 'Hydrogen', supports_explicit_cache: false },
   { model_name: 'gemini-3.5-flash-lite', llm: 'gemini', label: 'Flash Lite', supports_explicit_cache: true },
-  { model_name: 'gemini-4-argon', llm: 'gemini', label: 'Argon', supports_explicit_cache: true },
+  { model_name: 'gemini-4-carbon', llm: 'gemini', label: 'Carbon', supports_explicit_cache: false },
   { model_name: 'claude-sonnet-5-5', llm: 'claude', label: 'Sonnet 5.5', supports_explicit_cache: true },
   { model_name: 'claude-opus-5-5', llm: 'claude', label: 'Opus 5.5', supports_explicit_cache: true },
 ]);

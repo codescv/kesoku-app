@@ -41,7 +41,7 @@ describe('v0.1.21+ · version & mobile small-screen (< 768px) UI optimizations',
     expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-4-neon', thinking_level: 'low', stream: true })).toBe('Neon · L');
     expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-4-hydrogen', thinking_level: 'minimal', stream: true })).toBe('Hydrogen · Min');
     expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-3.5-flash-lite', thinking_level: 'low', stream: true })).toBe('Lite · L');
-    expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-4-argon', thinking_level: 'medium', stream: true })).toBe('Argon · M');
+    expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-4-carbon', thinking_level: 'medium', stream: true })).toBe('Carbon · M');
     expect(modelShortLabel({ llm: 'claude', model_name: 'claude-sonnet-5-5', thinking_level: 'medium', stream: true })).toBe('Sonnet · M');
     expect(modelShortLabel({ llm: 'claude', model_name: 'claude-opus-5-5', thinking_level: 'high', stream: true })).toBe('Opus · H');
     expect(modelLabel({ llm: 'gemini', model_name: 'gemini-4-neon', thinking_level: 'low', stream: true })).toBe('Neon · Low');

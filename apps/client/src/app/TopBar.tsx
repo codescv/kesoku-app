@@ -12,7 +12,7 @@ const MODEL_SHORT_LABEL: Record<string, string> = {
   'gemini-4-neon': 'Neon',
   'gemini-4-hydrogen': 'Hydrogen',
   'gemini-3.5-flash-lite': 'Lite',
-  'gemini-4-argon': 'Argon',
+  'gemini-4-carbon': 'Carbon',
   'claude-sonnet-5-5': 'Sonnet',
   'claude-opus-5-5': 'Opus',
 };
