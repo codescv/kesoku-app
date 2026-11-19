@@ -9,8 +9,8 @@ import { fallbackRoleId, roleAvatarRef, roleFallbackName, sortRoles } from '../f
 const LEVEL_LABEL: Record<ThinkingLevel, string> = { minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High' };
 const LEVEL_SHORT: Record<ThinkingLevel, string> = { minimal: 'Min', low: 'L', medium: 'M', high: 'H' };
 const MODEL_SHORT_LABEL: Record<string, string> = {
+  'gemini-4-neon': 'Neon',
   'gemini-4-hydrogen': 'Hydrogen',
-  'gemini-3.8-flash': 'Flash',
   'gemini-3.5-flash-lite': 'Lite',
   'gemini-4-argon': 'Argon',
   'claude-sonnet-5-5': 'Sonnet',
@@ -19,12 +19,12 @@ const MODEL_SHORT_LABEL: Record<string, string> = {
 
 export function modelLabel(o: LlmOverride | null | undefined): string {
   const m = MODEL_CATALOG.find((x) => x.model_name === o?.model_name);
-  return `${m?.label ?? 'Hydrogen'} · ${LEVEL_LABEL[(o?.thinking_level ?? 'low') as ThinkingLevel]}`;
+  return `${m?.label ?? 'Neon'} · ${LEVEL_LABEL[(o?.thinking_level ?? 'low') as ThinkingLevel]}`;
 }
 
 export function modelShortLabel(o: LlmOverride | null | undefined): string {
   const m = MODEL_CATALOG.find((x) => x.model_name === o?.model_name);
-  const shortModel = (o?.model_name && MODEL_SHORT_LABEL[o.model_name]) ?? m?.label ?? 'Hydrogen';
+  const shortModel = (o?.model_name && MODEL_SHORT_LABEL[o.model_name]) ?? m?.label ?? 'Neon';
   const shortLevel = LEVEL_SHORT[(o?.thinking_level ?? 'low') as ThinkingLevel] ?? 'L';
   return `${shortModel} · ${shortLevel}`;
 }

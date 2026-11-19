@@ -7,7 +7,7 @@ import { PolicySegmented } from '../memory/PolicySegmented';
 import { useAvatarUrl } from '../persona/avatar';
 import { fallbackRoleId, roleAvatarRef, roleFallbackName, sortRoles } from '../persona/model';
 
-const MODEL_LABEL: Record<string, string> = { 'gemini-3.8-flash': 'Flash 3.8 · Low' };
+const MODEL_LABEL: Record<string, string> = { 'gemini-4-neon': 'Neon · Low' };
 
 function ModeTile({ m, onOpen, onInfo }: { m: ModeMeta; onOpen: () => void; onInfo: () => void }) {
   const policy = useStore((s) => s.policies.policies[m.id]) as MemoryPolicy | undefined;

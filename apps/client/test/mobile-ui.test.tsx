@@ -35,28 +35,28 @@ describe('v0.1.21 – v0.1.28 · version & mobile small-screen (< 768px) UI opti
   });
 
   it('modelShortLabel formats compact model + thinking level labels across all catalog entries', () => {
-    expect(modelShortLabel(null)).toBe('Hydrogen · L');
-    expect(modelShortLabel(undefined)).toBe('Hydrogen · L');
+    expect(modelShortLabel(null)).toBe('Neon · L');
+    expect(modelShortLabel(undefined)).toBe('Neon · L');
+    expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-4-neon', thinking_level: 'low', stream: true })).toBe('Neon · L');
     expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-4-hydrogen', thinking_level: 'minimal', stream: true })).toBe('Hydrogen · Min');
-    expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-3.8-flash', thinking_level: 'low', stream: true })).toBe('Flash · L');
     expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-3.5-flash-lite', thinking_level: 'low', stream: true })).toBe('Lite · L');
     expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-4-argon', thinking_level: 'medium', stream: true })).toBe('Argon · M');
     expect(modelShortLabel({ llm: 'claude', model_name: 'claude-sonnet-5-5', thinking_level: 'medium', stream: true })).toBe('Sonnet · M');
     expect(modelShortLabel({ llm: 'claude', model_name: 'claude-opus-5-5', thinking_level: 'high', stream: true })).toBe('Opus · H');
-    expect(modelLabel({ llm: 'gemini', model_name: 'gemini-3.8-flash', thinking_level: 'low', stream: true })).toBe('Flash 3.8 · Low');
+    expect(modelLabel({ llm: 'gemini', model_name: 'gemini-4-neon', thinking_level: 'low', stream: true })).toBe('Neon · Low');
   });
 
   it('ModelCapsule renders both .k-model-text-full and .k-model-text-short', () => {
     useStore.setState({
       llmOverride: {
-        s1: { llm: 'gemini', model_name: 'gemini-3.8-flash', thinking_level: 'medium', stream: true },
+        s1: { llm: 'gemini', model_name: 'gemini-4-neon', thinking_level: 'medium', stream: true },
       },
     });
     render(<ModelCapsule sessionId="s1" />);
     const btn = screen.getByRole('button', { name: '模型与思考档位' });
-    expect(btn.querySelector('.k-model-text-full')?.textContent).toBe('Flash 3.8 · Medium');
+    expect(btn.querySelector('.k-model-text-full')?.textContent).toBe('Neon · Medium');
     const shortEl = btn.querySelector('.k-model-text-short');
-    expect(shortEl?.textContent).toBe('Flash · M');
+    expect(shortEl?.textContent).toBe('Neon · M');
     expect(shortEl?.getAttribute('aria-hidden')).toBe('true');
   });
 

@@ -107,8 +107,8 @@ export const DEFAULT_SETTINGS: Settings = {
   fontSize: 'standard',
   allChannels: false,
   ttsEngine: 'native',
-  defaultModel: { llm: 'gemini', model_name: 'gemini-4-hydrogen', thinking_level: 'low', stream: true },
-  translatorModel: 'gemini-3.8-flash',
+  defaultModel: { llm: 'gemini', model_name: 'gemini-4-neon', thinking_level: 'low', stream: true },
+  translatorModel: 'gemini-4-neon',
   translatorNativeLang: 'zh-CN',
   translatorForeignLangs: ['ja', 'en', 'ko'],
 };

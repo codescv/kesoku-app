@@ -60,8 +60,8 @@ export interface ModelCatalogEntry {
 
 /** The 6 routable models (Blueprint §6.4 `allowed_models`). */
 export const MODEL_CATALOG: readonly ModelCatalogEntry[] = Object.freeze([
+  { model_name: 'gemini-4-neon', llm: 'gemini', label: 'Neon', supports_explicit_cache: false },
   { model_name: 'gemini-4-hydrogen', llm: 'gemini', label: 'Hydrogen', supports_explicit_cache: false },
-  { model_name: 'gemini-3.8-flash', llm: 'gemini', label: 'Flash 3.8', supports_explicit_cache: true },
   { model_name: 'gemini-3.5-flash-lite', llm: 'gemini', label: 'Flash Lite', supports_explicit_cache: true },
   { model_name: 'gemini-4-argon', llm: 'gemini', label: 'Argon', supports_explicit_cache: true },
   { model_name: 'claude-sonnet-5-5', llm: 'claude', label: 'Sonnet 5.5', supports_explicit_cache: true },
