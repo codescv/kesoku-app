@@ -146,7 +146,7 @@ function RosterPanel({ stateFiles, ctx }: { stateFiles: Record<string, unknown>;
 /* ------------------------------ party ------------------------------ */
 
 const ROLE_LABEL: Record<string, string> = { player: '主角', active: '队友', support: '支援', narrator: '旁白', reserve: '后备' };
-const ATTR_LABEL: Record<string, string> = { ac: '护甲', hit: '命中', dmg: '伤害', atk: '攻击', def: '防御', mp: 'MP', max_mp: 'MP上限', spd: '速度', str: '力量', dex: '敏捷', int: '智力', level: '等级', xp: '经验', gold: '金币' };
+const ATTR_LABEL: Record<string, string> = { ac: '护甲', hit: '命中', dmg: '伤害', atk: '攻击', def: '防御', mp: 'MP', max_mp: 'MP上限', spd: '速度', str: '力量', dex: '敏捷', int: '智力', level: '等级', xp: '经验', gold: '资金' };
 
 function itemsList(v: unknown): string[] {
   return arr(v)
@@ -447,6 +447,9 @@ const FIELD_ROLE_ORDER: Record<string, number> = { player: 0, active: 1, support
 function PartyPanel({ stateFiles }: { stateFiles: Record<string, unknown> }) {
   const party = file(stateFiles, 'game/party.json');
   const ledger = file(stateFiles, 'game/ledger.json');
+  const base = file(stateFiles, 'game/base.json');
+  const baseName = typeof base.name === 'string' ? base.name.trim() : '';
+  const reserveLabel = `场下队友（${baseName || '待命'}）`;
   const allMembers = Object.entries(obj(party.members)).filter(([, v]) => isObj(v)) as Array<[string, Dict]>;
   const activeMembers: Array<[string, Dict]> = [];
   const reserveMembers: Array<[string, Dict]> = [];
@@ -493,8 +496,8 @@ function PartyPanel({ stateFiles }: { stateFiles: Record<string, unknown> }) {
       )}
       {showReserve && (
         <>
-          <div className="km-sub">场下队友（营地）</div>
-          <ul className="km-list" aria-label="场下队友（营地）">
+          <div className="km-sub">{reserveLabel}</div>
+          <ul className="km-list" aria-label={reserveLabel}>
             {reserveMembers.map(([k, m]) => (
               <Fighter key={k} name={k} rec={m} />
             ))}

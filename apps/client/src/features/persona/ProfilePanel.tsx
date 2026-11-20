@@ -168,7 +168,7 @@ export function ProfilePanel({
             <input
               className={'ps-input ps-input-lg' + (errors.nickname ? ' is-err' : '')}
               value={d.nickname}
-              placeholder="角色对你的称呼，如：小张"
+              placeholder="希望角色怎么称呼你"
               aria-label="我的昵称"
               aria-invalid={!!errors.nickname}
               onChange={(e) => patch({ nickname: e.target.value })}

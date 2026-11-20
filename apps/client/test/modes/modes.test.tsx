@@ -516,26 +516,58 @@ describe('ModePanel', () => {
     expect(screen.queryByText('丙')).toBeNull();
     expect(screen.queryByText('旁白')).toBeNull();
     expect(screen.queryByRole('list', { name: '敌方' })).toBeNull();
-    expect(screen.queryByRole('list', { name: '场下队友（营地）' })).toBeNull();
+    expect(screen.queryByRole('list', { name: '场下队友（待命）' })).toBeNull();
 
     // 2. 战斗状态中 (combat): 上场队友 -> 敌方 (before 合体技), reserve hidden.
     rerender(<ModePanel panel="party" stateFiles={{ 'game/games.json': games('combat'), 'game/party.json': party }} modePrefs={{}} ctx={ctx} />);
     expect(activeNames()).toEqual(['甲', '乙', '丁']);
     expect(screen.queryByText('丙')).toBeNull();
-    expect(screen.queryByRole('list', { name: '场下队友（营地）' })).toBeNull();
+    expect(screen.queryByRole('list', { name: '场下队友（待命）' })).toBeNull();
     const combatLists = [...container.querySelectorAll('ul.km-list')].map((el) => el.getAttribute('aria-label'));
     expect(combatLists).toEqual(['上场队友', '敌方', '合体技']);
     expect([...container.querySelectorAll('.km-sub')].map((n) => n.textContent)).toEqual(['敌方', '合体技 ▰▰▱ 2/3']);
 
-    // 3. 营地 (camp): 上场队友 -> 场下队友（营地） (before 合体技), enemies hidden even if stale entries remain.
+    // 3. 休整阶段 (camp): 上场队友 -> 场下队友（待命） (before 合体技), enemies hidden even if stale entries remain.
     rerender(<ModePanel panel="party" stateFiles={{ 'game/games.json': games('camp'), 'game/party.json': party }} modePrefs={{}} ctx={ctx} />);
     expect(activeNames()).toEqual(['甲', '乙', '丁']);
-    expect([...screen.getByRole('list', { name: '场下队友（营地）' }).querySelectorAll('.km-fighter-head b')].map((n) => n.textContent)).toEqual(['丙']);
+    expect([...screen.getByRole('list', { name: '场下队友（待命）' }).querySelectorAll('.km-fighter-head b')].map((n) => n.textContent)).toEqual(['丙']);
     expect(screen.queryByRole('list', { name: '敌方' })).toBeNull();
     expect(screen.queryByText('敌一')).toBeNull();
     const campLists = [...container.querySelectorAll('ul.km-list')].map((el) => el.getAttribute('aria-label'));
-    expect(campLists).toEqual(['上场队友', '场下队友（营地）', '合体技']);
-    expect([...container.querySelectorAll('.km-sub')].map((n) => n.textContent)).toEqual(['场下队友（营地）', '合体技 ▰▰▱ 2/3']);
+    expect(campLists).toEqual(['上场队友', '场下队友（待命）', '合体技']);
+    expect([...container.querySelectorAll('.km-sub')].map((n) => n.textContent)).toEqual(['场下队友（待命）', '合体技 ▰▰▱ 2/3']);
+
+    // 4. 休整阶段 with named base in game/base.json: uses base.name in reserve heading & aria-label.
+    rerender(
+      <ModePanel
+        panel="party"
+        stateFiles={{ 'game/games.json': games('camp'), 'game/party.json': party, 'game/base.json': { name: '老茶馆' } }}
+        modePrefs={{}}
+        ctx={ctx}
+      />,
+    );
+    expect([...screen.getByRole('list', { name: '场下队友（老茶馆）' }).querySelectorAll('.km-fighter-head b')].map((n) => n.textContent)).toEqual(['丙']);
+    expect([...container.querySelectorAll('.km-sub')].map((n) => n.textContent)).toEqual(['场下队友（老茶馆）', '合体技 ▰▰▱ 2/3']);
+
+    // Blank / malformed base.name falls back to 待命.
+    rerender(
+      <ModePanel
+        panel="party"
+        stateFiles={{ 'game/games.json': games('camp'), 'game/party.json': party, 'game/base.json': { name: '   ' } }}
+        modePrefs={{}}
+        ctx={ctx}
+      />,
+    );
+    expect(screen.getByRole('list', { name: '场下队友（待命）' })).toBeTruthy();
+  });
+
+  it('party panel: uses genre-neutral 资金 label for fighter gold attribute', () => {
+    const ctx = makeCtx();
+    const party = { members: { 甲: { hp: 20, max_hp: 20, role: 'player', gold: 150 } } };
+    const { container } = render(<ModePanel panel="party" stateFiles={{ 'game/party.json': party }} modePrefs={{}} ctx={ctx} />);
+    const attrs = [...container.querySelectorAll('.km-attr')].map((el) => el.textContent?.trim());
+    expect(attrs).toContain('资金 150');
+    expect(container.textContent).not.toContain('金币');
   });
 
   it('malformed state never crashes; memory → null', () => {
