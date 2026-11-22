@@ -244,8 +244,15 @@
 .km-roster-actor { font-weight: 800; color: var(--ink-2); }
 
 .km-fighter { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--subcard); border: 1.5px solid var(--line); }
+.km-fighter.is-transformed:not(.is-enemy) { border-color: var(--accent-border); }
 .km-fighter.is-enemy { border-color: var(--danger-border); background: var(--danger-soft); }
 .km-fighter-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 16px; }
+.km-form-badge { font-weight: 800; }
+.km-form-strip { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; padding: 4px 8px; border-radius: 8px; background: var(--accent-soft); border: 1px solid var(--accent-border); font-size: 12.5px; line-height: 1.45; min-width: 0; }
+.km-form-range { flex-shrink: 0; font-size: 11px; }
+.km-form-text { min-width: 0; color: var(--ink); font-weight: 700; overflow-wrap: anywhere; }
+.km-form-avail { display: flex; flex-wrap: wrap; gap: 4px; }
+.km-form-pill { font-size: 11.5px; color: var(--ink-2); }
 .km-hp-num { margin-left: auto; font: 800 14px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
 .km-attrs { display: flex; flex-wrap: wrap; gap: 6px; }
 .km-attr { font-size: 13px; font-weight: 800; padding: 2px 8px; border-radius: 7px; background: var(--card); border: 1px solid var(--line); }
@@ -253,6 +260,7 @@
 .km-skills { margin: 0; padding-left: 16px; font-size: 14px; }
 .km-skills li { line-height: 1.5; }
 .km-skill-type { margin-left: 4px; font-size: 11px; vertical-align: 1px; }
+.km-skill-derived { margin-left: 4px; font-size: 11px; vertical-align: 1px; }
 .km-equip { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
 .km-equip-row { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .km-equip-slot { flex-shrink: 0; font-size: 11.5px; font-weight: 800; padding: 1px 6px; border-radius: 6px; background: var(--card); border: 1px solid var(--line); color: var(--ink-2); }

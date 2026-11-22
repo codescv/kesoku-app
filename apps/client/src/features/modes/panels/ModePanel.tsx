@@ -242,22 +242,92 @@ export interface SkillRow {
   name: string;
   type: string;
   tail: string;
+  derivedFrom: string;
 }
 
-/** Structured skills (`{ name, type, dmg, status, guard, heal, buff, desc }`) or plain strings. */
+/** Structured skills (`{ name, type, dmg, status, guard, heal, buff, desc, derived_from }`) or plain strings. */
 export function skillRows(skills: unknown): SkillRow[] {
   return arr(skills)
     .map((s) => {
-      if (!isObj(s)) return { name: str(s), type: '', tail: '' };
+      if (!isObj(s)) return { name: str(s), type: '', tail: '', derivedFrom: '' };
       const heal = pick(s, 'heal');
       const status = pick(s, 'status');
       const tail = [pick(s, 'dmg'), status ? `状态:${status}` : '', flag(s.guard) ? '壁垒掩护' : '', heal ? `治疗:${heal}` : '', flag(s.buff) ? '战意鼓舞' : '', pick(s, 'desc')]
         .filter(Boolean)
         .join(' · ');
       const type = pick(s, 'type').toLowerCase();
-      return { name: pick(s, 'name'), type: SKILL_TYPE_LABEL[type] ?? '', tail };
+      const derivedFrom = pick(s, 'derived_from').replace(/^★+/, '').trim();
+      return { name: pick(s, 'name'), type: SKILL_TYPE_LABEL[type] ?? '', tail, derivedFrom };
     })
     .filter((s) => s.name);
+}
+
+const FORM_RANGE_LABEL: Record<string, string> = { melee: '近战', ranged: '远程' };
+
+function clipText(s: string, max = 60): string {
+  const chars = Array.from(s);
+  return chars.length > max ? `${chars.slice(0, max - 1).join('')}…` : s;
+}
+
+export interface FormInfo {
+  /** True when `form_state === 'transformed'`. */
+  transformed: boolean;
+  /** Active form badge label (`form_kit.key`, else `transformed_appearance.form_key`, else `'变身中'`). */
+  badge: string;
+  /** Tooltip on the active form badge (`transformed_appearance` prompt, else `form_kit.passive`). */
+  tooltip: string;
+  /** Combat range label (`近战` / `远程`) from `form_kit.range`, or `''`. */
+  range: string;
+  /** Active form passive from `form_kit.passive`, or `''`. */
+  passive: string;
+  /** Full transformed appearance text (used for tooltip / fallback snippet when `passive` is absent). */
+  appearance: string;
+  /** Clipped appearance snippet for compact display when `passive` is absent. */
+  appearanceSnippet: string;
+  /** Registered form keys saved in `form_skills` (shown when untransformed). */
+  availableForms: string[];
+}
+
+/** Polymorph / mascot form state (`form_state`, `transformed_appearance`, `form_kit`, `form_skills`); null when absent. */
+export function formInfo(rec: unknown): FormInfo | null {
+  if (!isObj(rec)) return null;
+  const transformed = str(rec.form_state).toLowerCase() === 'transformed';
+  if (transformed) {
+    const kit = obj(rec.form_kit);
+    const tf = rec.transformed_appearance;
+    const appearance = isObj(tf) ? pick(tf, 'prompt') : str(tf);
+    const tfKey = isObj(tf) ? pick(tf, 'form_key') : '';
+    const kitKey = pick(kit, 'key');
+    const passive = pick(kit, 'passive');
+    const rawRange = pick(kit, 'range');
+    const range = FORM_RANGE_LABEL[rawRange.toLowerCase()] ?? rawRange;
+    return {
+      transformed: true,
+      badge: kitKey || tfKey || '变身中',
+      tooltip: appearance || passive,
+      range,
+      passive,
+      appearance,
+      appearanceSnippet: appearance ? clipText(appearance) : '',
+      availableForms: [],
+    };
+  }
+  const availableForms = isObj(rec.form_skills)
+    ? Object.keys(rec.form_skills)
+        .map((k) => k.trim())
+        .filter(Boolean)
+    : [];
+  if (!availableForms.length) return null;
+  return {
+    transformed: false,
+    badge: '',
+    tooltip: '',
+    range: '',
+    passive: '',
+    appearance: '',
+    appearanceSnippet: '',
+    availableForms,
+  };
 }
 
 export interface GrowthInfo {
@@ -335,13 +405,21 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
   const inv = itemsList(rec.inventory ?? rec.items ?? rec.bag);
   const growth = growthInfo(rec.growth);
   const bond = bondInfo(rec.bond);
+  const form = formInfo(rec);
+  const formStripText = form?.transformed ? form.passive || form.appearanceSnippet : '';
+  const formStripTitle = form?.transformed ? form.passive || form.appearance : '';
   return (
-    <li className={'km-fighter' + (enemy ? ' is-enemy' : '')}>
+    <li className={'km-fighter' + (enemy ? ' is-enemy' : '') + (form?.transformed ? ' is-transformed' : '')}>
       <div className="km-fighter-head">
         <b>{enemy ? '👹 ' : ''}{pick(rec, 'display_name', 'name') || name}</b>
         {role && ROLE_LABEL[role] && <span className="kc-badge kc-badge-tag">{ROLE_LABEL[role]}</span>}
         {cls && <span className="kc-badge kc-badge-tag">{cls}</span>}
         {level !== null && <span className="kc-badge kc-badge-primary">Lv {level}</span>}
+        {form?.transformed && (
+          <span className="kc-badge kc-badge-accent km-form-badge" title={form.tooltip || undefined}>
+            🔮 {form.badge}
+          </span>
+        )}
         {status.map((s) => (
           <span key={s} className="kc-badge kc-badge-warn">
             {s}
@@ -355,6 +433,21 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
         )}
       </div>
       {hp !== null && max ? <HpBar hp={hp} max={max} /> : null}
+      {form?.transformed && (form.range || formStripText) && (
+        <div className="km-form-strip" aria-label="变身形态">
+          {form.range && <span className="kc-badge kc-badge-tag km-form-range">{form.range}</span>}
+          {formStripText && (
+            <span className="km-form-text" title={formStripTitle || undefined}>
+              {formStripText}
+            </span>
+          )}
+        </div>
+      )}
+      {form && !form.transformed && form.availableForms.length > 0 && (
+        <div className="km-form-avail" aria-label="可整活变身">
+          <span className="kc-badge kc-badge-tag km-form-pill">可整活变身：{form.availableForms.join('、')}</span>
+        </div>
+      )}
       {attrRows.length > 0 && (
         <div className="km-attrs">
           {attrRows.map(([l, v]) => (
@@ -393,9 +486,14 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
       {skills.length > 0 && (
         <ul className="km-skills" aria-label="配招">
           {skills.map((s, i) => (
-            <li key={i}>
+            <li key={i} title={s.derivedFrom ? `由主招式「${s.derivedFrom}」派生` : undefined}>
               <b>{s.name}</b>
               {s.type && <span className="kc-badge kc-badge-tag km-skill-type">{s.type}</span>}
+              {s.derivedFrom && (
+                <span className="kc-badge kc-badge-accent km-skill-derived" title={`由主招式「${s.derivedFrom}」派生`}>
+                  派生自 {s.derivedFrom}
+                </span>
+              )}
               {s.tail && <span> · {s.tail}</span>}
             </li>
           ))}

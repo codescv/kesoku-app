@@ -4,7 +4,7 @@ import type { Segment } from '@kesoku/protocol';
 import { GalgameStage, ModePanel, PeekSheet, latestCg, latestTurn, previewLine } from '../../src/features/modes';
 import type { ChatItem } from '../../src/lib/types';
 import { useStore } from '../../src/lib/store';
-import { bondInfo, equipRows, growthInfo } from '../../src/features/modes/panels/ModePanel';
+import { bondInfo, equipRows, formInfo, growthInfo, skillRows } from '../../src/features/modes/panels/ModePanel';
 import { makeCtx } from '../cards/ctx';
 
 function assistant(key: string, segments: Segment[], extra: Partial<ChatItem> = {}): ChatItem {
@@ -470,8 +470,8 @@ describe('ModePanel', () => {
       enemies: { 敌一: { hp: 30, max_hp: 30 } },
     };
     const { container } = render(<ModePanel panel="party" stateFiles={{ 'game/party.json': base }} modePrefs={{}} ctx={ctx} />);
-    expect(container.querySelector('.km-combo-row, .km-bond, .km-growth, .km-equip-tags')).toBeNull();
-    expect(screen.queryByText(/专属|★|合体技|觉醒|待领/)).toBeNull();
+    expect(container.querySelector('.km-combo-row, .km-bond, .km-growth, .km-equip-tags, .km-form-badge, .km-form-strip, .km-form-avail, .km-skill-derived')).toBeNull();
+    expect(screen.queryByText(/专属|★|合体技|觉醒|待领|变身中|可整活变身|派生自/)).toBeNull();
     expect([...container.querySelectorAll('.km-sub')].map((n) => n.textContent)).toEqual(['敌方']);
     const html = container.innerHTML;
     cleanup();
@@ -480,7 +480,7 @@ describe('ModePanel', () => {
       ...base,
       combo: 'x',
       combos: 'nope',
-      members: { 甲: { ...base.members.甲, growth: [1], bond: 'x' } },
+      members: { 甲: { ...base.members.甲, growth: [1], bond: 'x', form_state: 'bad', form_kit: 'nope', form_skills: [], transformed_appearance: null } },
     };
     const again = render(<ModePanel panel="party" stateFiles={{ 'game/party.json': malformed }} modePrefs={{}} ctx={ctx} />);
     expect(again.container.innerHTML).toBe(html);
@@ -488,6 +488,162 @@ describe('ModePanel', () => {
     // An empty combos list renders no section either.
     const empty = render(<ModePanel panel="party" stateFiles={{ 'game/party.json': { ...base, combo: 2, combos: [] } }} modePrefs={{}} ctx={ctx} />);
     expect(empty.container.innerHTML).toBe(html);
+  });
+
+  it('formInfo / skillRows: defensive defaults, kit fields, and derived_from parsing', () => {
+    expect(formInfo(undefined)).toBeNull();
+    expect(formInfo('x')).toBeNull();
+    expect(formInfo({ hp: 20 })).toBeNull();
+    expect(formInfo({ form_state: 'base', form_skills: {} })).toBeNull();
+    expect(formInfo({ form_state: 'base', form_skills: ['bad'] })).toBeNull();
+
+    // Transformed with full form_kit + transformed_appearance object.
+    expect(
+      formInfo({
+        form_state: 'transformed',
+        transformed_appearance: { prompt: '戴着护目镜的巨大绒毛偶', form_key: '形态甲' },
+        form_kit: { key: '形态甲', range: 'ranged', passive: '悬浮规避地面效果', theme: '滑稽远程', skill_mode: 'derive_from_base' },
+      }),
+    ).toEqual({
+      transformed: true,
+      badge: '形态甲',
+      tooltip: '戴着护目镜的巨大绒毛偶',
+      range: '远程',
+      passive: '悬浮规避地面效果',
+      appearance: '戴着护目镜的巨大绒毛偶',
+      appearanceSnippet: '戴着护目镜的巨大绒毛偶',
+      availableForms: [],
+    });
+
+    // Transformed free-text (no form_kit): falls back to 变身中 and clips long appearance snippet.
+    const longPrompt = '甲'.repeat(70);
+    const freeForm = formInfo({
+      form_state: 'transformed',
+      transformed_appearance: { prompt: longPrompt },
+    });
+    expect(freeForm).toMatchObject({
+      transformed: true,
+      badge: '变身中',
+      tooltip: longPrompt,
+      range: '',
+      passive: '',
+      appearance: longPrompt,
+    });
+    expect(Array.from(freeForm!.appearanceSnippet)).toHaveLength(60);
+    expect(freeForm!.appearanceSnippet.endsWith('…')).toBe(true);
+
+    // Transformed without appearance prompt falls back to form_kit.passive for tooltip.
+    expect(
+      formInfo({
+        form_state: 'transformed',
+        form_kit: { key: '形态乙', range: 'melee', passive: '近身护盾+1' },
+      }),
+    ).toMatchObject({ badge: '形态乙', tooltip: '近身护盾+1', range: '近战', passive: '近身护盾+1' });
+
+    // Untransformed with saved form_skills lists non-empty form keys.
+    expect(
+      formInfo({
+        form_state: 'base',
+        form_skills: { 形态甲: [], '  ': [], 形态乙: [{ name: '招式' }] },
+      }),
+    ).toMatchObject({ transformed: false, availableForms: ['形态甲', '形态乙'] });
+
+    // skillRows extracts derived_from cleanly alongside regular skills.
+    expect(
+      skillRows([
+        { name: '变身重击', type: 'attack', dmg: '1d8+2', derived_from: '★基础重击' },
+        { name: '普通斩', type: 'attack', dmg: '1d6' },
+        '纯文本技能',
+      ]),
+    ).toEqual([
+      { name: '变身重击', type: '攻击', tail: '1d8+2', derivedFrom: '基础重击' },
+      { name: '普通斩', type: '攻击', tail: '1d6', derivedFrom: '' },
+      { name: '纯文本技能', type: '', tail: '', derivedFrom: '' },
+    ]);
+  });
+
+  it('party panel: displays transformed mascot form, passive/fallback strip, derived_from skills, and untransformed available forms', () => {
+    const ctx = makeCtx();
+    const party = {
+      members: {
+        甲: {
+          hp: 24,
+          max_hp: 24,
+          role: 'player',
+          form_state: 'transformed',
+          transformed_appearance: { prompt: '圆滚滚的绒毛玩偶造型', form_key: '绒毛偶' },
+          form_kit: { key: '绒毛偶', range: 'ranged', passive: '远程弹射不吃反击', theme: '弹跳', skill_mode: 'derive_from_base' },
+          form_skills: { 备用形态: [{ name: '备用招' }] },
+          skills: [
+            { name: '绒毛连弹', type: 'attack', dmg: '1d8+2', derived_from: '主招一' },
+            { name: '临时闪避', type: 'guard', guard: true },
+          ],
+        },
+        乙: {
+          hp: 18,
+          max_hp: 20,
+          role: 'active',
+          form_state: 'transformed',
+          transformed_appearance: { prompt: '套着发光纸箱的神秘身影' },
+          form_kit: { range: 'melee' },
+          skills: [{ name: '纸箱冲撞', type: 'attack', dmg: '1d6' }],
+        },
+        丙: {
+          hp: 20,
+          max_hp: 20,
+          role: 'active',
+          form_state: 'base',
+          form_skills: { 形态甲: [{ name: '招甲' }], 形态乙: [{ name: '招乙' }] },
+          skills: [{ name: '基础斩', type: 'attack', dmg: '1d8' }],
+        },
+        丁: {
+          hp: 16,
+          max_hp: 16,
+          role: 'support',
+          skills: [{ name: '后勤支援', type: 'buff', buff: true }],
+        },
+      },
+    };
+    const { container } = render(<ModePanel panel="party" stateFiles={{ 'game/party.json': party }} modePrefs={{}} ctx={ctx} />);
+    const fighters = [...container.querySelectorAll('.km-fighter')];
+    expect(fighters).toHaveLength(4);
+
+    // 1. 甲: transformed with full form_kit + derived_from skill.
+    const f1 = within(fighters[0] as HTMLElement);
+    expect(fighters[0]!.classList.contains('is-transformed')).toBe(true);
+    const badge1 = f1.getByText('🔮 绒毛偶');
+    expect(badge1.className).toContain('km-form-badge');
+    expect(badge1.getAttribute('title')).toBe('圆滚滚的绒毛玩偶造型');
+    const strip1 = f1.getByLabelText('变身形态');
+    expect(within(strip1).getByText('远程')).toBeTruthy();
+    expect(within(strip1).getByText('远程弹射不吃反击')).toBeTruthy();
+    // Does not show untransformed 可整活变身 pill while transformed.
+    expect(f1.queryByLabelText('可整活变身')).toBeNull();
+    // Derived skill shows indicator + tooltip; regular skill does not.
+    const derivedBadge = f1.getByText('派生自 主招一');
+    expect(derivedBadge.getAttribute('title')).toBe('由主招式「主招一」派生');
+    expect(derivedBadge.closest('li')?.getAttribute('title')).toBe('由主招式「主招一」派生');
+    expect(f1.getByText('临时闪避').closest('li')?.getAttribute('title')).toBeNull();
+
+    // 2. 乙: transformed without form_kit.key or passive → fallback badge 变身中 + range & appearance snippet strip.
+    const f2 = within(fighters[1] as HTMLElement);
+    expect(fighters[1]!.classList.contains('is-transformed')).toBe(true);
+    const badge2 = f2.getByText('🔮 变身中');
+    expect(badge2.getAttribute('title')).toBe('套着发光纸箱的神秘身影');
+    const strip2 = f2.getByLabelText('变身形态');
+    expect(within(strip2).getByText('近战')).toBeTruthy();
+    expect(within(strip2).getByText('套着发光纸箱的神秘身影')).toBeTruthy();
+
+    // 3. 丙: untransformed with saved form_skills → subtle compact pill.
+    const f3 = within(fighters[2] as HTMLElement);
+    expect(fighters[2]!.classList.contains('is-transformed')).toBe(false);
+    expect(f3.queryByLabelText('变身形态')).toBeNull();
+    const avail3 = f3.getByLabelText('可整活变身');
+    expect(within(avail3).getByText('可整活变身：形态甲、形态乙')).toBeTruthy();
+
+    // 4. 丁: legacy member without any form fields → no form UI at all.
+    expect(fighters[3]!.classList.contains('is-transformed')).toBe(false);
+    expect(fighters[3]!.querySelector('.km-form-badge, .km-form-strip, .km-form-avail, .km-skill-derived')).toBeNull();
   });
 
   it('party panel: phase-aware roster ordering (normal: active only; combat: active -> enemies; camp: active -> reserve)', () => {
