@@ -468,7 +468,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
       Object.values(sessions)
         .filter((s) => allChannels || (s.chatbot_id ?? 'app') === 'app')
         .filter((s) => !roleFilter || s.role === roleFilter)
-        .sort((a, b) => b.updated_at - a.updated_at),
+        .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0) || b.session_id.localeCompare(a.session_id)),
     [sessions, allChannels, roleFilter],
   );
   const recentList = useMemo(() => list.slice(0, RECENT_SESSIONS_LIMIT), [list]);

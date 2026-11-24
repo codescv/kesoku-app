@@ -89,7 +89,7 @@ export function Launchpad() {
   const sessions = useStore((s) => s.sessions);
   const recent = Object.values(sessions)
     .filter((x) => (x.chatbot_id ?? 'app') === 'app')
-    .sort((a, b) => b.updated_at - a.updated_at)
+    .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0) || b.session_id.localeCompare(a.session_id))
     .slice(0, 2);
   const policy = useStore((s) => (info ? s.policies.policies[info.id] : undefined));
   const personas = useStore((s) => s.personas);

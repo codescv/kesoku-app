@@ -102,6 +102,36 @@ describe('store reducers', () => {
     expect(st.headSeq[S]).toBe(42);
     expect(st.previews[S]?.text).toBe('进行中');
     expect(st.finalized.has('u1')).toBe(true);
+    expect(st.sessions[S].updated_at).toBe(2);
+  });
+
+  it('bumps session updated_at on addLocalUser, message.user, message.final, and session.updated without regressing', () => {
+    actions.setSessions([
+      { session_id: 'old_created', title: 'Old', role: 'asuka', chatbot_id: 'app', created_at: 100, updated_at: 100 },
+      { session_id: 'new_created', title: 'New', role: 'asuka', chatbot_id: 'app', created_at: 500, updated_at: 500 },
+    ], true);
+
+    // Sending a message in the older-created session immediately bumps its updated_at above newer-created ones.
+    actions.addLocalUser('old_created', { key: 'c:1', kind: 'user', client_msg_id: 'cm1', text: 'ping', ts: 600, status: 'sending' });
+    expect(useStore.getState().sessions.old_created.updated_at).toBe(600);
+
+    // Server message.user and message.final advance updated_at monotonically.
+    actions.applySessionEvent('old_created', 'message.user', { message_id: 'u1', client_msg_id: 'cm1', text: 'ping', attachments: [], ts: 605 }, 1);
+    expect(useStore.getState().sessions.old_created.updated_at).toBe(605);
+
+    actions.applySessionEvent('old_created', 'message.final', { message_id: 'a1', turn_id: 'u1', segments: [{ type: 'text', markdown: 'pong' }], raw_markdown: 'pong', ts: 620 }, 2);
+    expect(useStore.getState().sessions.old_created.updated_at).toBe(620);
+
+    // A stale replay or older session.updated must not regress updated_at.
+    actions.applySessionEvent('old_created', 'message.user', { message_id: 'u0', text: 'earlier', attachments: [], ts: 120 }, 3);
+    actions.applySessionEvent('old_created', 'session.updated', { session_id: 'old_created', title: 'Old Renamed', updated_at: 610 }, 4);
+    expect(useStore.getState().sessions.old_created.updated_at).toBe(620);
+    expect(useStore.getState().sessions.old_created.title).toBe('Old Renamed');
+
+    const ordered = Object.values(useStore.getState().sessions)
+      .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0) || b.session_id.localeCompare(a.session_id))
+      .map((x) => x.session_id);
+    expect(ordered).toEqual(['old_created', 'new_created']);
   });
 });
 

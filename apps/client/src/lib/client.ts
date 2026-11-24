@@ -49,6 +49,8 @@ function schedulePersist(sid: string) {
       if (items) void saveMessages(sid, items).catch(() => {});
       const seq = s.lastSeq[sid];
       if (seq !== undefined) void setCursor(sid, seq).catch(() => {});
+      const sess = s.sessions[sid];
+      if (sess) void db.sessions.put({ session_id: sid, data: sess, updated_at: sess.updated_at }).catch(() => {});
     }, 400),
   );
 }

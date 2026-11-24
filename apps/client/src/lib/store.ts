@@ -274,8 +274,10 @@ export const actions = {
       const proposals = { ...s.proposals };
       for (const pr of p.pending_proposals ?? []) proposals[pr.proposal_id] = pr;
       const nestedPrefs = (p as { prefs?: { mode_prefs?: Record<string, unknown>; llm_override?: LlmOverride | null } }).prefs;
+      const latestMsgTs = items.reduce((m, it) => (Number.isFinite(it.ts) && it.ts > m ? it.ts : m), 0);
+      const nextUpdatedAt = Math.max(s.sessions[sid]?.updated_at ?? 0, p.session.updated_at ?? 0, latestMsgTs);
       return {
-        sessions: { ...s.sessions, [sid]: { ...s.sessions[sid], ...p.session } },
+        sessions: { ...s.sessions, [sid]: { ...s.sessions[sid], ...p.session, updated_at: nextUpdatedAt } },
         items: { ...s.items, [sid]: sortItems([...items, ...pendingLocal]) },
         stateFiles: { ...s.stateFiles, [sid]: { ...(p.state_files ?? {}) } },
         modePrefs: { ...s.modePrefs, [sid]: { ...(p.mode_prefs ?? nestedPrefs?.mode_prefs ?? {}) } },
@@ -303,7 +305,16 @@ export const actions = {
       const pv = s.previews[sid];
       // Discord-style typing indicator with 0 ms latency: show it before the engine acks / streams.
       const typing = pv && !pv.interrupted ? pv : typingPreview(item.client_msg_id || item.key);
-      return { items: { ...s.items, [sid]: upsertItem(s.items[sid], item) }, previews: { ...s.previews, [sid]: typing } };
+      const existing = s.sessions[sid];
+      const nextSessions =
+        existing && Number.isFinite(item.ts) && item.ts > (existing.updated_at ?? 0)
+          ? { ...s.sessions, [sid]: { ...existing, updated_at: item.ts } }
+          : undefined;
+      return {
+        ...(nextSessions ? { sessions: nextSessions } : {}),
+        items: { ...s.items, [sid]: upsertItem(s.items[sid], item) },
+        previews: { ...s.previews, [sid]: typing },
+      };
     });
   },
   markUser(sid: string, clientMsgId: string, patch: Partial<ChatItem>) {
@@ -363,6 +374,9 @@ export const actions = {
             sender: p.sender as ChatItem['sender'],
           };
           patch.items = { ...s.items, [sid]: upsertItem(s.items[sid], item) };
+          if (s.sessions[sid] && Number.isFinite(p.ts) && p.ts > (s.sessions[sid]!.updated_at ?? 0)) {
+            patch.sessions = { ...s.sessions, [sid]: { ...s.sessions[sid]!, updated_at: p.ts } };
+          }
           // The agent now works on this message: show its typing indicator (replacing an optimistic or interrupted one).
           const pv = s.previews[sid];
           if (!s.finalized.has(p.message_id) && pv?.turn_id !== p.message_id) {
@@ -397,6 +411,9 @@ export const actions = {
             sender: p.sender as ChatItem['sender'],
           };
           patch.items = { ...s.items, [sid]: upsertItem(s.items[sid], item) };
+          if (s.sessions[sid] && Number.isFinite(p.ts) && p.ts > (s.sessions[sid]!.updated_at ?? 0)) {
+            patch.sessions = { ...s.sessions, [sid]: { ...s.sessions[sid]!, updated_at: p.ts } };
+          }
           patch.finalized = finalized;
           // Any real reply ends the typing indicator, even when its turn_id differs from the preview's
           // (optimistic client_msg_id, or a self-healing retry finalizing under a new turn id).
@@ -446,9 +463,16 @@ export const actions = {
             patch.sessions = sessions;
           } else {
             const prev = s.sessions[sid];
+            const incomingTs = typeof p.updated_at === 'number' && Number.isFinite(p.updated_at) ? p.updated_at : undefined;
+            const updatedAt = Math.max(prev?.updated_at ?? 0, incomingTs ?? 0) || Date.now() / 1000;
             patch.sessions = {
               ...s.sessions,
-              [sid]: { ...(prev ?? { session_id: sid, title: '', role: 'default', chatbot_id: 'app' }), ...p, session_id: sid } as SessionSummary,
+              [sid]: {
+                ...(prev ?? { session_id: sid, title: '', role: 'default', chatbot_id: 'app' }),
+                ...p,
+                session_id: sid,
+                updated_at: updatedAt,
+              } as SessionSummary,
             };
           }
           break;
