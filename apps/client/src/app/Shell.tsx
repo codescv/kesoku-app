@@ -15,6 +15,7 @@ import { useIsDesktop, useIsTablet } from './useMedia';
 import { SessionPanel } from '../features/session/SessionPanel';
 import { MessageList } from '../features/session/MessageList';
 import { Composer } from '../features/session/Composer';
+import { SelectionQuote } from '../features/session/SelectionQuote';
 import { Launchpad } from '../features/session/Launchpad';
 import { makeCardContext } from '../features/session/cardContext';
 import { overlays, useOverlays } from '../features/session/overlays';
@@ -799,6 +800,7 @@ export function Shell() {
               <ModeIcon mode="galgame" size={18} /> 回到 CG 舞台
             </button>
           )}
+          <SelectionQuote sessionId={sid} disabled={showLaunchpad || !sid} />
         </main>
         {!galStage && <Composer sessionId={sid} modeId={showLaunchpad ? 'chat' : modeId} roleName={roleName} />}
         {galStage && <Composer sessionId={sid} modeId={modeId} roleName={roleName} />}

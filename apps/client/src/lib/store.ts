@@ -58,6 +58,13 @@ export interface Toast {
   tone?: 'info' | 'error';
 }
 
+export interface ComposerQuote {
+  text: string;
+  speaker?: string;
+  sessionId?: string | null;
+  n: number;
+}
+
 export interface KesokuState {
   conn: { status: SocketStatus; engineOnline: boolean; latencyMs: number | null; deviceId: string | null; retryInMs?: number; engineSince?: number };
   auth: 'unknown' | 'needed' | 'ok';
@@ -96,6 +103,8 @@ export interface KesokuState {
     draftRole: string | null;
     pendingMode: { sessionId: string; modeId: string; at: number } | null;
     composerInsert: { text: string; n: number } | null;
+    /** Active text quote attached to the composer reply bar. */
+    composerQuote: ComposerQuote | null;
     /** Session whose pinned notes (`notes.md`) sheet is open, or null. */
     sessionNotesId: string | null;
   };
@@ -141,7 +150,7 @@ export function initialState(): KesokuState {
     avatarJobs: {},
     searchHits: [],
     settings: { ...DEFAULT_SETTINGS },
-    ui: { drawerOpen: false, launchpad: true, inspector: null, screen: 'chat', stageView: 'stage', roleFilter: null, draftRole: null, pendingMode: null, composerInsert: null, sessionNotesId: null },
+    ui: { drawerOpen: false, launchpad: true, inspector: null, screen: 'chat', stageView: 'stage', roleFilter: null, draftRole: null, pendingMode: null, composerInsert: null, composerQuote: null, sessionNotesId: null },
     toasts: [],
   };
 }

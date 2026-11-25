@@ -4,6 +4,7 @@ import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { compressImage, HoldRecorder } from '../../lib/files';
 import { pickImages } from '../../native/camera';
+import { formatQuotedMessage } from './SelectionQuote';
 
 function fmtSec(sec: number): string {
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
@@ -26,6 +27,8 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
   const [busy, setBusy] = useState(false);
   const online = useStore((s) => s.conn.status === 'online');
   const insert = useStore((s) => s.ui.composerInsert);
+  const quote = useStore((s) => s.ui.composerQuote);
+  const activeQuote = quote && (!quote.sessionId || quote.sessionId === sessionId) ? quote : null;
   const taRef = useRef<HTMLTextAreaElement>(null);
   const recRef = useRef<HoldRecorder | null>(null);
   const meta = modeMeta(modeId);
@@ -35,6 +38,17 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
     setText((t) => (t ? `${t} ${insert.text}` : insert.text));
     taRef.current?.focus();
   }, [insert]);
+
+  useEffect(() => {
+    if (!activeQuote) return;
+    taRef.current?.focus();
+  }, [activeQuote?.n]);
+
+  useEffect(() => {
+    if (quote?.sessionId && quote.sessionId !== sessionId) {
+      actions.setUi({ composerQuote: null });
+    }
+  }, [sessionId, quote?.sessionId]);
 
   useEffect(() => {
     const ta = taRef.current;
@@ -65,7 +79,7 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
     [],
   );
 
-  const placeholder = modeId === 'chat' ? `发消息给${roleName}...` : meta.placeholder;
+  const placeholder = activeQuote ? '针对引用内容回复...' : modeId === 'chat' ? `发消息给${roleName}...` : meta.placeholder;
   const hasText = text.trim().length > 0;
   const hasFiles = files.length > 0;
   const canSend = online && !busy && (hasText || hasFiles);
@@ -86,10 +100,14 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
         if (modeId === 'pokemon_assistant') msg = '识别画面中的宝可梦并给出弱点';
         else if (modeId === 'translator') msg = '翻译图片中的文字';
       }
+      if (activeQuote) {
+        msg = formatQuotedMessage(activeQuote.text, msg);
+      }
       // Translator voice: send the bare audio (msg = ''); the engine transcribes it and
       // auto-detects the direction (native → foreign or foreign → native).
       setText('');
       setFiles([]);
+      if (activeQuote) actions.setUi({ composerQuote: null });
       await kesoku.sendMessage(sid, msg, attachments);
     } catch {
       actions.toast('上传失败，请重试', 'error');
@@ -146,6 +164,28 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
 
   return (
     <div className="k-composer" style={{ ['--mode' as string]: meta.color }}>
+      {activeQuote && (
+        <div className="k-composer-quote" data-testid="composer-quote">
+          <div className="k-composer-quote-body">
+            <div className="k-composer-quote-head">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M9 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v6a4 4 0 0 1-4 4" />
+                <path d="M21 17h-4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v6a4 4 0 0 1-4 4" />
+              </svg>
+              <span>{activeQuote.speaker ? `引用 · ${activeQuote.speaker}` : '引用回复'}</span>
+            </div>
+            <div className="k-composer-quote-text">{activeQuote.text}</div>
+          </div>
+          <button
+            type="button"
+            className="k-composer-quote-close"
+            aria-label="取消引用"
+            onClick={() => actions.setUi({ composerQuote: null })}
+          >
+            <UiIcon name="close" size={14} />
+          </button>
+        </div>
+      )}
       {files.length > 0 && (
         <div className="k-composer-files">
           {files.map((f, i) => (
@@ -181,6 +221,11 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
             placeholder={placeholder}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
+              if (e.key === 'Escape' && activeQuote) {
+                e.preventDefault();
+                actions.setUi({ composerQuote: null });
+                return;
+              }
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 if (canSend) void send();

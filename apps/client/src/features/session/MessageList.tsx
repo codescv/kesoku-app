@@ -14,6 +14,7 @@ import { makeCardContext } from './cardContext';
 import { explainLexical } from '../../lib/lexical';
 import { overlays } from './overlays';
 import { useIsDesktop } from '../../app/useMedia';
+import { splitUserQuote } from './SelectionQuote';
 
 /** Format a message timestamp (`ts` in Unix seconds or ms) as `HH:mm`, `昨天 HH:mm`, `MM-DD HH:mm`, or `YYYY-MM-DD HH:mm`. */
 export function formatMessageTime(ts: number | undefined, nowMs = Date.now()): string {
@@ -161,9 +162,15 @@ export function UserAttachmentItem({ a, index, sessionId, messageId }: { a: Atta
 
 function UserBubble({ item, sessionId }: { item: ChatItem; sessionId: string }) {
   const timeLabel = formatMessageTime(item.ts);
+  const { quote, reply } = splitUserQuote(item.text);
   return (
     <div className={'k-row k-row-user' + (item.status === 'failed' ? ' is-failed' : '')}>
       <div className="k-bubble k-bubble-user">
+        {quote && (
+          <blockquote className="k-user-quote" data-testid="user-quote">
+            {quote}
+          </blockquote>
+        )}
         {item.attachments?.length ? (
           <div className="k-attach-row">
             {item.attachments.map((a, i) => (
@@ -171,7 +178,7 @@ function UserBubble({ item, sessionId }: { item: ChatItem; sessionId: string }) 
             ))}
           </div>
         ) : null}
-        {item.text && <div className="k-user-text">{item.text}</div>}
+        {reply && <div className="k-user-text">{reply}</div>}
         {item.status === 'sending' && <span className="k-sending" aria-label="发送中">···</span>}
       </div>
       {timeLabel && item.status !== 'failed' && (
