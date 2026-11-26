@@ -12,6 +12,7 @@ import {
   type UserProfile,
 } from '@kesoku/protocol';
 import { detectActiveMode } from '@kesoku/hud';
+import { setUiLanguage, type LanguageSetting } from '@kesoku/ui';
 import type { SocketStatus } from './ws';
 import type { ChatItem, InspectorPanel, PolicyState, StreamPreview, TurnEvent } from './types';
 import { applyClear, applyDelta, fromActiveTurn, type DeltaPayload } from '../features/stream/previewBuffer';
@@ -38,15 +39,16 @@ export interface AvatarJob {
 }
 
 export interface Settings {
+  language: LanguageSetting;
   theme: 'system' | 'light' | 'dark';
   fontSize: 'standard' | 'large';
   allChannels: boolean;
   ttsEngine: 'native' | 'server';
   defaultModel: LlmOverride;
   translatorModel: string;
-  /** 翻译模式 · 母语 (TRANSLATOR_LANGS code). */
+  /** Translator mode native language (TRANSLATOR_LANGS code). */
   translatorNativeLang: string;
-  /** 翻译模式 · 常用外语 (quick-switch pills; at least one). */
+  /** Translator mode foreign languages (quick-switch pills; at least one). */
   translatorForeignLangs: string[];
 }
 
@@ -112,6 +114,7 @@ export interface KesokuState {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  language: 'system',
   theme: 'system',
   fontSize: 'standard',
   allChannels: false,
@@ -234,6 +237,7 @@ let toastSeq = 0;
 export const actions = {
   reset() {
     set(initialState());
+    setUiLanguage(DEFAULT_SETTINGS.language);
   },
   toast(text: string, tone: Toast['tone'] = 'info') {
     const id = ++toastSeq;
@@ -257,6 +261,7 @@ export const actions = {
   },
   setSettings(patch: Partial<Settings>) {
     set((s) => ({ settings: { ...s.settings, ...patch } }));
+    if (patch.language !== undefined) setUiLanguage(patch.language);
   },
   setSessions(list: SessionSummary[], replace = false) {
     set((s) => {

@@ -1,3 +1,4 @@
+import { useT } from '@kesoku/ui';
 import type { CardProps } from '../types';
 import { CardShell, PhotoTag } from '../parts';
 import { arr, isObj, num, obj, photoNumber, pick, type Dict } from '../util';
@@ -7,6 +8,7 @@ import { arr, isObj, num, obj, photoNumber, pick, type Dict } from '../util';
  * kind — it is shown to the waiter, never voiced. Huge local-language lines + allergy banner + zh note.
  */
 export function OrderCardBody({ data, ctx, fullscreen }: CardProps<Dict> & { fullscreen?: boolean }) {
+  const t = useT();
   const d = obj(data);
   const headline = pick(d, 'headline_local', 'greeting_local', 'title_local');
   const banner = pick(d, 'banner_local', 'allergy_local', 'dietary_local');
@@ -27,7 +29,7 @@ export function OrderCardBody({ data, ctx, fullscreen }: CardProps<Dict> & { ful
           )}
           {bannerZh && (
             <div className="kc-show-zh" lang="zh">
-              中文核对：{bannerZh}
+              {t('card.orderCheckNote', { text: bannerZh })}
             </div>
           )}
         </div>
@@ -73,15 +75,16 @@ export function OrderCardBody({ data, ctx, fullscreen }: CardProps<Dict> & { ful
 }
 
 export function OrderCard({ data, ctx }: CardProps<Dict>) {
+  const t = useT();
   return (
     <CardShell
       kind="order_card"
       className="kc-showcard"
       head={
         <>
-          <span className="kc-badge kc-badge-ink">🧾 店员点单卡</span>
+          <span className="kc-badge kc-badge-ink">{t('card.orderTitle')}</span>
           <button type="button" className="kc-btn kc-btn-ink" onClick={() => ctx.openFullscreen(<OrderCardBody data={data} ctx={ctx} fullscreen />)}>
-            ⛶ 全屏出示
+            {t('card.fullscreenShow')}
           </button>
         </>
       }

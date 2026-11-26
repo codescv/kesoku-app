@@ -1,0 +1,13 @@
+/* Kesoku native UI strings (Simplified Chinese) */
+"intent.open_translator.title" = "打开通用翻译";
+"intent.open_translator.short_title" = "通用翻译";
+"intent.open_travel.title" = "打开旅游助手";
+"intent.open_travel.short_title" = "旅游助手";
+"intent.open_pokemon.title" = "打开宝可梦助手";
+"intent.open_pokemon.short_title" = "宝可梦助手";
+"qr.hint" = "对准终端上的 kesoku app pair 二维码";
+"qr.cancel" = "取消";
+"qr.pick_from_library" = "从相册识别二维码";
+"qr.not_found" = "未在所选图片中识别到二维码";
+"dialog.cancel" = "取消";
+"dialog.ok" = "确定";

@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { MemoryPolicy, ModeId } from '@kesoku/protocol';
 import { HUD_PANELS, ModeHud, PolicyBadge, comboGauge, formatRemaining, partyCombos, type ModeHudProps } from '../src';
+import { setUiLanguage } from '@kesoku/ui';
+import { beforeAll as __beforeAll, afterAll as __afterAll } from 'vitest';
+
+__beforeAll(() => setUiLanguage('zh-CN'));
+__afterAll(() => setUiLanguage('system'));
 
 afterEach(() => {
   cleanup();

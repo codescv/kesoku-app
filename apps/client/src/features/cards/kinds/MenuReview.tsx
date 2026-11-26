@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useLocale, useT } from '@kesoku/ui';
 import type { CardProps } from '../types';
 import { CardShell, PhotoTag } from '../parts';
 import { arr, isObj, obj, photoNumber, pick, strList, type Dict } from '../util';
@@ -46,6 +47,8 @@ export function dishesOf(data: Dict): Dish[] {
 
 /** Menu review (Screen 07): selectable dish rows; hazards are red and locked; CTA builds the order request. */
 export function MenuReview({ data, ctx }: CardProps<Dict>) {
+  const t = useT();
+  const locale = useLocale();
   const d = obj(data);
   const dishes = useMemo(() => dishesOf(d), [d]);
   const [qty, setQty] = useState<Record<string, number>>(() => {
@@ -54,7 +57,7 @@ export function MenuReview({ data, ctx }: CardProps<Dict>) {
     return init;
   });
   const chosen = dishes.filter((x) => x.verdict !== 'hazard' && (qty[x.key] ?? 0) > 0);
-  const title = pick(d, 'title') || '菜单排雷';
+  const title = pick(d, 'title') || t('card.menuReviewFallback');
 
   const toggle = (x: Dish) => {
     if (x.verdict === 'hazard') return;
@@ -64,7 +67,7 @@ export function MenuReview({ data, ctx }: CardProps<Dict>) {
 
   const send = () => {
     if (!chosen.length) return;
-    ctx.sendText(`生成店员点单卡：${chosen.map((x) => `${x.name}×${qty[x.key]}`).join('、')}`);
+    ctx.sendText(t('card.orderPrompt', { items: chosen.map((x) => `${x.name}×${qty[x.key]}`).join(locale === 'en' ? ', ' : '、') }));
   };
 
   return (
@@ -73,7 +76,7 @@ export function MenuReview({ data, ctx }: CardProps<Dict>) {
         {dishes.map((x) => {
           const n = qty[x.key] ?? 0;
           const on = n > 0 && x.verdict !== 'hazard';
-          const badge = x.verdict === 'pick' ? '★ 主推' : x.verdict === 'hazard' ? '⚠️ 排雷' : '可选';
+          const badge = x.verdict === 'pick' ? t('card.verdictPick') : x.verdict === 'hazard' ? t('card.verdictHazard') : t('card.verdictOk');
           return (
             <li key={x.key} className={`kc-dish is-${x.verdict}` + (on ? ' is-on' : '')}>
               <label className="kc-dish-main">
@@ -83,14 +86,14 @@ export function MenuReview({ data, ctx }: CardProps<Dict>) {
                   checked={on}
                   disabled={x.verdict === 'hazard'}
                   onChange={() => toggle(x)}
-                  aria-label={`${x.verdict === 'hazard' ? '排雷，不可选' : '选择'} ${x.name}`}
+                  aria-label={x.verdict === 'hazard' ? t('card.dishCheckHazard', { name: x.name }) : t('card.dishCheckSelect', { name: x.name })}
                 />
                 <span className="kc-dish-body">
                   <span className="kc-dish-badges">
                     <span className={`kc-badge kc-badge-${x.verdict === 'pick' ? 'ok' : x.verdict === 'hazard' ? 'danger' : 'neutral'}`}>{badge}</span>
-                    {x.tags.map((t) => (
-                      <span key={t} className={`kc-badge kc-badge-${x.verdict === 'hazard' ? 'danger-soft' : 'tag'}`}>
-                        {t}
+                    {x.tags.map((tg) => (
+                      <span key={tg} className={`kc-badge kc-badge-${x.verdict === 'hazard' ? 'danger-soft' : 'tag'}`}>
+                        {tg}
                       </span>
                     ))}
                   </span>
@@ -110,12 +113,12 @@ export function MenuReview({ data, ctx }: CardProps<Dict>) {
                 <PhotoTag n={photoNumber(x.raw.photo_index)} bbox={x.raw.bbox} position={pick(x.raw, 'position', 'photo_pos')} data={d} ctx={ctx} />
                 {x.price && <span className="kc-dish-price">{x.price}</span>}
                 {on && (
-                  <span className="kc-stepper" aria-label={`${x.name} 数量`}>
-                    <button type="button" onClick={() => bump(x, -1)} aria-label="减少">
+                  <span className="kc-stepper" aria-label={t('card.dishQtyAria', { name: x.name })}>
+                    <button type="button" onClick={() => bump(x, -1)} aria-label={t('card.decrease')}>
                       −
                     </button>
                     <b>×{n}</b>
-                    <button type="button" onClick={() => bump(x, 1)} aria-label="增加">
+                    <button type="button" onClick={() => bump(x, 1)} aria-label={t('card.increase')}>
                       ＋
                     </button>
                   </span>
@@ -126,7 +129,7 @@ export function MenuReview({ data, ctx }: CardProps<Dict>) {
         })}
       </ul>
       <button type="button" className="kc-cta" disabled={!chosen.length} onClick={send}>
-        🧾 生成店员点单卡 ({chosen.length}道) ›
+        {t('card.generateOrderCta', { count: chosen.length })}
       </button>
     </CardShell>
   );

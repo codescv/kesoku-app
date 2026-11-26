@@ -1,15 +1,16 @@
+import { useT, type MessageKey } from '@kesoku/ui';
 import type { CardProps } from '../types';
 import { CardShell } from '../parts';
 import { GlossPill, MatchupRows, TypeBadge, VersionBadge, labelled, matchupOf } from '../pokemon';
 import { cardMedia, glossaryMap, num, obj, pick, strList, useImageUrl, versionOf, type Dict } from '../util';
 
-const STAT_KEYS: Array<[string, string]> = [
-  ['hp', 'HP'],
-  ['atk', '物攻'],
-  ['def', '物防'],
-  ['spa', '特攻'],
-  ['spd', '特防'],
-  ['spe', '速度'],
+const STAT_KEYS: Array<[string, MessageKey]> = [
+  ['hp', 'card.stat.hp'],
+  ['atk', 'card.stat.atk'],
+  ['def', 'card.stat.def'],
+  ['spa', 'card.stat.spa'],
+  ['spd', 'card.stat.spd'],
+  ['spe', 'card.stat.spe'],
 ];
 
 function signed(n: number): string {
@@ -21,6 +22,7 @@ function signed(n: number): string {
  * Mega stat deltas — fields of the other game are never rendered even if present.
  */
 export function PokemonDex({ data, ctx }: CardProps<Dict>) {
+  const t = useT();
   const d = obj(data);
   const v = versionOf(d);
   const name = obj(d.name);
@@ -41,9 +43,9 @@ export function PokemonDex({ data, ctx }: CardProps<Dict>) {
   const megaStone = v === 'za' ? pick(d, 'mega_stone') : '';
   const megaStoneId = v === 'za' ? pick(d, 'mega_stone_id') || undefined : undefined;
 
-  const deltaText = STAT_KEYS.map(([k, label]) => {
+  const deltaText = STAT_KEYS.map(([k, labelKey]) => {
     const n = num(delta[k]);
-    return n ? `${label} ${signed(n)}` : '';
+    return n ? `${t(labelKey)} ${signed(n)}` : '';
   })
     .filter(Boolean)
     .join(' · ');
@@ -67,7 +69,7 @@ export function PokemonDex({ data, ctx }: CardProps<Dict>) {
         <button
           type="button"
           className="kc-dex-art"
-          aria-label={`${zh} 立绘`}
+          aria-label={t('card.pkmnArtAria', { name: zh || en || '' })}
           onClick={() => artUrl && ctx.openFullscreen(<img className="kc-full-img" src={artUrl} alt={zh} />)}
         >
           {artUrl ? <img src={artUrl} alt={zh} draggable={false} /> : <span aria-hidden>{artRef && artUrl === undefined ? '…' : '◓'}</span>}
@@ -75,14 +77,14 @@ export function PokemonDex({ data, ctx }: CardProps<Dict>) {
         </button>
         <div className="kc-dex-id">
           <div className="kc-dex-name">
-            <b>{zh || en || '未知宝可梦'}</b>
+            <b>{zh || en || t('card.pkmnUnknown')}</b>
             {sid && <span className="kc-dex-no">#{/^\d+$/.test(sid) ? sid.padStart(4, '0') : sid}</span>}
             <VersionBadge v={v} />
           </div>
           {(ja || en) && <div className="kc-dex-alt">{[ja, en].filter(Boolean).join(' · ')}</div>}
           <div className="kc-dex-types">
-            {types.map((t) => (
-              <TypeBadge key={t} t={t} />
+            {types.map((tp) => (
+              <TypeBadge key={tp} t={tp} />
             ))}
             {bst !== null && (
               <span className="kc-badge kc-badge-bst">
@@ -98,13 +100,13 @@ export function PokemonDex({ data, ctx }: CardProps<Dict>) {
 
       {STAT_KEYS.some(([k]) => num(stats[k]) !== null) && (
         <div className="kc-stats">
-          {STAT_KEYS.map(([k, label]) => {
+          {STAT_KEYS.map(([k, labelKey]) => {
             const val = num(stats[k]);
             if (val === null) return null;
             const dv = num(delta[k]);
             return (
               <div key={k} className="kc-stat">
-                <span className="kc-stat-k">{label}</span>
+                <span className="kc-stat-k">{t(labelKey)}</span>
                 <span className="kc-stat-v">{val}</span>
                 <span className="kc-stat-bar">
                   <span style={{ width: `${Math.min(100, (val / maxStat) * 100)}%` }} className={val >= 120 ? 'is-hi' : val >= 80 ? 'is-mid' : 'is-lo'} />
@@ -118,7 +120,7 @@ export function PokemonDex({ data, ctx }: CardProps<Dict>) {
 
       {abilities.length > 0 && (
         <div className="kc-chips">
-          <span className="kc-chip-k">特性</span>
+          <span className="kc-chip-k">{t('card.pkmnAbilities')}</span>
           {abilities.map((a) => (
             <GlossPill key={a.label} id={a.id} label={a.label} glossary={glossary} ctx={ctx} />
           ))}
@@ -126,12 +128,12 @@ export function PokemonDex({ data, ctx }: CardProps<Dict>) {
       )}
       {megaStone && (
         <div className="kc-chips">
-          <GlossPill id={megaStoneId} label={megaStone} prefix="超级进化石：" glossary={glossary} ctx={ctx} />
+          <GlossPill id={megaStoneId} label={megaStone} prefix={t('card.pkmnMegaStonePrefix')} glossary={glossary} ctx={ctx} />
         </div>
       )}
       {extra.length > 0 && (
         <div className="kc-chips">
-          <span className="kc-chip-k">词条</span>
+          <span className="kc-chip-k">{t('card.pkmnGlossary')}</span>
           {extra.map((g) => (
             <GlossPill key={g.id} id={g.id} label={g.title} glossary={glossary} ctx={ctx} />
           ))}

@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { useLocale, useT } from '@kesoku/ui';
 import { Fold } from './parts';
 import type { CardContext, GlossaryEntry } from './types';
 import { arr, strList, typeColor, VERSION_LABEL, type Dict, type GameVersion } from './util';
@@ -12,6 +13,7 @@ export function TypeBadge({ t }: { t: string }) {
 }
 
 export function VersionBadge({ v }: { v: GameVersion }) {
+  useLocale();
   return <span className={`kc-badge kc-ver kc-ver-${v}`}>{VERSION_LABEL[v]}</span>;
 }
 
@@ -38,6 +40,7 @@ const ICE_ICON: Record<string, string> = { 冰: '❄️', ice: '❄️', 火: '�
 
 /** Weakness capsules: full-width 4× capsule, 2× row, then (optionally folded) resistances. */
 export function MatchupRows({ m, foldResist }: { m: Matchup; foldResist: boolean }) {
+  const t = useT();
   const resist = (
     <div className="kc-resist">
       {m.x05.length > 0 && (
@@ -62,15 +65,15 @@ export function MatchupRows({ m, foldResist }: { m: Matchup; foldResist: boolean
     <div className="kc-mu">
       {m.x4.length > 0 && (
         <div className="kc-mu-x4" role="note">
-          <span aria-hidden>{ICE_ICON[m.x4[0]] ?? '⚠️'}</span> 4× 致命弱点：{m.x4.join(' · ')}
+          <span aria-hidden>{ICE_ICON[m.x4[0]] ?? '⚠️'}</span> {t('card.weak4x', { list: m.x4.join(' · ') })}
         </div>
       )}
       {m.x2.length > 0 && (
         <div className="kc-mu-x2">
-          <b>2×</b> 弱点：{m.x2.join(' · ')}
+          <b>2×</b> {t('card.weak2x', { list: m.x2.join(' · ') })}
         </div>
       )}
-      {hasResist && (foldResist ? <Fold title="抵抗">{resist}</Fold> : resist)}
+      {hasResist && (foldResist ? <Fold title={t('card.resist')}>{resist}</Fold> : resist)}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useId, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { t, type ResolvedLocale } from './i18n';
 import { modeMeta } from './modes';
 
 /**
@@ -26,11 +27,31 @@ export interface IconStyleOption {
   desc: string;
 }
 
+function liveIconStyleOption(value: IconStyle): IconStyleOption {
+  return Object.freeze({
+    value,
+    get label() {
+      return t(`iconStyle.${value}.label`);
+    },
+    get desc() {
+      return t(`iconStyle.${value}.desc`);
+    },
+  });
+}
+
 export const ICON_STYLE_OPTIONS: readonly IconStyleOption[] = Object.freeze([
-  { value: 'duotone', label: '柔和双色', desc: '柔和底色 · 圆润描边' },
-  { value: 'line', label: '极简线性', desc: '文具感 · 细线几何' },
-  { value: 'badge', label: '立体徽章', desc: '圆角徽章 · 高对比' },
+  liveIconStyleOption('duotone'),
+  liveIconStyleOption('line'),
+  liveIconStyleOption('badge'),
 ]);
+
+export function getIconStyleOptions(locale?: ResolvedLocale): IconStyleOption[] {
+  return (['duotone', 'line', 'badge'] as const).map((value) => ({
+    value,
+    label: t(`iconStyle.${value}.label`, undefined, locale),
+    desc: t(`iconStyle.${value}.desc`, undefined, locale),
+  }));
+}
 
 function isIconStyle(v: unknown): v is IconStyle {
   return v === 'duotone' || v === 'line' || v === 'badge';

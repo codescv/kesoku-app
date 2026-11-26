@@ -1,0 +1,13 @@
+/* Kesoku native UI strings (English) */
+"intent.open_translator.title" = "Open Translator";
+"intent.open_translator.short_title" = "Translator";
+"intent.open_travel.title" = "Open Travel Assistant";
+"intent.open_travel.short_title" = "Travel Assistant";
+"intent.open_pokemon.title" = "Open Pokémon Assistant";
+"intent.open_pokemon.short_title" = "Pokémon Assistant";
+"qr.hint" = "Point at the kesoku app pair QR code in your terminal";
+"qr.cancel" = "Cancel";
+"qr.pick_from_library" = "Choose QR from Photos";
+"qr.not_found" = "No QR code found in the selected photo";
+"dialog.cancel" = "Cancel";
+"dialog.ok" = "OK";

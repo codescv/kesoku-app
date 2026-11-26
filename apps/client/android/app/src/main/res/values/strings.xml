@@ -6,11 +6,11 @@
     <string name="custom_url_scheme">kesoku</string>
 
     <!-- Launcher shortcuts (res/xml/shortcuts.xml) -->
-    <string name="shortcut_translator_short">通用翻译</string>
-    <string name="shortcut_translator_long">打开通用翻译</string>
-    <string name="shortcut_travel_short">旅游助手</string>
-    <string name="shortcut_travel_long">打开旅游助手</string>
-    <string name="shortcut_pokemon_short">宝可梦助手</string>
-    <string name="shortcut_pokemon_long">打开宝可梦助手</string>
-    <string name="shortcut_disabled">请先打开 Kesoku 完成配对</string>
+    <string name="shortcut_translator_short">Translator</string>
+    <string name="shortcut_translator_long">Open Translator</string>
+    <string name="shortcut_travel_short">Travel Assistant</string>
+    <string name="shortcut_travel_long">Open Travel Assistant</string>
+    <string name="shortcut_pokemon_short">Pokémon Assistant</string>
+    <string name="shortcut_pokemon_long">Open Pokémon Assistant</string>
+    <string name="shortcut_disabled">Open Kesoku to complete pairing first</string>
 </resources>

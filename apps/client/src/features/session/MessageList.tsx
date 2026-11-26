@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { Attachment, LexToken, MemoryProposal } from '@kesoku/protocol';
-import { Avatar, ModeIcon, UiIcon, VoicePill, modeMeta } from '@kesoku/ui';
+import { Avatar, ModeIcon, UiIcon, VoicePill, modeMeta, t as tGlobal, useLocale, useT, type MessageKey } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import type { ChatItem, TurnEvent } from '../../lib/types';
@@ -28,12 +28,13 @@ export function formatMessageTime(ts: number | undefined, nowMs = Date.now()): s
   const startOfMsgDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const dayDiff = Math.round((startOfToday - startOfMsgDay) / 86_400_000);
   if (dayDiff === 0) return hhmm;
-  if (dayDiff === 1) return `昨天 ${hhmm}`;
+  if (dayDiff === 1) return tGlobal('common.yesterdayTime', { time: hhmm });
   if (d.getFullYear() === now.getFullYear()) return `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${hhmm}`;
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${hhmm}`;
 }
 
 function AssistantHeader({ roleId, fallbackName, ts }: { roleId: string; fallbackName: string; ts?: number }) {
+  useLocale();
   const persona = useStore((s) => s.personas.find((p) => p.role_id === roleId));
   const src = useAvatarUrl(persona ? roleAvatarRef(persona) : null, persona?.avatar_rev);
   const displayName = persona?.display_name || fallbackName;
@@ -75,19 +76,22 @@ export function anchorProposals(items: ChatItem[], proposals: MemoryProposal[]):
   return { m, tail };
 }
 
-const STARTERS: Record<string, string[]> = {
-  chat: ['今天过得怎么样？', '教我一句地道的日语'],
-  galgame: ['我们去江之岛海边吧', '约你去看烟花大会'],
-  travel_companion: ['拍菜单照，帮我排雷', '帮我做一张问路大字卡'],
-  translator: ['すみません、お会計お願いします', '我对荞麦过敏'],
-  jp_classroom: ['开始今天的课程', '复习我的错题'],
-  trpg: ['开一局赛博朋克跑团', '克苏鲁 · 阿卡姆调查'],
-  pokemon_assistant: ['刚遇到失控超级快龙，弱什么？', '神速在 Z-A 里的冷却是多少？'],
-  story_theater: ['继续下一片段', '回看上一段'],
+const STARTER_KEYS: Record<string, [MessageKey, MessageKey]> = {
+  chat: ['starter.chat.0', 'starter.chat.1'],
+  galgame: ['starter.galgame.0', 'starter.galgame.1'],
+  travel_companion: ['starter.travel_companion.0', 'starter.travel_companion.1'],
+  translator: ['starter.translator.0', 'starter.translator.1'],
+  jp_classroom: ['starter.jp_classroom.0', 'starter.jp_classroom.1'],
+  trpg: ['starter.trpg.0', 'starter.trpg.1'],
+  pokemon_assistant: ['starter.pokemon_assistant.0', 'starter.pokemon_assistant.1'],
+  story_theater: ['starter.story_theater.0', 'starter.story_theater.1'],
 };
 
 function ModeEmpty({ modeId, sessionId }: { modeId: string; sessionId: string }) {
-  const m = modeMeta(modeId);
+  const locale = useLocale();
+  const t = useT();
+  const m = modeMeta(modeId, locale);
+  const starters = (STARTER_KEYS[modeId] ?? STARTER_KEYS.chat).map((k) => t(k));
   return (
     <div className="k-mode-empty" style={{ ['--mode' as string]: m.color }}>
       <span className="k-mode-empty-icon" aria-hidden>
@@ -96,9 +100,9 @@ function ModeEmpty({ modeId, sessionId }: { modeId: string; sessionId: string })
       <h2>{m.title}</h2>
       <p>{m.subtitle}</p>
       <div className="k-mode-empty-chips">
-        {(STARTERS[modeId] ?? STARTERS.chat).map((t) => (
-          <button key={t} type="button" className="k-choice" onClick={() => void kesoku.sendMessage(sessionId, t)}>
-            {t}
+        {starters.map((text) => (
+          <button key={text} type="button" className="k-choice" onClick={() => void kesoku.sendMessage(sessionId, text)}>
+            {text}
           </button>
         ))}
       </div>
@@ -122,8 +126,9 @@ export function isImageAttachment(a: AttachmentLike): boolean {
   return !!a.mime?.toLowerCase().startsWith('image/') || IMAGE_EXT_RE.test(a.filename || a.object || a.ref || '');
 }
 
-/** One attachment pill inside a user bubble: playable voice pill for audio, tap-to-open 图N for images. */
+/** One attachment pill inside a user bubble: playable voice pill for audio, tap-to-open Photo N for images. */
 export function UserAttachmentItem({ a, index, sessionId, messageId }: { a: AttachmentLike; index: number; sessionId: string; messageId?: string }) {
+  const t = useT();
   const resolve = () => kesoku.resolveMedia({ object: a.object || undefined, ref: a.ref || undefined, url: a.url || undefined }, { sessionId, messageId });
   if (isAudioAttachment(a)) {
     return (
@@ -131,7 +136,7 @@ export function UserAttachmentItem({ a, index, sessionId, messageId }: { a: Atta
         className="k-user-voice"
         resolveUrl={resolve}
         durationMs={typeof a.duration_ms === 'number' && a.duration_ms > 0 ? a.duration_ms : undefined}
-        label="语音"
+        label={t('common.voice')}
         preloadKey={a.object || a.ref || ''}
       />
     );
@@ -143,24 +148,25 @@ export function UserAttachmentItem({ a, index, sessionId, messageId }: { a: Atta
         type="button"
         className="k-pill k-pill-neutral k-pill-sm"
         disabled={!canOpen}
-        aria-label={`查看图${index + 1}`}
+        aria-label={t('common.viewImageN', { n: index + 1 })}
         onClick={(e) => {
           e.stopPropagation();
           void resolve().then((url) => url && overlays.image(url), () => undefined);
         }}
       >
-        <UiIcon name="image" size={13} /> 图{index + 1}
+        <UiIcon name="image" size={13} /> {t('common.imageN', { n: index + 1 })}
       </button>
     );
   }
   return (
     <span className="k-pill k-pill-neutral k-pill-sm" title={a.filename}>
-      📎 {a.filename || `附件${index + 1}`}
+      📎 {a.filename || t('common.attachmentN', { n: index + 1 })}
     </span>
   );
 }
 
 function UserBubble({ item, sessionId }: { item: ChatItem; sessionId: string }) {
+  const t = useT();
   const timeLabel = formatMessageTime(item.ts);
   const { quote, reply } = splitUserQuote(item.text);
   return (
@@ -179,7 +185,7 @@ function UserBubble({ item, sessionId }: { item: ChatItem; sessionId: string }) 
           </div>
         ) : null}
         {reply && <div className="k-user-text">{reply}</div>}
-        {item.status === 'sending' && <span className="k-sending" aria-label="发送中">···</span>}
+        {item.status === 'sending' && <span className="k-sending" aria-label={t('msg.sendingAria')}>···</span>}
       </div>
       {timeLabel && item.status !== 'failed' && (
         <time className="k-msg-time k-msg-time-user" data-testid="msg-time">
@@ -188,7 +194,7 @@ function UserBubble({ item, sessionId }: { item: ChatItem; sessionId: string }) 
       )}
       {item.status === 'failed' && (
         <button type="button" className="k-retry" onClick={() => void kesoku.retry(sessionId, item)}>
-          未送达 · 点击重试
+          {t('msg.failedRetry')}
         </button>
       )}
     </div>
@@ -206,6 +212,7 @@ export function MessageList({
   readOnly?: boolean;
   onScrollDirection?: (dir: 'up' | 'down' | 'top') => void;
 }) {
+  const t = useT();
   const items = useStore((s) => s.items[sessionId] ?? EMPTY_ITEMS);
   const preview = useStore((s) => s.previews[sessionId]);
   const turnEvents = useStore((s) => s.turnEvents);
@@ -292,7 +299,7 @@ export function MessageList({
         {items.length === 0 && !preview && <ModeEmpty modeId={modeId} sessionId={sessionId} />}
         {hasMore && (
           <button type="button" className="k-load-older" onClick={() => void kesoku.loadOlder(sessionId)}>
-            加载更早的消息
+            {t('msg.loadOlder')}
           </button>
         )}
         {items.map((item, idx) => {
@@ -314,7 +321,8 @@ export function MessageList({
             const nextUser = items.slice(idx + 1).find((it) => it.kind === 'user');
             if (nextUser) {
               const ut = (nextUser.text ?? '').trim();
-              const multi = ut.startsWith('选择：') ? ut.slice(3).split('；').map((s) => s.trim()).filter(Boolean) : null;
+              const pickMatch = /^(?:选择：|Selected:\s*|選択：)/.exec(ut);
+              const multi = pickMatch ? ut.slice(pickMatch[0].length).split(/[；;]/).map((s) => s.trim()).filter(Boolean) : null;
               resolvedPicked = multi?.length ? multi : ut ? [ut] : ['__answered__'];
             }
           }

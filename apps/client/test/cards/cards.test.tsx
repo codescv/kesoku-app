@@ -221,7 +221,7 @@ describe('pkmn_move_wiki', () => {
   });
   it('Z-A shows CD / 射程 / 招式＋ and hides PP', () => {
     const { ctx } = renderKind('pkmn_move_wiki', { ...base, version: 'za' });
-    expect(screen.getByText(/冷却 CD 6s/)).toBeTruthy();
+    expect(screen.getByText(/冷却 6 秒/)).toBeTruthy();
     expect(screen.getByText(/近距突进/)).toBeTruthy();
     expect(screen.getByText(/招式＋ 威力提升/)).toBeTruthy();
     expect(screen.queryByText(/^PP/)).toBeNull();
@@ -294,7 +294,7 @@ describe('pkmn_matchup / lesson / grading', () => {
     expect(container.querySelector('.kc-diff-del')?.textContent).toBe('だ');
     expect(screen.getByText('🔥 母语者升级表达')).toBeTruthy();
     renderKind('grading', { pass: true, original: 'ok' });
-    expect(screen.getByText('✓ PASS')).toBeTruthy();
+    expect(screen.getByText('✓ 通过')).toBeTruthy();
   });
 
   it('pkmn_glossary and pkmn_type_chart render dedicated cards', () => {

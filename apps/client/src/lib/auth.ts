@@ -1,3 +1,4 @@
+import { t } from '@kesoku/ui';
 import { getPlatform, isNative } from '../native/platform';
 import { secureStore } from '../native/secureStore';
 import { db, kvGet, kvSet } from './db';
@@ -49,7 +50,7 @@ export function fetchCredentials(): RequestCredentials {
 
 export async function setRelayBase(url: string): Promise<void> {
   const u = new URL(url);
-  if (u.protocol !== 'https:' && !(u.hostname === '127.0.0.1' || u.hostname === 'localhost')) throw new AuthError('BAD_URL', '中继地址必须是 https');
+  if (u.protocol !== 'https:' && !(u.hostname === '127.0.0.1' || u.hostname === 'localhost')) throw new AuthError('BAD_URL', t('auth.httpsRequired'));
   await kvSet('relay_url', u.origin);
 }
 
@@ -94,13 +95,13 @@ async function persist(device_id: string, token: string | undefined, kind: AuthI
 /** Redeem a 6-digit pairing code from `kesoku app pair`. */
 export async function pair(code: string, name?: string): Promise<AuthInfo> {
   const clean = code.replace(/\D/g, '');
-  if (clean.length !== 6) throw new AuthError('BAD_CODE', '请输入 6 位配对码');
+  if (clean.length !== 6) throw new AuthError('BAD_CODE', t('auth.enterSixDigits'));
   const { status, data } = await postJson('/pair', {
     code: clean,
     device: { platform: getPlatform(), model: navigator.userAgent.slice(0, 64), name: name ?? defaultDeviceName() },
   });
-  if (status === 429) throw new AuthError('RATE_LIMITED', '尝试过于频繁，请 10 分钟后再试', status);
-  if (status !== 200 || typeof data.device_id !== 'string') throw new AuthError('PAIR_FAILED', '配对码无效或已过期（连续 5 次输错即作废，请在引擎主机重新运行 kesoku app pair）', status);
+  if (status === 429) throw new AuthError('RATE_LIMITED', t('auth.rateLimited10m'), status);
+  if (status !== 200 || typeof data.device_id !== 'string') throw new AuthError('PAIR_FAILED', t('auth.pairFailed'), status);
   await persist(data.device_id, typeof data.device_token === 'string' ? data.device_token : undefined, 'pair');
   return { device_id: data.device_id, kind: 'pair' };
 }
@@ -187,7 +188,7 @@ function firebaseErrorCode(x: unknown): string {
 /** Web Google login via Firebase Auth popup (SDK lazy-loaded, ideally pre-warmed by `preloadGoogleAuth`). */
 export async function googleLogin(preloadedCfg?: AuthConfig): Promise<AuthInfo> {
   const cfg = preloadedCfg ?? cachedAuthConfig ?? (await getAuthConfig());
-  if (!cfg.firebase) throw new AuthError('NO_GOOGLE', '此中继未启用 Google 登录');
+  if (!cfg.firebase) throw new AuthError('NO_GOOGLE', t('auth.noGoogleLogin'));
   const { app, fa } = warmFirebase ?? (await loadFirebase(cfg.firebase));
   const auth = fa.getAuth(app);
   const provider = new fa.GoogleAuthProvider();
@@ -199,9 +200,9 @@ export async function googleLogin(preloadedCfg?: AuthConfig): Promise<AuthInfo> 
     idToken = await cred.user.getIdToken();
   } catch (x) {
     const code = firebaseErrorCode(x);
-    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') throw new AuthError('CANCELLED', '已取消登录');
-    if (code === 'auth/popup-blocked') throw new AuthError('POPUP_BLOCKED', '浏览器拦截了登录弹窗，请允许此站点的弹窗后重试');
-    throw new AuthError('LOGIN_FAILED', '登录失败，请重试');
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') throw new AuthError('CANCELLED', t('auth.loginCancelled'));
+    if (code === 'auth/popup-blocked') throw new AuthError('POPUP_BLOCKED', t('auth.popupBlocked'));
+    throw new AuthError('LOGIN_FAILED', t('auth.loginFailedRetry'));
   }
   const { status, data } = await postJson('/auth/google', { id_token: idToken });
   await fa.signOut(auth).catch(() => {});
@@ -209,12 +210,12 @@ export async function googleLogin(preloadedCfg?: AuthConfig): Promise<AuthInfo> 
     await db.kv.delete('auth').catch(() => {});
     throw new AuthError(
       'FORBIDDEN_EMAIL',
-      typeof data.email === 'string' ? `账号 ${data.email} 不在访问白名单内，请切换受权账号重试` : '该 Google 账号不在访问白名单内，请切换受权账号重试',
+      typeof data.email === 'string' ? t('auth.forbiddenEmailWithAddr', { email: data.email }) : t('auth.forbiddenEmail'),
       403,
     );
   }
-  if (status === 429) throw new AuthError('RATE_LIMITED', '尝试过于频繁，请稍后再试', status);
-  if (status !== 200 || typeof data.device_id !== 'string') throw new AuthError('LOGIN_FAILED', '登录失败', status);
+  if (status === 429) throw new AuthError('RATE_LIMITED', t('auth.rateLimited'), status);
+  if (status !== 200 || typeof data.device_id !== 'string') throw new AuthError('LOGIN_FAILED', t('auth.loginFailed'), status);
   const email = typeof data.email === 'string' ? data.email : undefined;
   await persist(data.device_id, typeof data.device_token === 'string' ? data.device_token : undefined, 'google', email);
   return { device_id: data.device_id, kind: 'google', email };

@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <!-- Launcher shortcuts (res/xml/shortcuts.xml) -->
+    <string name="shortcut_translator_short">翻訳</string>
+    <string name="shortcut_translator_long">翻訳を開く</string>
+    <string name="shortcut_travel_short">旅行アシスタント</string>
+    <string name="shortcut_travel_long">旅行アシスタントを開く</string>
+    <string name="shortcut_pokemon_short">ポケモン</string>
+    <string name="shortcut_pokemon_long">ポケモンアシスタントを開く</string>
+    <string name="shortcut_disabled">先に Kesoku を開いてペアリングを完了してください</string>
+</resources>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Sheet, UiIcon } from '@kesoku/ui';
+import { Sheet, UiIcon, t as tGlobal, useT } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { Markdown } from '../segments/Markdown';
@@ -35,6 +35,7 @@ function useStoreNotes(sessionId: string): string {
  *   as a rendered Markdown card (tap it / 编辑 to edit, 完成预览 to go back). Ctrl/Cmd+S or 保存 saves.
  */
 export function SessionNotesEditor({ sessionId, embedded }: { sessionId: string; embedded?: boolean }) {
+  const t = useT();
   const storeContent = useStoreNotes(sessionId);
   const [saved, setSaved] = useState(storeContent);
   const [draft, setDraft] = useState(storeContent);
@@ -82,7 +83,7 @@ export function SessionNotesEditor({ sessionId, embedded }: { sessionId: string;
         setDraft(content);
       }
     } catch {
-      if (sidRef.current === sid) setLoadError('读取置顶 Notes 失败，请检查连接后重试');
+      if (sidRef.current === sid) setLoadError(tGlobal('snotes.readFailed'));
     } finally {
       if (sidRef.current === sid) setLoading(false);
     }
@@ -120,7 +121,7 @@ export function SessionNotesEditor({ sessionId, embedded }: { sessionId: string;
     async (content: string, okText: string) => {
       if (saving) return;
       if (utf8Bytes(content) > SESSION_NOTES_MAX_BYTES) {
-        actions.toast('置顶 Notes 超过 64 KiB 上限', 'error');
+        actions.toast(tGlobal('snotes.tooLargeToast'), 'error');
         return;
       }
       const sid = sessionId;
@@ -135,7 +136,7 @@ export function SessionNotesEditor({ sessionId, embedded }: { sessionId: string;
         setRev((r) => r + 1); // back to the rendered preview
         actions.toast(okText);
       } catch {
-        actions.toast('保存置顶 Notes 失败', 'error');
+        actions.toast(tGlobal('snotes.saveFailed'), 'error');
       } finally {
         setSaving(false);
       }
@@ -146,7 +147,7 @@ export function SessionNotesEditor({ sessionId, embedded }: { sessionId: string;
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
-      if (dirty && !tooLarge) void persist(draft, '已保存置顶 Notes');
+      if (dirty && !tooLarge) void persist(draft, t('snotes.saved'));
     }
   };
 
@@ -156,7 +157,7 @@ export function SessionNotesEditor({ sessionId, embedded }: { sessionId: string;
         <div className="k-notes-error" role="alert">
           <span>{loadError}</span>
           <button type="button" className="k-btn k-btn-sm k-btn-ghost" onClick={() => void load()}>
-            重试
+            {t('common.retry')}
           </button>
         </div>
       )}
@@ -167,8 +168,8 @@ export function SessionNotesEditor({ sessionId, embedded }: { sessionId: string;
           rows={embedded ? 6 : 7}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="记录本会话需要始终记住的设定、规则或备忘（支持 Markdown）…"
-          aria-label="当前会话置顶 Notes"
+          placeholder={t('snotes.placeholder')}
+          aria-label={t('snotes.aria')}
           aria-invalid={tooLarge || undefined}
         />
       ) : hasSaved ? (
@@ -177,8 +178,8 @@ export function SessionNotesEditor({ sessionId, embedded }: { sessionId: string;
           data-testid="session-notes-preview"
           role="button"
           tabIndex={0}
-          aria-label="当前会话置顶 Notes（点击编辑）"
-          title="点击编辑"
+          aria-label={t('snotes.ariaClickEdit')}
+          title={t('common.clickToEdit')}
           onClick={(e) => {
             // Let links inside the rendered Markdown work without entering edit mode.
             if ((e.target as HTMLElement).closest('a')) return;
@@ -195,12 +196,12 @@ export function SessionNotesEditor({ sessionId, embedded }: { sessionId: string;
         </div>
       ) : (
         <div className="k-snotes-loading" data-testid="session-notes-loading">
-          正在读取…
+          {t('snotes.loading')}
         </div>
       )}
       {tooLarge && (
         <p className="k-snotes-limit" data-testid="session-notes-too-large">
-          内容超过 64 KiB 上限，请精简后再保存。
+          {t('snotes.tooLargeMsg')}
         </p>
       )}
       <div className="k-snotes-bar">
@@ -208,11 +209,11 @@ export function SessionNotesEditor({ sessionId, embedded }: { sessionId: string;
           type="button"
           className="k-btn k-btn-sm k-btn-ghost"
           data-testid="session-notes-refresh"
-          aria-label="刷新"
+          aria-label={t('common.refresh')}
           disabled={loading || saving}
           onClick={() => void load()}
         >
-          <UiIcon name="refresh" size={15} /> 刷新
+          <UiIcon name="refresh" size={15} /> {t('common.refresh')}
         </button>
         {hasSaved && (
           <button
@@ -220,31 +221,31 @@ export function SessionNotesEditor({ sessionId, embedded }: { sessionId: string;
             className="k-btn k-btn-sm k-btn-ghost k-snotes-clear"
             data-testid="session-notes-clear"
             disabled={saving}
-            onClick={() => void persist('', '已清空置顶 Notes')}
+            onClick={() => void persist('', t('snotes.cleared'))}
           >
-            <UiIcon name="trash" size={15} /> 清空
+            <UiIcon name="trash" size={15} /> {t('common.clear')}
           </button>
         )}
         <span className="k-snotes-spacer" />
         {showCounter && <span className={'ps-count' + (tooLarge ? ' is-err' : '')}>{`${fmtBytes(bytes)} / 64 KiB`}</span>}
         {dirty && (
           <span className="k-pill k-pill-sm k-pill-warn" data-testid="session-notes-dirty">
-            未保存
+            {t('common.unsaved')}
           </span>
         )}
         {!showEditor && hasSaved && (
           <button type="button" className="k-btn k-btn-sm k-btn-ghost" data-testid="session-notes-edit" onClick={startEdit}>
-            <UiIcon name="edit" size={15} /> 编辑
+            <UiIcon name="edit" size={15} /> {t('common.edit')}
           </button>
         )}
         {showEditor && hasSaved && !dirty && !tooLarge && (
           <button type="button" className="k-btn k-btn-sm k-btn-ghost" data-testid="session-notes-done" onClick={() => setEditing(false)}>
-            <UiIcon name="check" size={15} /> 完成预览
+            <UiIcon name="check" size={15} /> {t('common.donePreview')}
           </button>
         )}
         {dirty && (
           <button type="button" className="k-btn k-btn-sm k-btn-ghost" data-testid="session-notes-revert" disabled={saving} onClick={() => (setDraft(saved), setRev((r) => r + 1))}>
-            撤销
+            {t('common.revert')}
           </button>
         )}
         <button
@@ -252,9 +253,9 @@ export function SessionNotesEditor({ sessionId, embedded }: { sessionId: string;
           className="k-btn k-btn-sm k-btn-primary"
           data-testid="session-notes-save"
           disabled={!dirty || saving || tooLarge}
-          onClick={() => void persist(draft, '已保存置顶 Notes')}
+          onClick={() => void persist(draft, t('snotes.saved'))}
         >
-          <UiIcon name="save" size={15} /> {saving ? '保存中…' : '保存'}
+          <UiIcon name="save" size={15} /> {saving ? t('common.saving') : t('common.save')}
         </button>
       </div>
     </div>
@@ -263,6 +264,7 @@ export function SessionNotesEditor({ sessionId, embedded }: { sessionId: string;
 
 /** Bottom sheet (centered panel on desktop) wrapping {@link SessionNotesEditor}; `sessionId === null` = closed. */
 export function SessionNotesSheet({ sessionId, onClose }: { sessionId: string | null; onClose: () => void }) {
+  const t = useT();
   const title = useStore((s) => (sessionId ? s.sessions[sessionId]?.title : undefined));
   return (
     <Sheet
@@ -272,7 +274,7 @@ export function SessionNotesSheet({ sessionId, onClose }: { sessionId: string | 
       title={
         <span className="k-snotes-title" data-testid="session-notes-sheet-title">
           <UiIcon name="pin" size={18} />
-          <span>置顶 Notes</span>
+          <span>{t('topbar.pinnedNotes')}</span>
           {title && <span className="k-pill k-pill-sm k-pill-neutral k-snotes-session">{title}</span>}
         </span>
       }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { UiIcon, modeMeta } from '@kesoku/ui';
+import { UiIcon, modeMeta, useLocale, useT } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { compressImage, HoldRecorder } from '../../lib/files';
@@ -29,9 +29,11 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
   const insert = useStore((s) => s.ui.composerInsert);
   const quote = useStore((s) => s.ui.composerQuote);
   const activeQuote = quote && (!quote.sessionId || quote.sessionId === sessionId) ? quote : null;
+  const locale = useLocale();
+  const t = useT();
   const taRef = useRef<HTMLTextAreaElement>(null);
   const recRef = useRef<HoldRecorder | null>(null);
-  const meta = modeMeta(modeId);
+  const meta = modeMeta(modeId, locale);
 
   useEffect(() => {
     if (!insert) return;
@@ -79,7 +81,11 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
     [],
   );
 
-  const placeholder = activeQuote ? '针对引用内容回复...' : modeId === 'chat' ? `发消息给${roleName}...` : meta.placeholder;
+  const placeholder = activeQuote
+    ? t('composer.replyQuotePlaceholder')
+    : modeId === 'chat'
+      ? t('composer.messageRolePlaceholder', { role: roleName })
+      : meta.placeholder;
   const hasText = text.trim().length > 0;
   const hasFiles = files.length > 0;
   const canSend = online && !busy && (hasText || hasFiles);
@@ -97,8 +103,8 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
       for (const f of all) attachments.push(await kesoku.upload(f, 'message', sid));
       let msg = body;
       if (!msg && all.some((f) => f.type.startsWith('image/'))) {
-        if (modeId === 'pokemon_assistant') msg = '识别画面中的宝可梦并给出弱点';
-        else if (modeId === 'translator') msg = '翻译图片中的文字';
+        if (modeId === 'pokemon_assistant') msg = t('composer.pkmnPhotoPrompt');
+        else if (modeId === 'translator') msg = t('composer.translatePhotoPrompt');
       }
       if (activeQuote) {
         msg = formatQuotedMessage(activeQuote.text, msg);
@@ -110,7 +116,7 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
       if (activeQuote) actions.setUi({ composerQuote: null });
       await kesoku.sendMessage(sid, msg, attachments);
     } catch {
-      actions.toast('上传失败，请重试', 'error');
+      actions.toast(t('composer.uploadFailed'), 'error');
     } finally {
       setBusy(false);
     }
@@ -128,7 +134,7 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
 
   async function startRecording() {
     if (recording || recRef.current) return;
-    if (!HoldRecorder.supported()) return actions.toast('此设备不支持录音');
+    if (!HoldRecorder.supported()) return actions.toast(t('composer.recordingUnsupported'));
     const rec = new HoldRecorder();
     recRef.current = rec;
     try {
@@ -139,7 +145,7 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
     } catch {
       if (recRef.current === rec) {
         recRef.current = null;
-        actions.toast('无法访问麦克风', 'error');
+        actions.toast(t('composer.micDenied'), 'error');
       }
     }
   }
@@ -157,7 +163,7 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
     setRecordSec(0);
     const f = await rec.stop();
     if (f) await send([f]);
-    else actions.toast('没有录到声音');
+    else actions.toast(t('composer.noAudioCaptured'));
   }
 
   if (readOnly) return null;
@@ -172,14 +178,14 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
                 <path d="M9 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v6a4 4 0 0 1-4 4" />
                 <path d="M21 17h-4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v6a4 4 0 0 1-4 4" />
               </svg>
-              <span>{activeQuote.speaker ? `引用 · ${activeQuote.speaker}` : '引用回复'}</span>
+              <span>{activeQuote.speaker ? t('composer.quoteWithSpeaker', { speaker: activeQuote.speaker }) : t('composer.quoteReply')}</span>
             </div>
             <div className="k-composer-quote-text">{activeQuote.text}</div>
           </div>
           <button
             type="button"
             className="k-composer-quote-close"
-            aria-label="取消引用"
+            aria-label={t('composer.cancelQuoteAria')}
             onClick={() => actions.setUi({ composerQuote: null })}
           >
             <UiIcon name="close" size={14} />
@@ -190,9 +196,9 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
         <div className="k-composer-files">
           {files.map((f, i) => (
             <span key={f.preview} className="k-thumb">
-              <img src={f.preview} alt={`图${i + 1}`} />
-              <span className="k-thumb-label">图{i + 1}</span>
-              <button type="button" aria-label="移除" onClick={() => setFiles((x) => x.filter((_, j) => j !== i))}>
+              <img src={f.preview} alt={t('common.imageN', { n: i + 1 })} />
+              <span className="k-thumb-label">{t('common.imageN', { n: i + 1 })}</span>
+              <button type="button" aria-label={t('common.remove')} onClick={() => setFiles((x) => x.filter((_, j) => j !== i))}>
                 <UiIcon name="close" size={12} />
               </button>
             </span>
@@ -201,14 +207,14 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
       )}
       {recording ? (
         <div className="k-composer-row k-rec-bar" data-testid="composer-recording-bar">
-          <button type="button" className="k-rec-cancel" aria-label="取消录音" onClick={cancelRecording}>
-            <UiIcon name="close" size={18} /> 取消
+          <button type="button" className="k-rec-cancel" aria-label={t('composer.cancelRecordAria')} onClick={cancelRecording}>
+            <UiIcon name="close" size={18} /> {t('common.cancel')}
           </button>
           <div className="k-rec-status" role="status">
-            <span className="k-rec-dot" aria-hidden /> <span>录音中 {fmtSec(recordSec)}</span>
+            <span className="k-rec-dot" aria-hidden /> <span>{t('composer.recordingTime', { time: fmtSec(recordSec) })}</span>
           </div>
-          <button type="button" className="k-rec-send" aria-label="发送语音" disabled={busy} onClick={() => void confirmRecording()}>
-            <UiIcon name="check" size={18} /> 发送
+          <button type="button" className="k-rec-send" aria-label={t('composer.sendVoiceAria')} disabled={busy} onClick={() => void confirmRecording()}>
+            <UiIcon name="check" size={18} /> {t('common.send')}
           </button>
         </div>
       ) : (
@@ -231,15 +237,15 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
                 if (canSend) void send();
               }
             }}
-            aria-label="消息输入框"
+            aria-label={t('composer.inputAria')}
           />
-          <button type="button" className="k-composer-btn k-composer-cam" aria-label="拍照或选图" onClick={() => void onPick()} disabled={busy}>
+          <button type="button" className="k-composer-btn k-composer-cam" aria-label={t('composer.pickPhotoAria')} onClick={() => void onPick()} disabled={busy}>
             <UiIcon name="camera" size={22} />
           </button>
-          <button type="button" className="k-composer-btn k-composer-mic" aria-label="开始语音输入" onClick={() => void startRecording()} disabled={busy || !online}>
+          <button type="button" className="k-composer-btn k-composer-mic" aria-label={t('composer.startVoiceAria')} onClick={() => void startRecording()} disabled={busy || !online}>
             <UiIcon name="mic" size={22} />
           </button>
-          <button type="button" className="k-composer-send" aria-label="发送" disabled={!canSend} onClick={() => void send()}>
+          <button type="button" className="k-composer-send" aria-label={t('composer.sendAria')} disabled={!canSend} onClick={() => void send()}>
             <UiIcon name="send" size={22} />
           </button>
         </div>

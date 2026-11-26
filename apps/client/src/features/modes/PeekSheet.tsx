@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sheet } from '@kesoku/ui';
+import { Sheet, useT } from '@kesoku/ui';
 import type { CardContext, GlossaryEntry } from '../cards/types';
 import { mdParagraphs } from '../cards/util';
 
@@ -10,7 +10,7 @@ export interface PeekSheetProps {
   glossary?: Record<string, GlossaryEntry>;
   onClose: () => void;
   ctx: Pick<CardContext, 'insertComposer'>;
-  /** Display name of the current persona for `[问<name> ›]` (generic fallback when unknown). */
+  /** Display name of the current persona for `[Ask <name> ›]` (generic fallback when unknown). */
   personaName?: string;
 }
 
@@ -21,15 +21,17 @@ function findRelated(id: string, glossary: Record<string, GlossaryEntry> | undef
 }
 
 /**
- * Wiki Peek Sheet: title + 2 large effect pills + `▸ 实战细节` + related entries replaced in place (with a
- * back arrow, never stacking dialogs) + `[问<角色名> ›]`. Zero network: everything comes from the card glossary.
+ * Wiki Peek Sheet: title + 2 large effect pills + battle details + related entries replaced in place (with a
+ * back arrow, never stacking dialogs) + `[Ask <role> ›]`. Zero network: everything comes from the card glossary.
  */
 export function PeekSheet({ entry, glossary, onClose, ctx, personaName }: PeekSheetProps) {
+  const t = useT();
   if (!entry) return null;
-  return <PeekInner key={entry.id || entry.title} root={entry} glossary={glossary} onClose={onClose} ctx={ctx} personaName={personaName || 'AI 助手'} />;
+  return <PeekInner key={entry.id || entry.title} root={entry} glossary={glossary} onClose={onClose} ctx={ctx} personaName={personaName || t('common.aiAssistant')} />;
 }
 
 function PeekInner({ root, glossary, onClose, ctx, personaName }: { root: GlossaryEntry; glossary?: Record<string, GlossaryEntry>; onClose: () => void; ctx: Pick<CardContext, 'insertComposer'>; personaName: string }) {
+  const t = useT();
   const [stack, setStack] = useState<GlossaryEntry[]>([root]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const cur = stack[stack.length - 1];
@@ -74,7 +76,7 @@ function PeekInner({ root, glossary, onClose, ctx, personaName }: { root: Glossa
         {paras.length > 0 && (
           <div className="km-peek-details">
             <button type="button" className="km-fold-btn" aria-expanded={detailsOpen} onClick={() => setDetailsOpen((o) => !o)}>
-              {detailsOpen ? '▾' : '▸'} 实战细节
+              {detailsOpen ? '▾' : '▸'} {t('peek.battleDetails')}
             </button>
             {detailsOpen &&
               paras.map((p, i) => (
@@ -86,7 +88,7 @@ function PeekInner({ root, glossary, onClose, ctx, personaName }: { root: Glossa
         )}
         {related.length > 0 && (
           <div className="km-peek-related">
-            <span className="km-k">关联词条</span>
+            <span className="km-k">{t('peek.related')}</span>
             {related.map((g) => (
               <button key={g.id || g.title} type="button" className="km-peek-rel" onClick={() => go(g)}>
                 {g.title} ▸
@@ -102,7 +104,7 @@ function PeekInner({ root, glossary, onClose, ctx, personaName }: { root: Glossa
             onClose();
           }}
         >
-          问{personaName} ›
+          {t('peek.askPersona', { name: personaName })}
         </button>
       </div>
     </Sheet>

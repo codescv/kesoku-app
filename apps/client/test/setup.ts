@@ -1,6 +1,18 @@
 import 'fake-indexeddb/auto';
-import { afterEach } from 'vitest';
+import { afterEach, beforeEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import { setUiLanguage } from '@kesoku/ui';
+
+// Legacy client tests assert zh-CN UI labels by default; i18n tests override navigator.language / setUiLanguage explicitly.
+if (typeof navigator !== 'undefined') {
+  Object.defineProperty(navigator, 'language', { configurable: true, value: 'zh-CN' });
+  Object.defineProperty(navigator, 'languages', { configurable: true, value: ['zh-CN'] });
+}
+setUiLanguage('system');
+
+beforeEach(() => {
+  setUiLanguage('system');
+});
 
 afterEach(() => {
   cleanup();

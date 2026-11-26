@@ -4,9 +4,10 @@ import { isNative } from '../../native/platform';
 import { tryNativeQrScan } from '../../native/qr';
 import { AuthError, getAuthConfig, getRelayBase, googleLogin, pair, preloadGoogleAuth, setRelayBase, type AuthConfig } from '../../lib/auth';
 import { QrScannerModal } from './QrScannerModal';
-import { UiIcon } from '@kesoku/ui';
+import { UiIcon, useT } from '@kesoku/ui';
 
 export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () => void; initialCode?: string; initialRelay?: string }) {
+  const tr = useT();
   const native = isNative();
   const [code, setCode] = useState(initialCode ?? '');
   const [relay, setRelay] = useState(initialRelay ?? '');
@@ -48,7 +49,7 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
       await pair(targetCode);
       onDone();
     } catch (x) {
-      setErr(x instanceof AuthError ? x.message : '网络错误，请检查中继地址');
+      setErr(x instanceof AuthError ? x.message : tr('auth.networkError'));
     } finally {
       setBusy(false);
     }
@@ -87,7 +88,7 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
     const nativeOutcome = await tryNativeQrScan();
     if (nativeOutcome.status === 'scanned') {
       if (!applyPairLink(nativeOutcome.value, true)) {
-        setErr('二维码不是有效的 Kesoku 配对码（请运行 kesoku app pair 生成二维码）');
+        setErr(tr('auth.invalidQr'));
       }
       return;
     }
@@ -98,7 +99,7 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
   function handleModalQrDetected(value: string) {
     setScannerOpen(false);
     if (!applyPairLink(value, true)) {
-      setErr('二维码不是有效的 Kesoku 配对码（请运行 kesoku app pair 生成二维码）');
+      setErr(tr('auth.invalidQr'));
     }
   }
 
@@ -114,7 +115,7 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
       await googleLogin(authCfg ?? undefined);
       onDone();
     } catch (x) {
-      setErr(x instanceof AuthError ? x.message : '登录失败，请重试');
+      setErr(x instanceof AuthError ? x.message : tr('auth.loginFailedRetry'));
     } finally {
       setBusy(false);
     }
@@ -132,38 +133,38 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
         <h1>Kesoku</h1>
         {!native && loadingConfig && (
           <p className="k-auth-sub" aria-busy="true">
-            正在加载…
+            {tr('auth.loading')}
           </p>
         )}
         {showGoogleOnly && (
           <>
-            <p className="k-auth-sub">仅限白名单受权 Google 账号访问</p>
+            <p className="k-auth-sub">{tr('auth.googleOnlySub')}</p>
             {err && (
               <div className="k-auth-err" role="alert">
                 {err}
               </div>
             )}
             <button type="button" className="k-btn k-btn-primary k-btn-block k-btn-lg" disabled={busy} onClick={() => void doGoogle()}>
-              {busy ? '登录中…' : '使用 Google 账号登录'}
+              {busy ? tr('auth.signingIn') : tr('auth.signInWithGoogle')}
             </button>
           </>
         )}
         {showPairing && (
           <>
-            <p className="k-auth-sub">连接你的自托管 Kesoku 引擎</p>
+            <p className="k-auth-sub">{tr('auth.pairSub')}</p>
             <button
               type="button"
               className="k-btn k-btn-primary k-btn-block k-btn-lg k-qr-scan-btn"
               disabled={busy}
               onClick={() => void handleStartQrScan()}
             >
-              <UiIcon name="qr" size={22} /> 扫码配对
+              <UiIcon name="qr" size={22} /> {tr('auth.scanQrPair')}
             </button>
-            <div className="k-auth-or">或手动输入配对码</div>
+            <div className="k-auth-or">{tr('auth.orManualCode')}</div>
             <form onSubmit={submitPair} className="k-auth-form">
               {native && (
                 <label className="k-field">
-                  <span>中继地址</span>
+                  <span>{tr('auth.relayUrl')}</span>
                   <input
                     type="url"
                     inputMode="url"
@@ -178,7 +179,7 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
                 </label>
               )}
               <label className="k-field">
-                <span>6 位配对码</span>
+                <span>{tr('auth.sixDigitCode')}</span>
                 <input
                   className="k-code-input"
                   inputMode="numeric"
@@ -193,7 +194,9 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
                 />
               </label>
               <p id="k-pair-hint" className="k-auth-hint">
-                在引擎主机运行 <code>kesoku app pair</code>，扫码或 2 分钟内输入 · 连续 5 次错误即作废
+                {tr('auth.pairHintBefore')}
+                <code>kesoku app pair</code>
+                {tr('auth.pairHintAfter')}
               </p>
               {err && (
                 <div className="k-auth-err" role="alert">
@@ -201,7 +204,7 @@ export function AuthScreen({ onDone, initialCode, initialRelay }: { onDone: () =
                 </div>
               )}
               <button type="submit" className="k-btn k-btn-primary k-btn-block k-btn-lg" disabled={busy || code.replace(/\D/g, '').length !== 6}>
-                {busy ? '连接中…' : '配对并连接'}
+                {busy ? tr('auth.connecting') : tr('auth.pairAndConnect')}
               </button>
             </form>
             {scannerOpen && (

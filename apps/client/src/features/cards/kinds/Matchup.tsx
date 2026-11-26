@@ -1,13 +1,14 @@
 import { useState } from 'react';
+import { useT, type MessageKey } from '@kesoku/ui';
 import type { CardProps } from '../types';
 import { CardShell, Fold } from '../parts';
 import { GlossPill, MatchupRows, TypeBadge, VersionBadge, labelled, matchupOf } from '../pokemon';
 import { arr, glossaryMap, isObj, obj, pick, strList, versionOf, type Dict } from '../util';
 
-const TIERS: Array<{ id: string; label: string; tone: string }> = [
-  { id: 'best', label: '首选', tone: 'danger' },
-  { id: 'ok', label: '可用', tone: 'primary' },
-  { id: 'risky', label: '慎上', tone: 'warn' },
+const TIERS: Array<{ id: string; labelKey: MessageKey; tone: string }> = [
+  { id: 'best', labelKey: 'card.tier.best', tone: 'danger' },
+  { id: 'ok', labelKey: 'card.tier.ok', tone: 'primary' },
+  { id: 'risky', labelKey: 'card.tier.risky', tone: 'warn' },
 ];
 
 function tierOf(v: unknown): string {
@@ -17,8 +18,9 @@ function tierOf(v: unknown): string {
   return 'ok';
 }
 
-/** `pkmn_matchup` counter-picks: 首选 / 可用 / 慎上 tiers, reason expands in one line. */
+/** `pkmn_matchup` counter-picks: Best / Viable / Risky tiers, reason expands in one line. */
 export function Matchup({ data }: CardProps<Dict>) {
+  const t = useT();
   const d = obj(data);
   const v = versionOf(d);
   const target = pick(d, 'target_name', 'target');
@@ -36,19 +38,19 @@ export function Matchup({ data }: CardProps<Dict>) {
       className={`kc-pkmn kc-pkmn-${v}`}
       head={
         <>
-          <span className="kc-title">⚔️ 反制对位{target ? ` · ${target}` : ''}</span>
+          <span className="kc-title">{t('card.matchupTitle')}{target ? ` · ${target}` : ''}</span>
           <VersionBadge v={v} />
         </>
       }
     >
       <ul className="kc-mu-list">
-        {TIERS.flatMap((t) =>
+        {TIERS.flatMap((tier) =>
           picks
-            .filter((p) => p.tier === t.id && p.name)
+            .filter((p) => p.tier === tier.id && p.name)
             .map((p) => (
               <li key={p.key} className={'kc-mu-pick' + (open === p.key ? ' is-open' : '')}>
                 <button type="button" className="kc-mu-pick-btn" aria-expanded={open === p.key} onClick={() => setOpen((o) => (o === p.key ? null : p.key))}>
-                  <span className={`kc-badge kc-badge-${t.tone}`}>{t.label}</span>
+                  <span className={`kc-badge kc-badge-${tier.tone}`}>{t(tier.labelKey)}</span>
                   <b className="kc-mu-name">{p.name}</b>
                   {p.types.map((ty) => (
                     <TypeBadge key={ty} t={ty} />
@@ -68,15 +70,22 @@ export function Matchup({ data }: CardProps<Dict>) {
   );
 }
 
-const CAT_LABEL: Record<string, string> = { ability: '特性', item: '道具', mechanic: '机制', weather: '天气' };
+const CAT_KEYS: Record<string, MessageKey> = {
+  ability: 'card.cat.ability',
+  item: 'card.cat.item',
+  mechanic: 'card.cat.mechanic',
+  weather: 'card.cat.weather',
+};
 
 /** `pkmn_glossary` standalone wiki card for an ability, item, mechanic, or weather entry. */
 export function PkmnGlossary({ data, ctx }: CardProps<Dict>) {
+  const t = useT();
   const d = obj(data);
   const v = versionOf(d);
   const glossary = glossaryMap(d.glossary);
   const title = pick(d, 'title', 'name', 'entry_id');
   const cat = pick(d, 'category');
+  const catLabel = CAT_KEYS[cat] ? t(CAT_KEYS[cat]) : cat;
   const summary = pick(d, 'summary');
   const detail = pick(d, 'detail_markdown', 'details_md', 'detail', 'details');
   const pills = strList(d.pills ?? d.effect_pills);
@@ -88,7 +97,7 @@ export function PkmnGlossary({ data, ctx }: CardProps<Dict>) {
       head={
         <>
           <span className="kc-title">📖 {title}</span>
-          {cat && <span className="kc-badge kc-badge-tag">{CAT_LABEL[cat] ?? cat}</span>}
+          {cat && <span className="kc-badge kc-badge-tag">{catLabel}</span>}
           <VersionBadge v={v} />
         </>
       }
@@ -104,13 +113,13 @@ export function PkmnGlossary({ data, ctx }: CardProps<Dict>) {
       )}
       {summary && <p className="kc-summary">{summary}</p>}
       {detail && (
-        <Fold title="机制详解">
+        <Fold title={t('card.detailFold')}>
           <p className="kc-detail">{detail}</p>
         </Fold>
       )}
       {related.length > 0 && (
         <div className="kc-chips">
-          <span className="kc-chip-k">关联</span>
+          <span className="kc-chip-k">{t('card.related')}</span>
           {related.map((r) => (
             <GlossPill key={r.id ?? r.label} id={r.id} label={r.label} glossary={glossary} ctx={ctx} />
           ))}
@@ -122,6 +131,7 @@ export function PkmnGlossary({ data, ctx }: CardProps<Dict>) {
 
 /** `pkmn_type_chart` offensive & defensive effectiveness card for a single Pokémon type. */
 export function PkmnTypeChart({ data }: CardProps<Dict>) {
+  const t = useT();
   const d = obj(data);
   const v = versionOf(d);
   const typeName = pick(d, 'type', 'name');
@@ -136,7 +146,7 @@ export function PkmnTypeChart({ data }: CardProps<Dict>) {
       className={`kc-pkmn kc-pkmn-${v}`}
       head={
         <>
-          <span className="kc-title">🧭 属性相克</span>
+          <span className="kc-title">{t('card.typeChartTitle')}</span>
           {typeName && <TypeBadge t={typeName} />}
           <VersionBadge v={v} />
         </>
@@ -145,7 +155,7 @@ export function PkmnTypeChart({ data }: CardProps<Dict>) {
       <div className="kc-mu">
         {offX2.length > 0 && (
           <div className="kc-mu-x2">
-            <b>⚔️ 2× 克制</b>：{offX2.join(' · ')}
+            <b>{t('card.offense2x')}</b>: {offX2.join(' · ')}
           </div>
         )}
         {(offX05.length > 0 || offX0.length > 0) && (

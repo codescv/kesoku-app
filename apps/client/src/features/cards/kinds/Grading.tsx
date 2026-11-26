@@ -1,3 +1,4 @@
+import { useT } from '@kesoku/ui';
 import type { CardProps } from '../types';
 import { CardShell, Ja, LineVoice, toLine } from '../parts';
 import { cardMedia, charDiff, obj, pick, strList, useImageUrl, type Dict } from '../util';
@@ -35,6 +36,7 @@ function Diffed({ parts, kind }: { parts: Array<[string, boolean]>; kind: 'del' 
 
 /** Grading result (Screen 06): big PASS / 再试 badge, original vs corrected with diff, native upgrade. */
 export function Grading({ data, ctx }: CardProps<Dict>) {
+  const t = useT();
   const d = obj(data);
   const pass = passOf(d);
   const label = pick(d, 'label', 'headline', 'summary', 'reason');
@@ -51,15 +53,15 @@ export function Grading({ data, ctx }: CardProps<Dict>) {
   return (
     <CardShell kind="grading" tone={pass === false ? 'danger' : 'ok'}>
       <div className="kc-grade-top">
-        <span className={'kc-grade-badge ' + (pass === false ? 'is-retry' : 'is-pass')}>{pass === false ? '✗ 再试' : '✓ PASS'}</span>
+        <span className={'kc-grade-badge ' + (pass === false ? 'is-retry' : 'is-pass')}>{pass === false ? t('card.gradingRetry') : t('card.gradingPass')}</span>
         {label && <span className="kc-grade-label">{label}</span>}
-        {streak && <span className="kc-badge kc-badge-warn">🔥 连对 ×{streak}</span>}
+        {streak && <span className="kc-badge kc-badge-warn">{t('card.streak', { n: streak })}</span>}
       </div>
       {(original || corrected) && (
         <div className="kc-grade-cmp">
           {original && (
             <div className="kc-grade-row is-orig">
-              <span className="kc-grade-k">原句</span>
+              <span className="kc-grade-k">{t('card.original')}</span>
               <span className="kc-grade-v" lang="ja">
                 {diff ? <Diffed parts={diff.a} kind="del" /> : original}
               </span>
@@ -67,7 +69,7 @@ export function Grading({ data, ctx }: CardProps<Dict>) {
           )}
           {corrected && corrected !== original && (
             <div className="kc-grade-row is-fixed">
-              <span className="kc-grade-k">修正</span>
+              <span className="kc-grade-k">{t('card.corrected')}</span>
               <span className="kc-grade-v" lang="ja">
                 {diff ? <Diffed parts={diff.b} kind="ins" /> : corrected}
               </span>
@@ -77,7 +79,7 @@ export function Grading({ data, ctx }: CardProps<Dict>) {
       )}
       {upgrade && (
         <div className="kc-grade-up">
-          <div className="kc-grade-up-head">🔥 母语者升级表达</div>
+          <div className="kc-grade-up-head">{t('card.nativeUpgrade')}</div>
           <div className="kc-line-main">
             <Ja text={upgrade.text} ruby={upgrade.ruby} rubyParts={upgrade.rubyParts} className="kc-line-ja" />
             <LineVoice voice={upgrade.voice} ctx={ctx} />
@@ -96,10 +98,10 @@ export function Grading({ data, ctx }: CardProps<Dict>) {
         <button
           type="button"
           className="kc-grade-img"
-          onClick={() => imgUrl && ctx.openFullscreen(<img className="kc-full-img" src={imgUrl} alt={imgCaption || '奖惩图'} />)}
-          aria-label="查看大图"
+          onClick={() => imgUrl && ctx.openFullscreen(<img className="kc-full-img" src={imgUrl} alt={imgCaption || t('card.rewardImgAlt')} />)}
+          aria-label={t('common.viewLargeImage')}
         >
-          {imgUrl ? <img src={imgUrl} alt={imgCaption || '奖惩图'} /> : <span className="kc-img-skel" aria-busy={imgUrl === undefined} />}
+          {imgUrl ? <img src={imgUrl} alt={imgCaption || t('card.rewardImgAlt')} /> : <span className="kc-img-skel" aria-busy={imgUrl === undefined} />}
           {imgCaption && <span className="kc-grade-img-cap">{imgCaption}</span>}
         </button>
       )}

@@ -1,3 +1,4 @@
+import { useT } from '@kesoku/ui';
 import type { CardProps } from '../types';
 import { CardShell } from '../parts';
 import { isObj, obj, pick, type Dict } from '../util';
@@ -22,9 +23,10 @@ function brief(v: unknown): string {
 
 /** Fallback for unknown kinds: title + compact key/value bullets (plain text only). */
 export function GenericCard({ data }: CardProps<Dict>) {
+  const t = useT();
   const d = obj(data);
   const nameField = d.name;
-  const title = pick(d, 'title') || (isObj(nameField) ? pick(nameField, 'zh', 'en') : pick(d, 'name')) || pick(d, 'kind') || '卡片';
+  const title = pick(d, 'title') || (isObj(nameField) ? pick(nameField, 'zh', 'en') : pick(d, 'name')) || pick(d, 'kind') || t('card.genericFallback');
   const rows = Object.entries(d)
     .filter(([k]) => !SKIP.has(k))
     .map(([k, v]) => [k, brief(v)] as const)

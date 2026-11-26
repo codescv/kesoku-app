@@ -1,0 +1,7 @@
+/* Kesoku App Shortcuts phrases (English) */
+"Open Translator in ${applicationName}" = "Open Translator in ${applicationName}";
+"${applicationName} Translator" = "${applicationName} Translator";
+"Open Travel Assistant in ${applicationName}" = "Open Travel Assistant in ${applicationName}";
+"${applicationName} Travel Assistant" = "${applicationName} Travel Assistant";
+"Open Pokémon Assistant in ${applicationName}" = "Open Pokémon Assistant in ${applicationName}";
+"${applicationName} Pokémon Assistant" = "${applicationName} Pokémon Assistant";

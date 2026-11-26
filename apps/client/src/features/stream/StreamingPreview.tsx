@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RubyText, parseRubyNotation } from '@kesoku/ui';
+import { RubyText, parseRubyNotation, useT } from '@kesoku/ui';
 import type { StreamPreview, TurnEvent } from '../../lib/types';
 import { parseStreaming } from './streamParser';
 import { Markdown } from '../segments/Markdown';
 import { CardSkeleton } from '../segments/SegmentRenderer';
 
-/** Discord-style `● ● ●  Name 正在输入…` (or `正在执行 <tool>…` while a tool runs). */
+/** Discord-style `● ● ●  Name Typing…` (or `Running <tool>…` while a tool runs). */
 export function TypingIndicator({ name, toolTitle, className, hideName }: { name?: string; toolTitle?: string; className?: string; hideName?: boolean }) {
-  const status = toolTitle ? `正在执行 ${toolTitle}…` : '正在输入…';
+  const tr = useT();
+  const status = toolTitle ? tr('stream.runningTool', { tool: toolTitle }) : tr('stream.typing');
   if (hideName) {
-    // Inline under the assistant header, which already shows avatar + name: `● ● ● 正在输入…`.
     return (
       <div className={'k-typing' + (className ? ` ${className}` : '')} data-testid="typing-indicator" role="status" aria-live="polite" aria-label={`${name || 'AI'} ${status}`}>
         <span className="k-typing-dots" aria-hidden>
@@ -17,7 +17,9 @@ export function TypingIndicator({ name, toolTitle, className, hideName }: { name
           <span />
           <span />
         </span>
-        <span className="k-typing-label" aria-hidden>{status}</span>
+        <span className="k-typing-label" aria-hidden>
+          {status}
+        </span>
       </div>
     );
   }
@@ -37,6 +39,7 @@ export function TypingIndicator({ name, toolTitle, className, hideName }: { name
 
 /** Progressive preview: text as Markdown, open fences as skeletons (never raw YAML). */
 export function StreamingPreview({ preview, name, toolTitle }: { preview: StreamPreview; name?: string; toolTitle?: string }) {
+  const tr = useT();
   const blocks = useMemo(() => parseStreaming(preview.text), [preview.text]);
   if (!preview.text.trim() && !preview.interrupted) {
     return (
@@ -60,8 +63,18 @@ export function StreamingPreview({ preview, name, toolTitle }: { preview: Stream
           case 'bilingual':
             return (
               <div key={i} className="k-bi is-skeleton">
-                {b.speaker && <div className="k-bi-head"><span className="k-bi-speaker">{b.speaker}</span></div>}
-                {b.ja ? <div className="k-bi-ja"><RubyText parts={parseRubyNotation(b.ja)} /></div> : <CardSkeleton title="日语台词生成中…" />}
+                {b.speaker && (
+                  <div className="k-bi-head">
+                    <span className="k-bi-speaker">{b.speaker}</span>
+                  </div>
+                )}
+                {b.ja ? (
+                  <div className="k-bi-ja">
+                    <RubyText parts={parseRubyNotation(b.ja)} />
+                  </div>
+                ) : (
+                  <CardSkeleton title={tr('stream.generatingJa')} />
+                )}
                 {b.zh && <div className="k-bi-zh is-open">{b.zh}</div>}
               </div>
             );
@@ -72,13 +85,13 @@ export function StreamingPreview({ preview, name, toolTitle }: { preview: Stream
           case 'media':
             return (
               <div key={i} className="k-media k-media-pending">
-                ⏳ {b.media === 'voice' ? '语音生成中…' : '附件生成中…'}
+                ⏳ {b.media === 'voice' ? tr('stream.generatingVoice') : tr('stream.generatingAttachment')}
               </div>
             );
         }
       })}
       {!preview.interrupted && <span className="k-caret-blink" aria-hidden />}
-      {preview.interrupted && <span className="k-pill k-pill-neutral k-pill-sm">已打断</span>}
+      {preview.interrupted && <span className="k-pill k-pill-neutral k-pill-sm">{tr('stream.interrupted')}</span>}
     </div>
   );
 }
@@ -87,8 +100,9 @@ function fmtSec(ms: number) {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-/** `▸ 思考与工具 · 1.1s` — collapsed by default; live timer + current tool while running. */
+/** `▸ Thinking & Tools · 1.1s` — collapsed by default; live timer + current tool while running. */
 export function ThinkingPill({ events, running, startedAt, thought }: { events: TurnEvent[]; running: boolean; startedAt?: number; thought?: string }) {
+  const tr = useT();
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -104,9 +118,9 @@ export function ThinkingPill({ events, running, startedAt, thought }: { events: 
     <div className={'k-think' + (open ? ' is-open' : '')}>
       <button type="button" className="k-think-pill" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <span aria-hidden>{open ? '▾' : '▸'}</span>{' '}
-        <span className="k-think-label-full">思考与工具</span>
+        <span className="k-think-label-full">{tr('stream.thinkingAndTools')}</span>
         <span className="k-think-label-short" aria-hidden="true">
-          思考
+          {tr('stream.thinkingShort')}
         </span>{' '}
         · {fmtSec(totalMs)}
         {current && <span className="k-think-tool"> · {current.title}</span>}
@@ -115,7 +129,7 @@ export function ThinkingPill({ events, running, startedAt, thought }: { events: 
         <ol className="k-think-timeline">
           {thought && (
             <li className="is-thought">
-              <b>💭 思考</b>
+              <b>{tr('stream.thoughtTitle')}</b>
               <span>{thought}</span>
             </li>
           )}

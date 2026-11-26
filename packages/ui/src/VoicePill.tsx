@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useT } from './i18n';
 
 export interface VoicePillProps {
   /** Resolves the (signed) audio URL. Called on tap, or eagerly in the background when `preload` is set. */
@@ -36,6 +37,7 @@ function fmt(ms: number): string {
  * Only one pill plays at a time.
  */
 export function VoicePill({ resolveUrl, durationMs, label, className, createAudio, pending, failed, preload = false, preloadKey }: VoicePillProps) {
+  const t = useT();
   const [state, setState] = useState<PillState>('idle');
   const [elapsed, setElapsed] = useState(0);
   const [queuedPlay, setQueuedPlay] = useState(false);
@@ -192,11 +194,11 @@ export function VoicePill({ resolveUrl, durationMs, label, className, createAudi
   const total = durationMs ?? detectedMs ?? 0;
   const text =
     view === 'failed'
-      ? '语音失败'
+      ? t('voice.failed')
       : view === 'queued'
-        ? '合成完即播'
+        ? t('voice.queued')
         : view === 'pending'
-          ? '合成中…'
+          ? t('voice.pending')
           : view === 'playing'
             ? fmt(elapsed)
             : total
@@ -204,7 +206,15 @@ export function VoicePill({ resolveUrl, durationMs, label, className, createAudi
               : (label ?? '');
   const icon = view === 'failed' ? '⚠️' : view === 'queued' || view === 'pending' ? '⏳' : view === 'playing' ? '❚❚' : view === 'loading' ? '…' : view === 'error' ? '↻' : '▶';
   const aria =
-    view === 'failed' ? '语音失败' : view === 'pending' ? '语音合成中，点击合成后播放' : view === 'queued' ? '合成完成后播放，点击取消' : view === 'playing' ? '暂停语音' : '播放语音';
+    view === 'failed'
+      ? t('voice.ariaFailed')
+      : view === 'pending'
+        ? t('voice.ariaPending')
+        : view === 'queued'
+          ? t('voice.ariaQueued')
+          : view === 'playing'
+            ? t('voice.ariaPlaying')
+            : t('voice.ariaPlay');
   return (
     <button
       type="button"

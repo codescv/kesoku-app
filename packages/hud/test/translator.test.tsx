@@ -11,6 +11,11 @@ import {
   translatorLangLabel,
   type ModeHudProps,
 } from '../src';
+import { setUiLanguage } from '@kesoku/ui';
+import { beforeAll as __beforeAll, afterAll as __afterAll } from 'vitest';
+
+__beforeAll(() => setUiLanguage('zh-CN'));
+__afterAll(() => setUiLanguage('system'));
 
 afterEach(() => cleanup());
 

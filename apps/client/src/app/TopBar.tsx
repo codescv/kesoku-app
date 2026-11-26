@@ -1,13 +1,11 @@
 import { useState } from 'react';
 import { MODEL_CATALOG, THINKING_LEVELS, type LlmOverride, type ModeId, type ThinkingLevel } from '@kesoku/protocol';
-import { Avatar, Capsule, ModeIcon, Sheet, UiIcon, modeMeta } from '@kesoku/ui';
+import { Avatar, Capsule, ModeIcon, Sheet, UiIcon, modeMeta, t, useLocale, useT } from '@kesoku/ui';
 import { kesoku } from '../lib/client';
 import { actions, useStore } from '../lib/store';
 import { useAvatarUrl } from '../features/persona/avatar';
 import { fallbackRoleId, roleAvatarRef, roleFallbackName, sortRoles } from '../features/persona/model';
 
-const LEVEL_LABEL: Record<ThinkingLevel, string> = { minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High' };
-const LEVEL_SHORT: Record<ThinkingLevel, string> = { minimal: 'Min', low: 'L', medium: 'M', high: 'H' };
 const MODEL_SHORT_LABEL: Record<string, string> = {
   'gemini-4-neon': 'Neon',
   'gemini-4-hydrogen': 'Hydrogen',
@@ -17,26 +15,35 @@ const MODEL_SHORT_LABEL: Record<string, string> = {
   'claude-opus-5-5': 'Opus',
 };
 
+export function thinkingLevelLabel(level: ThinkingLevel): string {
+  return t(`thinking.${level}`);
+}
+
+export function thinkingLevelShortLabel(level: ThinkingLevel): string {
+  return t(`thinking.short.${level}`);
+}
+
 export function modelLabel(o: LlmOverride | null | undefined): string {
   const m = MODEL_CATALOG.find((x) => x.model_name === o?.model_name);
-  return `${m?.label ?? 'Neon'} · ${LEVEL_LABEL[(o?.thinking_level ?? 'low') as ThinkingLevel]}`;
+  return `${m?.label ?? 'Neon'} · ${thinkingLevelLabel((o?.thinking_level ?? 'low') as ThinkingLevel)}`;
 }
 
 export function modelShortLabel(o: LlmOverride | null | undefined): string {
   const m = MODEL_CATALOG.find((x) => x.model_name === o?.model_name);
   const shortModel = (o?.model_name && MODEL_SHORT_LABEL[o.model_name]) ?? m?.label ?? 'Neon';
-  const shortLevel = LEVEL_SHORT[(o?.thinking_level ?? 'low') as ThinkingLevel] ?? 'L';
+  const shortLevel = thinkingLevelShortLabel((o?.thinking_level ?? 'low') as ThinkingLevel);
   return `${shortModel} · ${shortLevel}`;
 }
 
 export function ModelCapsule({ sessionId }: { sessionId: string | null }) {
+  const tr = useT();
   const [open, setOpen] = useState(false);
   const override = useStore((s) => (sessionId ? s.llmOverride[sessionId] : null));
   const def = useStore((s) => s.settings.defaultModel);
   const cur = override ?? def;
   return (
     <>
-      <Capsule className="k-model-capsule" onClick={() => setOpen(true)} label="模型与思考档位">
+      <Capsule className="k-model-capsule" onClick={() => setOpen(true)} label={tr('topbar.modelCapsuleAria')}>
         <span className="k-model-label">
           <UiIcon name="spark" size={15} />
           <span className="k-model-text-full">{modelLabel(cur)}</span>
@@ -45,13 +52,13 @@ export function ModelCapsule({ sessionId }: { sessionId: string | null }) {
           </span>
         </span>
       </Capsule>
-      <Sheet open={open} onClose={() => setOpen(false)} title="模型 × 思考档位">
+      <Sheet open={open} onClose={() => setOpen(false)} title={tr('topbar.modelSheetTitle')}>
         <div className="k-model-grid" role="grid">
           <div className="k-model-grid-head" role="row">
             <span />
             {THINKING_LEVELS.map((l) => (
               <span key={l} role="columnheader">
-                {LEVEL_LABEL[l]}
+                {thinkingLevelLabel(l)}
               </span>
             ))}
           </div>
@@ -73,7 +80,7 @@ export function ModelCapsule({ sessionId }: { sessionId: string | null }) {
                     onClick={() => {
                       void kesoku.setModel(sessionId, { llm: m.llm, model_name: m.model_name, thinking_level: l, stream: true });
                       setOpen(false);
-                      actions.toast(`下一条消息使用 ${m.label} · ${LEVEL_LABEL[l]}`);
+                      actions.toast(tr('topbar.nextMessageModel', { model: m.label, level: thinkingLevelLabel(l) }));
                     }}
                   >
                     {on ? <UiIcon name="check" size={18} /> : null}
@@ -94,6 +101,8 @@ function RoleOptionAvatar({ role }: { role: { role_id: string; display_name: str
 }
 
 export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId: string | null; modeId: ModeId; nestedTitle?: string }) {
+  const locale = useLocale();
+  const tr = useT();
   const [open, setOpen] = useState(false);
   const personas = useStore((s) => s.personas);
   const session = useStore((s) => (sessionId ? s.sessions[sessionId] : undefined));
@@ -107,13 +116,13 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
   const persona = personas.find((p) => p.role_id === role);
   const avatarSrc = useAvatarUrl(persona ? roleAvatarRef(persona) : null, persona?.avatar_rev);
   const name = persona?.display_name ?? roleFallbackName(role);
-  const meta = modeMeta(effectiveMode);
+  const meta = modeMeta(effectiveMode, locale);
   // Roles come from the engine (persona list); before it arrives show only the active role, generically named.
   const roles = personas.length ? sortRoles(personas) : [{ role_id: role, display_name: name, tagline: '', builtin: true, avatar_rev: 0 }];
   const isDefaultChat = effectiveMode === 'chat' && !sessionId;
   return (
     <>
-      <Capsule className="k-role-capsule" onClick={() => setOpen(true)} label="角色与模式">
+      <Capsule className="k-role-capsule" onClick={() => setOpen(true)} label={tr('topbar.roleModeAria')}>
         <Avatar src={avatarSrc} name={name} size={30} ai={persona?.avatar_ai} />
         <span className="k-role-label">
           <span className="k-role-name">{name.split(' ')[0]}</span>
@@ -123,9 +132,9 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
           </span>
         </span>
       </Capsule>
-      <Sheet open={open} onClose={() => setOpen(false)} title="角色与模式">
+      <Sheet open={open} onClose={() => setOpen(false)} title={tr('topbar.roleModeTitle')}>
         <section className="k-rm-section">
-          <h3>{sessionId ? '切换角色' : '选择对话角色'}</h3>
+          <h3>{sessionId ? tr('topbar.switchRole') : tr('topbar.chooseRole')}</h3>
           <div className="k-rm-roles">
             {roles.map((r) => (
               <button
@@ -136,8 +145,8 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
                 data-testid={`topbar-role-${r.role_id}`}
                 onClick={() => {
                   actions.setUi({ draftRole: r.role_id });
-                  if (sessionId) void kesoku.setRole(sessionId, r.role_id).catch(() => actions.toast('切换角色失败', 'error'));
-                  else actions.toast(`已选择角色：${r.display_name}`);
+                  if (sessionId) void kesoku.setRole(sessionId, r.role_id).catch(() => actions.toast(tr('topbar.switchRoleFailed'), 'error'));
+                  else actions.toast(tr('topbar.selectedRole', { name: r.display_name }));
                   setOpen(false);
                 }}
               >
@@ -146,7 +155,7 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
                   <b>{r.display_name}</b>
                   {r.tagline && <small>{r.tagline}</small>}
                 </span>
-                {r.role_id === role && <span className="k-pill k-pill-primary k-pill-sm">当前</span>}
+                {r.role_id === role && <span className="k-pill k-pill-primary k-pill-sm">{tr('common.current')}</span>}
               </button>
             ))}
           </div>
@@ -158,8 +167,8 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
               onClick={() => (setOpen(false), actions.setUi({ sessionNotesId: sessionId }))}
             >
               <span>
-                <UiIcon name="pin" size={18} /> 置顶 Notes
-                {sessionNotesPinned && <span className="k-pill k-pill-primary k-pill-sm">已置顶</span>}
+                <UiIcon name="pin" size={18} /> {tr('topbar.pinnedNotes')}
+                {sessionNotesPinned && <span className="k-pill k-pill-primary k-pill-sm">{tr('topbar.pinnedBadge')}</span>}
               </span>
               <UiIcon name="chevron-right" size={18} />
             </button>
@@ -177,7 +186,7 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
                 data-testid="topbar-stop-mode"
                 onClick={() => (setOpen(false), void kesoku.stopMode(sessionId))}
               >
-                退出当前模式
+                {tr('topbar.exitMode')}
               </button>
             </div>
           </section>
@@ -188,10 +197,11 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
 }
 
 export function TopBar({ sessionId, modeId, nestedTitle, onMenu, showMenu }: { sessionId: string | null; modeId: ModeId; nestedTitle?: string; onMenu: () => void; showMenu: boolean }) {
+  const tr = useT();
   return (
     <header className="k-topbar" style={{ ['--mode' as string]: modeMeta(modeId).color }}>
       {showMenu ? (
-        <button type="button" className="k-icon-btn" aria-label="打开会话抽屉" onClick={onMenu}>
+        <button type="button" className="k-icon-btn" aria-label={tr('topbar.openDrawerAria')} onClick={onMenu}>
           <UiIcon name="menu" size={22} />
         </button>
       ) : (

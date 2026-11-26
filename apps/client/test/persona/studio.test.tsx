@@ -163,7 +163,7 @@ describe('PersonaStudio · Screen 15 roles', () => {
     fireEvent.change(rid, { target: { value: 'Bad-Id' } });
     expect(screen.getByText(/仅限小写字母/)).toBeTruthy();
     fireEvent.change(rid, { target: { value: 'nao' } });
-    expect(screen.getByText('该 role_id 已存在')).toBeTruthy();
+    expect(screen.getByText('该角色 ID 已存在')).toBeTruthy();
     expect(calls('persona.upsert')).toHaveLength(0);
   });
 

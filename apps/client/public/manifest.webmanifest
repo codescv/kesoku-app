@@ -2,8 +2,8 @@
   "id": "/",
   "name": "Kesoku",
   "short_name": "Kesoku",
-  "description": "Kesoku 多模式双语 AI 伙伴",
-  "lang": "zh-CN",
+  "description": "Kesoku multi-mode bilingual AI companion",
+  "lang": "en",
   "dir": "ltr",
   "start_url": "/",
   "scope": "/",
@@ -21,8 +21,8 @@
     { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "通用翻译", "short_name": "翻译", "url": "/mode/translator", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
-    { "name": "旅游助手", "short_name": "旅游", "url": "/mode/travel", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
-    { "name": "宝可梦助手", "short_name": "宝可梦", "url": "/mode/pokemon", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] }
+    { "name": "Translator", "short_name": "Translate", "url": "/mode/translator", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Travel Assistant", "short_name": "Travel", "url": "/mode/travel", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Pokémon Assistant", "short_name": "Pokémon", "url": "/mode/pokemon", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] }
   ]
 }

@@ -6,7 +6,7 @@ import type {
 } from 'react';
 import type { MemoryPolicy, ModeId } from '@kesoku/protocol';
 import { ModeHud, detectActiveMode, normalizeModeId } from '@kesoku/hud';
-import { ModeIcon, Sheet, UiIcon, modeMeta } from '@kesoku/ui';
+import { ModeIcon, Sheet, UiIcon, modeMeta, useT } from '@kesoku/ui';
 import { kesoku } from '../lib/client';
 import { actions, useStore } from '../lib/store';
 import type { InspectorPanel } from '../lib/types';
@@ -32,7 +32,12 @@ import { kvSet } from '../lib/db';
 import { mergeTranslatorModePrefs, translatorSettingsPatch } from '../lib/translatorPrefs';
 
 const EMPTY: Record<string, unknown> = {};
-const CHANNEL: Record<string, string> = { discord: 'Discord', discord_asuka: 'Discord', wechat: '微信' };
+
+function channelLabel(origin: string, tr: ReturnType<typeof useT>): string {
+  if (origin === 'discord' || origin === 'discord_asuka') return 'Discord';
+  if (origin === 'wechat') return tr('shell.channel.wechat');
+  return origin;
+}
 
 function defaultInspector(mode: ModeId): InspectorPanel {
   switch (mode) {
@@ -52,6 +57,7 @@ function defaultInspector(mode: ModeId): InspectorPanel {
 }
 
 function Inspector({ panel, sessionId, modeId }: { panel: InspectorPanel; sessionId: string | null; modeId: ModeId }) {
+  const tr = useT();
   const stateFiles = useStore((s) => (sessionId ? s.stateFiles[sessionId] : undefined)) ?? EMPTY;
   const prefs = useStore((s) => (sessionId ? s.modePrefs[sessionId] : undefined)) ?? EMPTY;
   if (panel.kind === 'notes') return <NotesPanel embedded />;
@@ -59,7 +65,7 @@ function Inspector({ panel, sessionId, modeId }: { panel: InspectorPanel; sessio
   if (panel.kind === 'word')
     return (
       <div className="k-inspector-word">
-        <h2>词汇与语法解析</h2>
+        <h2>{tr('shell.wordInspectorTitle')}</h2>
         {panel.sentence && (
           <p className="k-inspector-sentence" lang="ja">
             {panel.sentence}
@@ -67,7 +73,7 @@ function Inspector({ panel, sessionId, modeId }: { panel: InspectorPanel; sessio
         )}
         <LexCard token={panel.token} />
         <button type="button" className="k-btn k-btn-ghost" onClick={() => actions.setUi({ inspector: null })}>
-          返回记忆库
+          {tr('shell.backToMemory')}
         </button>
       </div>
     );
@@ -93,6 +99,7 @@ export function ImageLightbox({
   image: { url: string; bbox?: number[] };
   onClose: () => void;
 }) {
+  const tr = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState<{ scale: number; tx: number; ty: number }>({ scale: 1, tx: 0, ty: 0 });
   const [animating, setAnimating] = useState(false);
@@ -517,7 +524,7 @@ export function ImageLightbox({
       className="k-imgview"
       role="dialog"
       aria-modal="true"
-      aria-label="图片预览"
+      aria-label={tr('shell.imagePreviewAria')}
       onClick={onBackdropOrImageClick}
       onDoubleClick={onDoubleClick}
       onTouchStart={onTouchStart}
@@ -536,7 +543,7 @@ export function ImageLightbox({
         type="button"
         className="k-imgview-close"
         data-testid="imgview-close-btn"
-        aria-label="关闭大图"
+        aria-label={tr('shell.closeLightboxAria')}
         onClick={(e) => {
           e.stopPropagation();
           clearSingleTapTimer();
@@ -557,7 +564,7 @@ export function ImageLightbox({
             applyZoom({ scale: 1, tx: 0, ty: 0 }, true);
           }}
         >
-          {Math.round(zoom.scale * 100)}% · 重置
+          {tr('shell.zoomReset', { pct: Math.round(zoom.scale * 100) })}
         </button>
       )}
       <div
@@ -568,7 +575,7 @@ export function ImageLightbox({
           transform: `translate3d(${Math.round(zoom.tx * 100) / 100}px, ${Math.round(zoom.ty * 100) / 100}px, 0) scale(${Math.round(zoom.scale * 1000) / 1000})`,
         }}
       >
-        <img src={image.url} alt="大图" draggable={false} />
+        <img src={image.url} alt={tr('shell.imageAlt')} draggable={false} />
         {image.bbox && image.bbox.length === 4 && (
           <span
             className="k-imgview-box"
@@ -586,13 +593,14 @@ export function ImageLightbox({
 }
 
 function Overlays({ sessionId, modeId }: { sessionId: string | null; modeId: ModeId }) {
+  const tr = useT();
   const { fullscreen, peek, image } = useOverlays();
   return (
     <>
       {fullscreen && (
         <div className="k-fullscreen" role="dialog" aria-modal="true">
           <button type="button" className="k-fullscreen-close" onClick={() => overlays.fullscreen(null)}>
-            <UiIcon name="close" size={18} /> 返回对话
+            <UiIcon name="close" size={18} /> {tr('shell.backToChat')}
           </button>
           <div className="k-fullscreen-body">{fullscreen}</div>
         </div>
@@ -617,6 +625,7 @@ function Toasts() {
 }
 
 export function Shell() {
+  const tr = useT();
   const desktop = useIsDesktop();
   const tablet = useIsTablet();
   const sid = useStore((s) => s.currentSessionId);
@@ -723,10 +732,10 @@ export function Shell() {
       return (
         <div className="k-screen">
           <header className="k-screen-head">
-            <button type="button" className="k-icon-btn" aria-label="返回" onClick={() => actions.setUi({ screen: 'chat' })}>
+            <button type="button" className="k-icon-btn" aria-label={tr('common.back')} onClick={() => actions.setUi({ screen: 'chat' })}>
               <UiIcon name="arrow-left" size={22} />
             </button>
-            <h1>记忆库</h1>
+            <h1>{tr('shell.memoryTitle')}</h1>
           </header>
           <div className="k-screen-body">
             <MemoryPanel />
@@ -740,13 +749,17 @@ export function Shell() {
         <TopBar sessionId={sid} modeId={modeId} nestedTitle={active.nested?.title} showMenu={!desktop && (!tablet || leftCollapsed)} onMenu={() => (tablet ? setLeftCollapsed(false) : actions.setUi({ drawerOpen: true }))} />
         {conn.status !== 'online' && conn.status !== 'idle' && (
           <div className="k-connbar" role="status">
-            {conn.status === 'reconnecting' || conn.status === 'connecting' || conn.status === 'authenticating' ? '重连中…' : conn.status === 'suspended' ? '已暂停（回到前台自动恢复）' : '未连接'}
+            {conn.status === 'reconnecting' || conn.status === 'connecting' || conn.status === 'authenticating'
+              ? tr('shell.reconnecting')
+              : conn.status === 'suspended'
+                ? tr('shell.suspended')
+                : tr('shell.disconnected')}
           </div>
         )}
-        {conn.status === 'online' && !conn.engineOnline && <div className="k-connbar is-offline">引擎离线 · 消息将在引擎恢复后送达</div>}
+        {conn.status === 'online' && !conn.engineOnline && <div className="k-connbar is-offline">{tr('shell.engineOfflineBanner')}</div>}
         {foreign && (
           <div className={'k-banner' + (takenOver ? ' is-taken' : '')}>
-            {takenOver ? '已由 App 接管 (普通聊天)' : `此会话来自 ${CHANNEL[origin!] ?? origin} · 发送消息将以普通聊天模式继续`}
+            {takenOver ? tr('shell.takenOverBanner') : tr('shell.foreignBanner', { channel: channelLabel(origin!, tr) })}
           </div>
         )}
         <main
@@ -797,7 +810,7 @@ export function Shell() {
           )}
           {modeId === 'galgame' && !galStage && !showLaunchpad && sid && (
             <button type="button" className="k-stage-toggle" onClick={() => actions.setUi({ stageView: 'stage' })}>
-              <ModeIcon mode="galgame" size={18} /> 回到 CG 舞台
+              <ModeIcon mode="galgame" size={18} /> {tr('shell.backToStage')}
             </button>
           )}
           <SelectionQuote sessionId={sid} disabled={showLaunchpad || !sid} />
@@ -815,7 +828,7 @@ export function Shell() {
       {(desktop || (tablet && !leftCollapsed)) && (
         <aside className="k-col-left">
           {tablet && !desktop && (
-            <button type="button" className="k-collapse" aria-label="收起会话栏" onClick={() => setLeftCollapsed(true)}>
+            <button type="button" className="k-collapse" aria-label={tr('shell.collapseSidebarAria')} onClick={() => setLeftCollapsed(true)}>
               <UiIcon name="chevron-left" size={18} />
             </button>
           )}
@@ -824,7 +837,7 @@ export function Shell() {
       )}
       <section className="k-col-center">{center}</section>
       {desktop && (
-        <aside className="k-col-right" aria-label="上下文检视器">
+        <aside className="k-col-right" aria-label={tr('shell.inspectorAria')}>
           <Inspector panel={inspectorPanel} sessionId={sid} modeId={modeId} />
         </aside>
       )}
@@ -842,15 +855,15 @@ export function Shell() {
         height={panelSheet === 'party' ? 'full' : 'half'}
         title={
           panelSheet === 'notes'
-            ? '简易便签'
+            ? tr('shell.sheet.notes')
             : panelSheet === 'party'
-              ? '小队血量与装备'
+              ? tr('shell.sheet.party')
               : panelSheet === 'mistakes'
-                ? '待复习错题本'
+                ? tr('shell.sheet.mistakes')
                 : panelSheet === 'roster'
-                  ? '演员定妆表'
+                  ? tr('shell.sheet.roster')
                   : panelSheet === 'memory'
-                    ? '记忆库'
+                    ? tr('shell.sheet.memory')
                     : undefined
         }
       >

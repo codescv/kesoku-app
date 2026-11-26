@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EngineToClientPayload } from '@kesoku/protocol';
-import { Segmented, UiIcon } from '@kesoku/ui';
+import { Segmented, UiIcon, t as tGlobal, useT } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import type { AvatarSource } from './AvatarSheet';
@@ -15,6 +15,7 @@ export interface PersonaStudioProps {
 
 /** 🎭 Persona & Avatar Studio — full-screen secondary page (Screens 15–17). */
 export function PersonaStudio({ onClose, initialTab = 'roles' }: PersonaStudioProps) {
+  const t = useT();
   const [tab, setTab] = useState<'roles' | 'me'>(initialTab);
   const count = useStore((s) => s.personas.length);
   const [sources, setSources] = useState<Record<string, AvatarSource | null>>({});
@@ -27,7 +28,7 @@ export function PersonaStudio({ onClose, initialTab = 'roles' }: PersonaStudioPr
     kesoku
       .rpc<EngineToClientPayload<'persona.list.result'>>('persona.list', {})
       .then((r) => alive && actions.setPersonas(r.roles, [], true))
-      .catch(() => alive && actions.toast('角色列表加载失败', 'error'));
+      .catch(() => alive && actions.toast(tGlobal('persona.loadListFailed'), 'error'));
     return () => {
       alive = false;
     };
@@ -48,20 +49,20 @@ export function PersonaStudio({ onClose, initialTab = 'roles' }: PersonaStudioPr
   }, []);
 
   return (
-    <div className="ps-root" role="region" data-testid="persona-studio" aria-label="角色与形象工坊">
+    <div className="ps-root" role="region" data-testid="persona-studio" aria-label={t('persona.studioTitle')}>
       <header className="ps-top">
-        <button type="button" className="ps-back" aria-label="返回" onClick={onClose}>
+        <button type="button" className="ps-back" aria-label={t('common.back')} onClick={onClose}>
           <UiIcon name="arrow-left" size={20} />
         </button>
-        <h1 className="ps-top-title">角色与形象工坊</h1>
+        <h1 className="ps-top-title">{t('persona.studioTitle')}</h1>
         <Segmented
-          ariaLabel="工坊分区"
+          ariaLabel={t('persona.tabsAria')}
           size="sm"
           value={tab}
           onChange={setTab}
           options={[
-            { value: 'roles', label: `AI 角色 (${count})` },
-            { value: 'me', label: '我的形象' },
+            { value: 'roles', label: t('persona.tabRoles', { count }) },
+            { value: 'me', label: t('persona.tabMe') },
           ]}
         />
       </header>

@@ -1,0 +1,5 @@
+/* Localized Info.plist strings (English) */
+"NSCameraUsageDescription" = "Kesoku uses the camera to capture menus, street signs, Pokémon, QR codes, or avatars for recognition and translation.";
+"NSMicrophoneUsageDescription" = "Kesoku uses the microphone to record voice messages for live conversation and speech translation.";
+"NSPhotoLibraryUsageDescription" = "Kesoku accesses your photo library so you can choose images or custom avatars to share with your AI companion.";
+"NSPhotoLibraryAddUsageDescription" = "Kesoku saves captured or generated images to your photo library.";

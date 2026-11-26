@@ -1,4 +1,5 @@
 import jsQR from 'jsqr';
+import { getUiLocale } from '@kesoku/ui';
 import { getPlatform, isNative } from './platform';
 
 interface BarcodeDetectorLike {
@@ -126,7 +127,7 @@ export async function tryNativeQrScan(): Promise<NativeQrOutcome> {
   }).Capacitor;
   if (typeof cap?.nativePromise !== 'function') return { status: 'unavailable' };
   try {
-    const res = await cap.nativePromise('Camera', 'scanQRCode', {});
+    const res = await cap.nativePromise('Camera', 'scanQRCode', { lang: getUiLocale() });
     const val = res?.value?.trim();
     return val ? { status: 'scanned', value: val } : { status: 'cancelled' };
   } catch (err) {

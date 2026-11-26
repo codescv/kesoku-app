@@ -2,13 +2,14 @@ import { useState } from 'react';
 import type { MemoryProposal, ProposalOp } from '@kesoku/protocol';
 import { kesoku } from '../../lib/client';
 import { actions } from '../../lib/store';
-import { UiIcon } from '@kesoku/ui';
+import { UiIcon, useT } from '@kesoku/ui';
 
 /**
  * Inline `confirm_only` memory confirmation card (UI doc §5.1). Not a modal, never steals focus.
- * The memory library changes only after [记录到记忆库].
+ * The memory library changes only after confirming.
  */
 export function ProposalCard({ proposal, compact }: { proposal: MemoryProposal; compact?: boolean }) {
+  const tr = useT();
   const [ops, setOps] = useState<ProposalOp[]>(proposal.ops);
   const [checked, setChecked] = useState<boolean[]>(() => proposal.ops.map(() => true));
   const [editing, setEditing] = useState<number | null>(null);
@@ -23,7 +24,7 @@ export function ProposalCard({ proposal, compact }: { proposal: MemoryProposal; 
       await kesoku.resolveProposal(proposal.proposal_id, action, action === 'confirm' && edited ? chosen : undefined);
     } catch (e) {
       const code = (e as { code?: string }).code;
-      actions.toast(code === 'PROPOSAL_NOT_PENDING' ? '该提案已处理或已过期' : '操作失败，请重试', 'error');
+      actions.toast(code === 'PROPOSAL_NOT_PENDING' ? tr('proposal.alreadyResolved') : tr('proposal.actionFailed'), 'error');
     } finally {
       setBusy(false);
     }
@@ -35,17 +36,17 @@ export function ProposalCard({ proposal, compact }: { proposal: MemoryProposal; 
       <div className={`k-proposal is-${status}`} role="status">
         {status === 'applied' && (
           <>
-            <UiIcon name="check" size={16} /> 已记录 · {files.join('、')}
+            <UiIcon name="check" size={16} /> {tr('proposal.applied', { files: files.join('、') })}
           </>
         )}
         {status === 'dismissed' && (
           <>
-            <UiIcon name="close" size={16} /> 已忽略 · 同一事实不再提示
+            <UiIcon name="close" size={16} /> {tr('proposal.dismissed')}
           </>
         )}
         {status === 'expired' && (
           <>
-            <UiIcon name="clock" size={16} /> 已过期 · 需在对话中重新提及
+            <UiIcon name="clock" size={16} /> {tr('proposal.expired')}
           </>
         )}
       </div>
@@ -53,15 +54,15 @@ export function ProposalCard({ proposal, compact }: { proposal: MemoryProposal; 
   }
 
   return (
-    <div className={'k-proposal' + (compact ? ' is-compact' : '')} role="group" aria-label="记忆确认">
+    <div className={'k-proposal' + (compact ? ' is-compact' : '')} role="group" aria-label={tr('proposal.ariaLabel')}>
       <div className="k-proposal-title">
-        <UiIcon name="brain" size={18} /> 发现可记录的现实记忆 · 需你确认
+        <UiIcon name="brain" size={18} /> {tr('proposal.title')}
       </div>
       <ul className="k-proposal-ops">
         {ops.map((op, i) => (
           <li key={i} className={checked[i] ? '' : 'is-off'}>
             <label className="k-proposal-check">
-              <input type="checkbox" checked={checked[i]} onChange={() => setChecked((c) => c.map((x, j) => (j === i ? !x : x)))} aria-label="选择此条" />
+              <input type="checkbox" checked={checked[i]} onChange={() => setChecked((c) => c.map((x, j) => (j === i ? !x : x)))} aria-label={tr('proposal.selectItemAria')} />
             </label>
             <span className="k-pill k-pill-primary k-pill-sm k-proposal-file">{op.file}</span>
             {editing === i ? (
@@ -75,15 +76,15 @@ export function ProposalCard({ proposal, compact }: { proposal: MemoryProposal; 
                 onKeyDown={(e) => e.key === 'Enter' && setEditing(null)}
               />
             ) : (
-              <button type="button" className="k-proposal-text" onClick={() => setEditing(i)} title="轻点编辑">
+              <button type="button" className="k-proposal-text" onClick={() => setEditing(i)} title={tr('proposal.tapToEdit')}>
                 · {op.text}
               </button>
             )}
             {op.tags?.length > 0 && (
               <span className="k-proposal-tags">
-                {op.tags.map((t) => (
-                  <span key={t} className="k-pill k-pill-accent k-pill-sm">
-                    #{t.replace(/^#+/, '')}
+                {op.tags.map((tag) => (
+                  <span key={tag} className="k-pill k-pill-accent k-pill-sm">
+                    #{tag.replace(/^#+/, '')}
                   </span>
                 ))}
               </span>
@@ -93,10 +94,10 @@ export function ProposalCard({ proposal, compact }: { proposal: MemoryProposal; 
       </ul>
       <div className="k-proposal-actions">
         <button type="button" className="k-btn k-btn-ghost" disabled={busy} onClick={() => resolve('dismiss')}>
-          <UiIcon name="close" size={16} /> 忽略
+          <UiIcon name="close" size={16} /> {tr('proposal.ignore')}
         </button>
         <button type="button" className="k-btn k-btn-primary" disabled={busy || !checked.some(Boolean)} onClick={() => resolve('confirm')}>
-          <UiIcon name="check" size={16} /> 记录到记忆库
+          <UiIcon name="check" size={16} /> {tr('proposal.confirmSave')}
         </button>
       </div>
     </div>

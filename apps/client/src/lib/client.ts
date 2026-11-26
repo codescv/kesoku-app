@@ -9,6 +9,7 @@ import {
   type ModeId,
   type ProposalOp,
 } from '@kesoku/protocol';
+import { getUiLocale, t } from '@kesoku/ui';
 import { getPlatform } from '../native/platform';
 import { getDeviceToken, wsUrl } from './auth';
 import { allCursors, db, kvSet, purgeSessionFromDb, reconcileSessionsInDb, saveMessages, setCursor } from './db';
@@ -21,7 +22,7 @@ import { translatorStartPrefs } from './translatorPrefs';
 import { fallbackRoleId } from '../features/persona/model';
 
 const SEQ_TYPES = new Set<string>(SEQ_EVENT_TYPES);
-export const APP_VERSION = '0.1.32';
+export const APP_VERSION = '0.1.33';
 
 type Payload = Record<string, unknown>;
 
@@ -164,8 +165,8 @@ function onEnvelope(env: Envelope) {
     case 'error': {
       if (!env.reply_to) {
         const e = p as { code?: string; message?: string };
-        if (e.code === 'ENGINE_OFFLINE') actions.toast('🔴 引擎离线，消息未送达 · 点击重试', 'error');
-        else actions.toast(`⚠️ ${e.message || e.code || '错误'}`, 'error');
+        if (e.code === 'ENGINE_OFFLINE') actions.toast(t('client.engineOfflineRetry'), 'error');
+        else actions.toast(`⚠️ ${e.message || e.code || t('client.errorFallback')}`, 'error');
       }
       return;
     }
@@ -238,7 +239,7 @@ export const kesoku = {
     socket = new KesokuSocket({
       url,
       getToken: getDeviceToken,
-      client: { platform: getPlatform(), version: APP_VERSION, locale: navigator.language || 'zh-CN' },
+      client: { platform: getPlatform(), version: APP_VERSION, locale: getUiLocale() },
       onEnvelope,
       onStatus,
     });
@@ -259,7 +260,7 @@ export const kesoku = {
   },
 
   async rpc<T = Payload>(type: ClientToEngineType, payload: Payload, opts: { session_id?: string; timeoutMs?: number } = {}): Promise<T> {
-    if (!socket) throw new RpcError('OFFLINE', '未连接');
+    if (!socket) throw new RpcError('OFFLINE', t('client.notConnected'));
     const env = await socket.rpc(type, payload, opts);
     return env.payload as T;
   },
@@ -395,9 +396,9 @@ export const kesoku = {
     } catch (e) {
       actions.markUser(sessionId, client_msg_id, { status: 'failed' });
       const code = e instanceof RpcError ? e.code : '';
-      if (code === 'TURN_BUSY') actions.toast('该会话正在进行回合，请稍候', 'error');
-      else if (code === 'ENGINE_OFFLINE') actions.toast('🔴 引擎离线 · 未送达，点击重试', 'error');
-      else actions.toast('⚠️ 回复发送失败，请再说一次', 'error');
+      if (code === 'TURN_BUSY') actions.toast(t('client.turnBusy'), 'error');
+      else if (code === 'ENGINE_OFFLINE') actions.toast(t('client.engineOfflineNotSent'), 'error');
+      else actions.toast(t('client.sendFailed'), 'error');
     }
   },
 
@@ -407,7 +408,7 @@ export const kesoku = {
   },
 
   async pick(sessionId: string, questionMessageId: string, choices: string[]): Promise<void> {
-    const text = choices.length === 1 ? choices[0].trim() : '选择：' + choices.map((c) => c.trim()).join('；');
+    const text = choices.length === 1 ? choices[0].trim() : t('client.pickPrefix') + choices.map((c) => c.trim()).join(t('client.pickSep'));
     const client_msg_id = newId('cm');
     actions.markPicked(sessionId, questionMessageId, choices);
     // One optimistic user bubble (also starts the 0 ms typing preview keyed by client_msg_id);
@@ -424,7 +425,7 @@ export const kesoku = {
       useStore.setState((st) => ({ items: { ...st.items, [sessionId]: (st.items[sessionId] ?? []).filter((x) => x.client_msg_id !== client_msg_id) } }));
       actions.markPicked(sessionId, questionMessageId, []);
       actions.clearTyping(sessionId, client_msg_id);
-      actions.toast('选择发送失败', 'error');
+      actions.toast(t('client.pickFailed'), 'error');
     }
   },
 
@@ -447,12 +448,12 @@ export const kesoku = {
     // Existing session: a role picked on the Launchpad / TopBar applies before the mode launches.
     const wantRole = opts.role ?? getState().ui.draftRole;
     const curRole = getState().sessions[sid]?.role;
-    if (wantRole && curRole && wantRole !== curRole) await kesoku.setRole(sid, wantRole).catch(() => actions.toast('切换角色失败', 'error'));
+    if (wantRole && curRole && wantRole !== curRole) await kesoku.setRole(sid, wantRole).catch(() => actions.toast(t('topbar.switchRoleFailed'), 'error'));
     let tPrefs: Record<string, unknown> | null = null;
     if (modeId === 'translator') {
       const o: LlmOverride = { llm: 'gemini', model_name: getState().settings.translatorModel, thinking_level: 'low', stream: true };
       actions.setLlmOverride(sid, o);
-      // 母语 ⇄ first 常用外语, stored before the launch prompt so the engine formats it with the user's languages.
+      // native ⇄ first foreign language, stored before the launch prompt so the engine formats it with the user's languages.
       tPrefs = translatorStartPrefs(getState().settings);
       await kesoku.setModePrefs(sid, tPrefs);
     }
@@ -469,7 +470,7 @@ export const kesoku = {
       });
       await kesoku
         .rpc('mode.start', { session_id: sid, mode_id: modeId, defer: true, ...(tPrefs ? { prefs: tPrefs } : {}) }, { session_id: sid })
-        .catch(() => actions.toast('模式切换失败', 'error'));
+        .catch(() => actions.toast(t('client.modeSwitchFailed'), 'error'));
       return;
     }
     actions.setUi({ launchpad: false, pendingMode: { sessionId: sid, modeId, at: Date.now() } });
@@ -477,7 +478,7 @@ export const kesoku = {
     await kesoku.rpc('mode.start', { session_id: sid, mode_id: modeId, ...(tPrefs ? { prefs: tPrefs } : {}) }, { session_id: sid }).catch(() => {
       actions.clearTyping(sid, typing);
       actions.setUi({ pendingMode: null });
-      actions.toast('模式启动失败', 'error');
+      actions.toast(t('client.modeStartFailed'), 'error');
     });
     watchPendingMode(sid, modeId);
   },
@@ -490,13 +491,13 @@ export const kesoku = {
         sessions: st.sessions[sessionId] ? { ...st.sessions, [sessionId]: { ...st.sessions[sessionId]!, mode_id: 'chat' } } : st.sessions,
       }));
       actions.setUi({ pendingMode: null, stageView: 'bubbles' });
-      await kesoku.rpc('mode.stop', { session_id: sessionId, defer: true }, { session_id: sessionId }).catch(() => actions.toast('退出模式失败', 'error'));
+      await kesoku.rpc('mode.stop', { session_id: sessionId, defer: true }, { session_id: sessionId }).catch(() => actions.toast(t('client.modeStopFailed'), 'error'));
       return;
     }
     const typing = actions.startTyping(sessionId);
     await kesoku.rpc('mode.stop', { session_id: sessionId }, { session_id: sessionId }).catch(() => {
       actions.clearTyping(sessionId, typing);
-      actions.toast('退出模式失败', 'error');
+      actions.toast(t('client.modeStopFailed'), 'error');
     });
   },
 
@@ -530,10 +531,10 @@ export const kesoku = {
     setTitle(title);
     try {
       await kesoku.rpc('session.rename', { session_id: sessionId, title });
-      actions.toast('已重命名对话');
+      actions.toast(t('client.renamedSession'));
     } catch {
       if (prev !== undefined) setTitle(prev);
-      actions.toast('重命名对话失败', 'error');
+      actions.toast(t('client.renameSessionFailed'), 'error');
     }
   },
 
@@ -547,14 +548,14 @@ export const kesoku = {
     try {
       await kesoku.rpc('session.delete', { session_id: sessionId });
       void purgeSessionFromDb(sessionId).catch(() => {});
-      actions.toast('已删除对话');
+      actions.toast(t('client.deletedSession'));
     } catch {
       if (prev) actions.setSessions([prev]);
       if (wasCurrent) {
         useStore.setState({ currentSessionId: sessionId });
         actions.setUi({ launchpad: false });
       }
-      actions.toast('删除对话失败', 'error');
+      actions.toast(t('client.deleteSessionFailed'), 'error');
     }
   },
 
@@ -581,7 +582,7 @@ export const kesoku = {
       await kesoku.rpc('memory.policy.set', { mode_id: modeId, memory_policy: policy });
     } catch {
       if (prev) actions.setPolicyOptimistic(modeId, prev);
-      actions.toast('记忆策略保存失败，已回滚', 'error');
+      actions.toast(t('policy.saveFailedRollback'), 'error');
     }
   },
   async resetPolicies(): Promise<void> {
@@ -687,7 +688,7 @@ export function watchPendingMode(targetSid: string, modeId: string, now: () => n
     const finalGraceOver = finalAfter ? now() / 1000 - Math.max(finalAfter.ts, startTs) > 2 : false;
     if ((elapsed >= 2500 && !active) || finalGraceOver || (!streaming && elapsed >= 20_000) || elapsed >= 120_000) {
       actions.setUi({ pendingMode: null });
-      actions.toast('模式切换未确认，已回滚');
+      actions.toast(t('client.modeRollback'));
       return;
     }
     setTimeout(tick, 500);

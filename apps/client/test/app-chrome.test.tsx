@@ -108,7 +108,7 @@ describe('TopBar (Items 1, 8, 10)', () => {
     expect(sheet.querySelector('[role="radiogroup"]')).toBeNull(); // no PolicySegmented
     expect(screen.getByText('切换角色')).toBeTruthy();
     expect(sheet.querySelector('.k-rm-roles')).toBeTruthy();
-    expect(screen.getByTestId('topbar-session-notes-btn').textContent).toContain('置顶 Notes');
+    expect(screen.getByTestId('topbar-session-notes-btn').textContent).toContain('置顶便签');
     // Non-chat mode inside a session: compact 退出当前模式 row with the mode icon.
     const modeSection = screen.getByTestId('topbar-mode-section');
     expect(modeSection.querySelector('[data-mode-icon="jp_classroom"]')).toBeTruthy();

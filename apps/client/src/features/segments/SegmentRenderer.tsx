@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CardSegment, ChoiceItem, DetailsSegment, FileSegment, LexToken, QuestionSegment, Segment } from '@kesoku/protocol';
-import { Skeleton, UiIcon, VoicePill } from '@kesoku/ui';
+import { Skeleton, UiIcon, VoicePill, useT } from '@kesoku/ui';
 import { BilingualCard } from './BilingualCard';
 import { CharacterPickerCard, hasCharacterPortraits } from './CharacterPickerCard';
 import { Markdown, renderInline } from './Markdown';
@@ -37,6 +37,7 @@ export function isStickerMedia(media: { mime?: unknown; name?: unknown; ref?: un
 }
 
 function QuestionPills({ seg, env }: { seg: QuestionSegment; env: SegmentEnv }) {
+  const t = useT();
   const [sel, setSel] = useState<number[]>([]);
   const picked = env.picked;
   const qid = seg.question_message_id ?? env.ctx.messageId;
@@ -147,7 +148,7 @@ function QuestionPills({ seg, env }: { seg: QuestionSegment; env: SegmentEnv }) 
           disabled={!sel.length}
           onClick={() => env.onPick(qid, [...sel].sort((a, b) => a - b).map((idx) => entries[idx].value))}
         >
-          {showMax ? `确认选择 (${sel.length}/${max})` : `确认选择 (${sel.length})`}
+          {t('seg.confirmSelection', { count: sel.length, cap: showMax ? `/${max}` : '' })}
         </button>
       )}
     </div>
@@ -171,6 +172,7 @@ function isFreshEntryUrl(entry: { url?: string; expires_at?: number } | undefine
 
 /** Images: placeholder/object load when rendered; history `ref`-only media loads on tap or when scrolled into view. */
 export function MediaImage({ seg, ctx, className, autoHydrate }: { seg: FileSegment; ctx: CardContext; className?: string; autoHydrate?: boolean }) {
+  const t = useT();
   const sticker = isStickerMedia(seg);
   const refKey = seg.ref ? 'ref:' + seg.ref : undefined;
   const objKey = seg.object ? 'obj:' + seg.object : undefined;
@@ -246,7 +248,7 @@ export function MediaImage({ seg, ctx, className, autoHydrate }: { seg: FileSegm
     return (
       <div className="k-media k-media-failed">
         <span className="k-ico-label">
-          <UiIcon name="image" size={16} /> 附件生成失败{entry?.reason ? ` · ${entry.reason}` : ''}
+          <UiIcon name="image" size={16} /> {t('seg.attachmentFailed', { reason: entry?.reason ? ` · ${entry.reason}` : '' })}
         </span>
         {canRetry && (
           <button
@@ -259,7 +261,7 @@ export function MediaImage({ seg, ctx, className, autoHydrate }: { seg: FileSegm
               retryLoad();
             }}
           >
-            重试
+            {t('common.retry')}
           </button>
         )}
       </div>
@@ -274,11 +276,11 @@ export function MediaImage({ seg, ctx, className, autoHydrate }: { seg: FileSegm
           e.stopPropagation();
           overlays.image(url);
         }}
-        aria-label={sticker ? '查看表情' : '查看大图'}
+        aria-label={sticker ? t('common.viewSticker') : t('common.viewLargeImage')}
       >
         <img
           src={url}
-          alt={seg.name ?? (sticker ? '表情' : '图片')}
+          alt={seg.name ?? (sticker ? t('common.sticker') : t('common.image'))}
           onLoad={() => setImgLoaded(true)}
           onError={() => {
             if (retryCountRef.current < 1 && (seg.ref || seg.object || entry?.object || seg.placeholder_id)) {
@@ -306,17 +308,17 @@ export function MediaImage({ seg, ctx, className, autoHydrate }: { seg: FileSegm
         }}
       >
         {state === 'loading' ? (
-          '载入中…'
+          t('common.loading')
         ) : (
           <span className="k-ico-label">
-            <UiIcon name={sticker ? 'sticker' : 'image'} size={16} /> {sticker ? '表情' : '点开查看图片'}
+            <UiIcon name={sticker ? 'sticker' : 'image'} size={16} /> {sticker ? t('common.sticker') : t('seg.tapToViewImage')}
           </span>
         )}
       </button>
     );
   return <div className={['k-media', 'k-media-pending', sticker && 'is-sticker', className].filter(Boolean).join(' ')}>
       <span className="k-ico-label">
-        <UiIcon name="clock" size={16} /> {entry?.label || (sticker ? '表情' : '附件生成中…')}
+        <UiIcon name="clock" size={16} /> {entry?.label || (sticker ? t('common.sticker') : t('stream.generatingAttachment'))}
       </span>
     </div>;
 }
@@ -414,9 +416,10 @@ export function SegmentList({ segments, env }: { segments: Segment[]; env: Segme
 }
 
 export function CardSkeleton({ kind, title }: { kind?: string; title?: string }) {
+  const t = useT();
   return (
     <div className="k-card-skel" data-kind={kind}>
-      <div className="k-card-skel-title">{title || (kind ? `正在生成 ${kind} …` : '正在生成卡片…')}</div>
+      <div className="k-card-skel-title">{title || (kind ? t('seg.generatingCardKind', { kind }) : t('seg.generatingCard'))}</div>
       <Skeleton lines={3} />
     </div>
   );

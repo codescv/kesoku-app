@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { MODE_IDS, type EngineToClientPayload, type MemoryFile } from '@kesoku/protocol';
-import { modeMeta, POLICY_BADGE, UiIcon, fileIconName } from '@kesoku/ui';
+import { MODE_IDS, type EngineToClientPayload, type MemoryFile, type MemoryPolicy } from '@kesoku/protocol';
+import { fileIconName, getPolicyBadge, modeMeta, t, UiIcon, useLocale, useT } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { ProposalCard } from '../proposals/ProposalCard';
@@ -13,8 +13,8 @@ export function validMemoryPath(p: string): boolean {
 
 export function policySummary(policies: Record<string, string>, defaults: Record<string, string>): string {
   const dev = MODE_IDS.filter((m) => policies[m] && policies[m] !== defaults[m]);
-  if (!dev.length) return '默认：日常聊天[自动] · 其余7模式[确认]（各模式支持单独设 自动/确认/忽略）';
-  return dev.map((m) => `${modeMeta(m).title}[${POLICY_BADGE[policies[m] as 'full'].label}]`).join(' · ');
+  if (!dev.length) return t('policy.summaryDefault');
+  return dev.map((m) => `${modeMeta(m).title}[${getPolicyBadge(policies[m] as MemoryPolicy).label}]`).join(' · ');
 }
 
 /**
@@ -39,6 +39,7 @@ export function stripFrontmatterForPreview(text: string): { meta: Array<{ key: s
 }
 
 function MemoryPreview({ content }: { content: string }) {
+  const tr = useT();
   const { meta, body } = useMemo(() => stripFrontmatterForPreview(content), [content]);
   return (
     <div className="k-memory-md-preview">
@@ -52,13 +53,15 @@ function MemoryPreview({ content }: { content: string }) {
           ))}
         </dl>
       )}
-      {body.trim() ? <Markdown text={body} /> : <div className="k-empty">（空白记忆，点击「编辑」开始书写）</div>}
+      {body.trim() ? <Markdown text={body} /> : <div className="k-empty">{tr('memory.emptyPreview')}</div>}
     </div>
   );
 }
 
 /** Memory library: pending proposals, pinned-first file list, inline editor (memory.put). */
 export function MemoryPanel({ embedded }: { embedded?: boolean }) {
+  const _locale = useLocale();
+  const tr = useT();
   const current = useStore((s) => s.currentSessionId);
   const sessionRole = useStore((s) => (current ? s.sessions[current]?.role : undefined));
   const personas = useStore((s) => s.personas);
@@ -94,7 +97,7 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
       setOpen({ rel_path, content: r.content, pinned: r.pinned, dirty: false });
       setEditing(!r.content.trim());
     } catch {
-      actions.toast('读取失败', 'error');
+      actions.toast(tr('memory.readFailed'), 'error');
     }
   }
   async function saveFile() {
@@ -102,10 +105,10 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
     try {
       await kesoku.rpc('memory.put', { role, rel_path: open.rel_path, content: open.content });
       setOpen({ ...open, dirty: false });
-      actions.toast('已保存');
+      actions.toast(tr('common.saved'));
       load();
     } catch {
-      actions.toast('保存失败', 'error');
+      actions.toast(tr('common.saveFailed'), 'error');
     }
   }
   async function togglePin(f: { rel_path: string; pinned: boolean }) {
@@ -114,16 +117,16 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
       if (open?.rel_path === f.rel_path) setOpen({ ...open, pinned: !f.pinned });
       load();
     } catch {
-      actions.toast('设置常驻失败', 'error');
+      actions.toast(tr('memory.pinFailed'), 'error');
     }
   }
 
   const roles = personas.length ? personas.map((p) => ({ id: p.role_id, name: p.display_name || p.role_id })) : [{ id: role, name: role }];
 
   return (
-    <div className={'k-memory' + (embedded ? ' is-embedded' : '')}>
+    <div className={'k-memory' + (embedded ? ' is-embedded' : '')} data-locale={_locale}>
       {embedded && (
-        <div className="k-inspector-tabs" role="tablist" aria-label="检视器切换">
+        <div className="k-inspector-tabs" role="tablist" aria-label={tr('memory.inspectorTabsAria')}>
           <button
             type="button"
             role="tab"
@@ -133,7 +136,7 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
             onClick={() => actions.setUi({ inspector: { kind: 'memory' } })}
           >
             <UiIcon name="brain" size={15} />
-            <span>记忆库</span>
+            <span>{tr('session.memory')}</span>
           </button>
           <button
             type="button"
@@ -144,15 +147,15 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
             onClick={() => actions.setUi({ inspector: { kind: 'notes' } })}
           >
             <UiIcon name="note" size={15} />
-            <span>便签</span>
+            <span>{tr('session.notes')}</span>
           </button>
         </div>
       )}
       <div className="k-memory-head">
         <h2>
-          <UiIcon name="brain" size={20} /> 记忆库
+          <UiIcon name="brain" size={20} /> {tr('session.memory')}
         </h2>
-        <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="角色">
+        <select value={role} onChange={(e) => setRole(e.target.value)} aria-label={tr('memory.roleAria')}>
           {roles.map((r) => (
             <option key={r.id} value={r.id}>
               {r.name}
@@ -163,62 +166,62 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
 
       <section className="k-memory-pending">
         <div className="k-memory-pending-head">
-          <b>待确认提案 ({pending.length})</b>
+          <b>{tr('memory.pendingCount', { count: pending.length })}</b>
           {pending.length > 1 && (
             <span className="k-memory-batch">
               <button type="button" className="k-btn k-btn-sm k-btn-ghost" onClick={() => pending.forEach((p) => void kesoku.resolveProposal(p.proposal_id, 'dismiss').catch(() => {}))}>
-                全部忽略
+                {tr('memory.dismissAll')}
               </button>
               <button type="button" className="k-btn k-btn-sm k-btn-primary" onClick={() => pending.forEach((p) => void kesoku.resolveProposal(p.proposal_id, 'confirm').catch(() => {}))}>
-                全部确认
+                {tr('memory.confirmAll')}
               </button>
             </span>
           )}
         </div>
-        {pending.length === 0 ? <div className="k-empty">暂无待确认的记忆提案</div> : pending.map((p) => <ProposalCard key={p.proposal_id} proposal={p} compact />)}
+        {pending.length === 0 ? <div className="k-empty">{tr('memory.noPending')}</div> : pending.map((p) => <ProposalCard key={p.proposal_id} proposal={p} compact />)}
       </section>
 
       {open ? (
         <section className="k-memory-editor">
           <div className="k-memory-editor-head">
-            <button type="button" className="k-icon-btn" aria-label="返回列表" onClick={() => setOpen(null)}>
+            <button type="button" className="k-icon-btn" aria-label={tr('memory.backToListAria')} onClick={() => setOpen(null)}>
               <UiIcon name="arrow-left" size={20} />
             </button>
             <b className="k-memory-path">{open.rel_path}</b>
             <button type="button" className={'k-pill k-pill-sm ' + (open.pinned ? 'k-pill-warn' : 'k-pill-neutral')} onClick={() => void togglePin(open)}>
-              <UiIcon name="pin" size={13} /> {open.pinned ? '常驻记忆' : '设为常驻'}
+              <UiIcon name="pin" size={13} /> {open.pinned ? tr('memory.pinned') : tr('memory.setPinned')}
             </button>
             <button type="button" className="k-btn k-btn-sm k-btn-ghost k-memory-mode" aria-pressed={editing} onClick={() => setEditing((v) => !v)}>
-              <UiIcon name={editing ? 'file-text' : 'edit'} size={14} /> {editing ? '预览' : '编辑'}
+              <UiIcon name={editing ? 'file-text' : 'edit'} size={14} /> {editing ? tr('common.preview') : tr('common.edit')}
             </button>
           </div>
           {editing ? (
-            <textarea className="k-memory-text" value={open.content} spellCheck={false} onChange={(e) => setOpen({ ...open, content: e.target.value, dirty: true })} aria-label="记忆内容" />
+            <textarea className="k-memory-text" value={open.content} spellCheck={false} onChange={(e) => setOpen({ ...open, content: e.target.value, dirty: true })} aria-label={tr('memory.contentAria')} />
           ) : (
             <MemoryPreview content={open.content} />
           )}
           <div className="k-memory-editor-actions">
             <button type="button" className="k-btn k-btn-primary" disabled={!open.dirty} onClick={() => void saveFile()}>
-              <UiIcon name="save" size={18} /> 保存
+              <UiIcon name="save" size={18} /> {tr('common.save')}
             </button>
           </div>
         </section>
       ) : (
         <section className="k-memory-files">
-          {files === null && <div className="k-empty">载入中…</div>}
+          {files === null && <div className="k-empty">{tr('common.loading')}</div>}
           {files?.map((f) => (
             <div key={f.rel_path} className="k-memory-file">
               <button type="button" className="k-memory-file-main" onClick={() => void openFile(f.rel_path)}>
                 <UiIcon name={fileIconName(f.rel_path)} size={18} className="k-memory-file-icon" />
-                {f.pinned && <span className="k-pill k-pill-warn k-pill-sm">常驻记忆</span>}
+                {f.pinned && <span className="k-pill k-pill-warn k-pill-sm">{tr('memory.pinned')}</span>}
                 <span className="k-memory-path">{f.rel_path}</span>
-                {f.tags?.map((t) => (
-                  <span key={t} className="k-pill k-pill-accent k-pill-sm">
-                    #{t}
+                {f.tags?.map((tag) => (
+                  <span key={tag} className="k-pill k-pill-accent k-pill-sm">
+                    #{tag}
                   </span>
                 ))}
               </button>
-              <button type="button" className="k-btn k-btn-sm k-btn-ghost" onClick={() => void togglePin(f)} aria-label={f.pinned ? '取消常驻' : '设为常驻'} aria-pressed={f.pinned}>
+              <button type="button" className="k-btn k-btn-sm k-btn-ghost" onClick={() => void togglePin(f)} aria-label={f.pinned ? tr('memory.unpinAria') : tr('memory.setPinned')} aria-pressed={f.pinned}>
                 <UiIcon name="pin" size={18} styleVariant={f.pinned ? 'duotone' : 'line'} className={f.pinned ? 'is-pinned' : undefined} />
               </button>
             </div>
@@ -228,15 +231,15 @@ export function MemoryPanel({ embedded }: { embedded?: boolean }) {
             onSubmit={(e) => {
               e.preventDefault();
               const p = newPath.trim();
-              if (!validMemoryPath(p)) return actions.toast('路径需为 .md 且不得包含 ..', 'error');
+              if (!validMemoryPath(p)) return actions.toast(tr('memory.invalidPath'), 'error');
               setOpen({ rel_path: p, content: '', pinned: false, dirty: true });
               setEditing(true);
               setNewPath('');
             }}
           >
-            <input value={newPath} onChange={(e) => setNewPath(e.target.value)} placeholder="topics/new_note.md" aria-label="新建记忆文件路径" />
+            <input value={newPath} onChange={(e) => setNewPath(e.target.value)} placeholder="topics/new_note.md" aria-label={tr('memory.newPathAria')} />
             <button type="submit" className="k-btn k-btn-sm">
-              <UiIcon name="file-plus" size={16} /> 新建
+              <UiIcon name="file-plus" size={16} /> {tr('memory.createNew')}
             </button>
           </form>
         </section>

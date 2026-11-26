@@ -106,9 +106,9 @@ describe('SessionNotesEditor', () => {
     render(<SessionNotesEditor sessionId="s1" />);
     // While loading an empty note: a calm placeholder, not a flashing editor.
     expect(screen.getByTestId('session-notes-loading').textContent).toContain('正在读取');
-    expect(screen.queryByLabelText('当前会话置顶 Notes')).toBeNull();
+    expect(screen.queryByLabelText('当前会话置顶便签')).toBeNull();
     await act(async () => resolve(notesResult('s1', '')));
-    const ta = screen.getByLabelText('当前会话置顶 Notes') as HTMLTextAreaElement;
+    const ta = screen.getByLabelText('当前会话置顶便签') as HTMLTextAreaElement;
     expect(ta.tagName).toBe('TEXTAREA');
     expect(ta.placeholder).toBe('记录本会话需要始终记住的设定、规则或备忘（支持 Markdown）…');
     expect(ta.rows).toBe(7);
@@ -123,15 +123,15 @@ describe('SessionNotesEditor', () => {
   it('embedded editor uses 6 rows', async () => {
     wireClient({ s1: '' });
     render(<SessionNotesEditor sessionId="s1" embedded />);
-    await waitFor(() => expect(screen.getByLabelText('当前会话置顶 Notes')).toBeTruthy());
-    expect((screen.getByLabelText('当前会话置顶 Notes') as HTMLTextAreaElement).rows).toBe(6);
+    await waitFor(() => expect(screen.getByLabelText('当前会话置顶便签')).toBeTruthy());
+    expect((screen.getByLabelText('当前会话置顶便签') as HTMLTextAreaElement).rows).toBe(6);
     expect(screen.getByTestId('session-notes-editor').className).toContain('is-embedded');
   });
 
   it('hides the byte counter for small notes and shows it from 48 KiB / when too large', async () => {
     wireClient({ s1: '' });
     render(<SessionNotesEditor sessionId="s1" />);
-    const ta = await screen.findByLabelText('当前会话置顶 Notes');
+    const ta = await screen.findByLabelText('当前会话置顶便签');
     expect(screen.queryByText(/\/ 64 KiB/)).toBeNull(); // never "0 B / 64 KiB"
     fireEvent.change(ta, { target: { value: 'x'.repeat(1000) } });
     expect(screen.queryByText(/\/ 64 KiB/)).toBeNull();
@@ -146,7 +146,7 @@ describe('SessionNotesEditor', () => {
   it('edits raw Markdown and saves with the 保存 button', async () => {
     const server = wireClient({ s1: '' });
     render(<SessionNotesEditor sessionId="s1" />);
-    const ta = (await screen.findByLabelText('当前会话置顶 Notes')) as HTMLTextAreaElement;
+    const ta = (await screen.findByLabelText('当前会话置顶便签')) as HTMLTextAreaElement;
     expect(screen.queryByTestId('session-notes-dirty')).toBeNull();
     fireEvent.change(ta, { target: { value: '- 队长：小张\n- 目标：找到钥匙' } });
     expect(screen.getByTestId('session-notes-dirty').textContent).toBe('未保存');
@@ -155,9 +155,9 @@ describe('SessionNotesEditor', () => {
     expect(m.saveSessionNotes).toHaveBeenCalledWith('s1', '- 队长：小张\n- 目标：找到钥匙');
     expect(server.s1).toBe('- 队长：小张\n- 目标：找到钥匙');
     expect(useStore.getState().stateFiles.s1?.['notes.md']).toBe('- 队长：小张\n- 目标：找到钥匙');
-    expect(useStore.getState().toasts.map((t) => t.text)).toContain('已保存置顶 Notes');
+    expect(useStore.getState().toasts.map((t) => t.text)).toContain('已保存置顶便签');
     // Back to the rendered preview card after saving.
-    expect(screen.queryByLabelText('当前会话置顶 Notes')).toBeNull();
+    expect(screen.queryByLabelText('当前会话置顶便签')).toBeNull();
     expect(screen.getByTestId('session-notes-preview')).toBeTruthy();
     expect(screen.getByText('目标：找到钥匙')).toBeTruthy();
     expect(screen.queryByTestId('session-notes-dirty')).toBeNull();
@@ -170,21 +170,21 @@ describe('SessionNotesEditor', () => {
     wireClient({ s1: '# 规则\n- 不剧透' });
     render(<SessionNotesEditor sessionId="s1" />);
     await waitFor(() => expect(screen.getByText('不剧透')).toBeTruthy());
-    expect(screen.queryByLabelText('当前会话置顶 Notes')).toBeNull();
+    expect(screen.queryByLabelText('当前会话置顶便签')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
-    const ta = screen.getByLabelText('当前会话置顶 Notes') as HTMLTextAreaElement;
+    const ta = screen.getByLabelText('当前会话置顶便签') as HTMLTextAreaElement;
     expect(ta.value).toBe('# 规则\n- 不剧透');
     expect(document.activeElement).toBe(ta);
     expect(screen.queryByRole('button', { name: '编辑' })).toBeNull();
     fireEvent.click(screen.getByTestId('session-notes-done'));
-    expect(screen.queryByLabelText('当前会话置顶 Notes')).toBeNull();
+    expect(screen.queryByLabelText('当前会话置顶便签')).toBeNull();
     expect(screen.getByText('不剧透')).toBeTruthy();
     // 完成预览 is hidden while there are unsaved edits (save or 撤销 first).
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
-    fireEvent.change(screen.getByLabelText('当前会话置顶 Notes'), { target: { value: '改了' } });
+    fireEvent.change(screen.getByLabelText('当前会话置顶便签'), { target: { value: '改了' } });
     expect(screen.queryByTestId('session-notes-done')).toBeNull();
     fireEvent.click(screen.getByTestId('session-notes-revert'));
-    expect(screen.queryByLabelText('当前会话置顶 Notes')).toBeNull();
+    expect(screen.queryByLabelText('当前会话置顶便签')).toBeNull();
     expect(screen.getByText('不剧透')).toBeTruthy();
   });
 
@@ -193,19 +193,19 @@ describe('SessionNotesEditor', () => {
     render(<SessionNotesEditor sessionId="s1" />);
     await waitFor(() => expect(m.getSessionNotes).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
-    const ta = screen.getByLabelText('当前会话置顶 Notes');
+    const ta = screen.getByLabelText('当前会话置顶便签');
     fireEvent.change(ta, { target: { value: 'a\nb' } });
     await act(async () => fireEvent.keyDown(ta, { key: 's', ctrlKey: true }));
     expect(m.saveSessionNotes).toHaveBeenCalledWith('s1', 'a\nb');
     m.saveSessionNotes.mockClear();
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
-    fireEvent.change(screen.getByLabelText('当前会话置顶 Notes'), { target: { value: 'a\nb\nc' } });
-    await act(async () => fireEvent.keyDown(screen.getByLabelText('当前会话置顶 Notes'), { key: 'S', metaKey: true }));
+    fireEvent.change(screen.getByLabelText('当前会话置顶便签'), { target: { value: 'a\nb\nc' } });
+    await act(async () => fireEvent.keyDown(screen.getByLabelText('当前会话置顶便签'), { key: 'S', metaKey: true }));
     expect(m.saveSessionNotes).toHaveBeenCalledWith('s1', 'a\nb\nc');
     // Clean editor: Ctrl+S is a no-op.
     m.saveSessionNotes.mockClear();
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
-    await act(async () => fireEvent.keyDown(screen.getByLabelText('当前会话置顶 Notes'), { key: 's', ctrlKey: true }));
+    await act(async () => fireEvent.keyDown(screen.getByLabelText('当前会话置顶便签'), { key: 's', ctrlKey: true }));
     expect(m.saveSessionNotes).not.toHaveBeenCalled();
   });
 
@@ -214,9 +214,9 @@ describe('SessionNotesEditor', () => {
     render(<SessionNotesEditor sessionId="s1" />);
     await waitFor(() => expect(screen.getByText('文档')).toBeTruthy());
     fireEvent.click(screen.getByText('文档'));
-    expect(screen.queryByLabelText('当前会话置顶 Notes')).toBeNull();
+    expect(screen.queryByLabelText('当前会话置顶便签')).toBeNull();
     fireEvent.click(screen.getByTestId('session-notes-preview'));
-    expect((screen.getByLabelText('当前会话置顶 Notes') as HTMLTextAreaElement).value).toBe('点我编辑 [文档](https://example.com/doc)');
+    expect((screen.getByLabelText('当前会话置顶便签') as HTMLTextAreaElement).value).toBe('点我编辑 [文档](https://example.com/doc)');
   });
 
   it('Enter on the focused preview card enters edit mode', async () => {
@@ -225,7 +225,7 @@ describe('SessionNotesEditor', () => {
     const card = await screen.findByTestId('session-notes-preview');
     expect(card.getAttribute('role')).toBe('button');
     fireEvent.keyDown(card, { key: 'Enter' });
-    expect(screen.getByLabelText('当前会话置顶 Notes')).toBeTruthy();
+    expect(screen.getByLabelText('当前会话置顶便签')).toBeTruthy();
   });
 
   it('清空 saves an empty string, removes notes.md from stateFiles and reopens the empty editor', async () => {
@@ -236,8 +236,8 @@ describe('SessionNotesEditor', () => {
     expect(m.saveSessionNotes).toHaveBeenCalledWith('s1', '');
     expect(useStore.getState().stateFiles.s1?.['notes.md']).toBeUndefined();
     expect(screen.queryByTestId('session-notes-clear')).toBeNull();
-    expect(useStore.getState().toasts.map((t) => t.text)).toContain('已清空置顶 Notes');
-    expect((screen.getByLabelText('当前会话置顶 Notes') as HTMLTextAreaElement).value).toBe('');
+    expect(useStore.getState().toasts.map((t) => t.text)).toContain('已清空置顶便签');
+    expect((screen.getByLabelText('当前会话置顶便签') as HTMLTextAreaElement).value).toBe('');
   });
 
   it('auto-syncs live state.sync updates when clean, but never clobbers unsaved edits', async () => {
@@ -247,9 +247,9 @@ describe('SessionNotesEditor', () => {
     act(() => useStore.setState((s) => ({ stateFiles: { ...s.stateFiles, s1: { 'notes.md': 'v2 by agent' } } })));
     expect(screen.getByText('v2 by agent')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
-    fireEvent.change(screen.getByLabelText('当前会话置顶 Notes'), { target: { value: 'my local edit' } });
+    fireEvent.change(screen.getByLabelText('当前会话置顶便签'), { target: { value: 'my local edit' } });
     act(() => useStore.setState((s) => ({ stateFiles: { ...s.stateFiles, s1: { 'notes.md': 'v3 by agent' } } })));
-    expect((screen.getByLabelText('当前会话置顶 Notes') as HTMLTextAreaElement).value).toBe('my local edit');
+    expect((screen.getByLabelText('当前会话置顶便签') as HTMLTextAreaElement).value).toBe('my local edit');
     // 撤销 drops the local edit and shows the latest synced content.
     fireEvent.click(screen.getByTestId('session-notes-revert'));
     expect(screen.queryByTestId('session-notes-dirty')).toBeNull();
@@ -258,9 +258,9 @@ describe('SessionNotesEditor', () => {
   it('an empty editor flips to the preview when the agent writes notes while the user has not typed', async () => {
     wireClient({ s1: '' });
     render(<SessionNotesEditor sessionId="s1" />);
-    await screen.findByLabelText('当前会话置顶 Notes');
+    await screen.findByLabelText('当前会话置顶便签');
     act(() => useStore.setState((s) => ({ stateFiles: { ...s.stateFiles, s1: { 'notes.md': 'AI 记下的线索' } } })));
-    expect(screen.queryByLabelText('当前会话置顶 Notes')).toBeNull();
+    expect(screen.queryByLabelText('当前会话置顶便签')).toBeNull();
     expect(screen.getByText('AI 记下的线索')).toBeTruthy();
   });
 
@@ -288,23 +288,23 @@ describe('SessionNotesEditor', () => {
     m.getSessionNotes.mockResolvedValue(notesResult('s1', ''));
     m.saveSessionNotes.mockRejectedValue(new Error('boom'));
     render(<SessionNotesEditor sessionId="s1" />);
-    fireEvent.change(await screen.findByLabelText('当前会话置顶 Notes'), { target: { value: '保留我' } });
+    fireEvent.change(await screen.findByLabelText('当前会话置顶便签'), { target: { value: '保留我' } });
     await act(async () => fireEvent.click(screen.getByTestId('session-notes-save')));
-    expect((screen.getByLabelText('当前会话置顶 Notes') as HTMLTextAreaElement).value).toBe('保留我');
+    expect((screen.getByLabelText('当前会话置顶便签') as HTMLTextAreaElement).value).toBe('保留我');
     expect(screen.getByTestId('session-notes-dirty')).toBeTruthy();
-    expect(useStore.getState().toasts.map((t) => t.text)).toContain('保存置顶 Notes 失败');
+    expect(useStore.getState().toasts.map((t) => t.text)).toContain('保存置顶便签失败');
   });
 
   it('blocks saving content above 64 KiB with an error counter and message', async () => {
     m.getSessionNotes.mockResolvedValue(notesResult('s1', ''));
     render(<SessionNotesEditor sessionId="s1" />);
-    const ta = await screen.findByLabelText('当前会话置顶 Notes');
+    const ta = await screen.findByLabelText('当前会话置顶便签');
     fireEvent.change(ta, { target: { value: '字'.repeat(SESSION_NOTES_MAX_BYTES / 3 + 10) } });
     expect((screen.getByTestId('session-notes-save') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/\/ 64 KiB/).className).toContain('is-err');
     expect(screen.getByTestId('session-notes-too-large').textContent).toContain('64 KiB');
-    expect(screen.getByLabelText('当前会话置顶 Notes').getAttribute('aria-invalid')).toBe('true');
-    await act(async () => fireEvent.keyDown(screen.getByLabelText('当前会话置顶 Notes'), { key: 's', ctrlKey: true }));
+    expect(screen.getByLabelText('当前会话置顶便签').getAttribute('aria-invalid')).toBe('true');
+    await act(async () => fireEvent.keyDown(screen.getByLabelText('当前会话置顶便签'), { key: 's', ctrlKey: true }));
     expect(m.saveSessionNotes).not.toHaveBeenCalled();
   });
 });
@@ -323,8 +323,8 @@ describe('SessionNotesSheet', () => {
     const title = within(dialog).getByTestId('session-notes-sheet-title');
     expect(title.className).toBe('k-snotes-title');
     expect(title.querySelector('[data-ui-icon="pin"]')).toBeTruthy();
-    expect(title.textContent).toContain('置顶 Notes');
-    expect(title.textContent).not.toContain('当前会话置顶 Notes');
+    expect(title.textContent).toContain('置顶便签');
+    expect(title.textContent).not.toContain('当前会话置顶便签');
     const pill = title.querySelector('.k-snotes-session')!;
     expect(pill.textContent).toBe('校园怪谈调查');
     expect(pill.className).toContain('k-pill');
@@ -344,12 +344,12 @@ describe('SessionNotesSheet', () => {
 });
 
 describe('entry points', () => {
-  it('TopBar RoleMode sheet: 置顶 Notes row with 已置顶 pill opens the sheet; no global entries', () => {
+  it('TopBar RoleMode sheet: 置顶便签 row with 已置顶 pill opens the sheet; no global entries', () => {
     useStore.setState({ stateFiles: { s1: { 'notes.md': '  \n' } } });
     const { unmount } = render(<RoleModeCapsule sessionId="s1" modeId="chat" />);
     fireEvent.click(screen.getByRole('button', { name: '角色与模式' }));
     const row = screen.getByTestId('topbar-session-notes-btn');
-    expect(row.textContent).toContain('置顶 Notes');
+    expect(row.textContent).toContain('置顶便签');
     expect(row.querySelector('[data-ui-icon="pin"]')).toBeTruthy();
     expect(row.querySelector('.k-pill-primary')).toBeNull(); // whitespace-only = not pinned
     expect(screen.queryByTestId('topbar-notes-btn')).toBeNull();
@@ -372,7 +372,7 @@ describe('entry points', () => {
     expect(screen.queryByTestId('topbar-notes-btn')).toBeNull();
   });
 
-  it('SessionEditMenu: 置顶 Notes action opens the sheet for that session and closes the drawer', () => {
+  it('SessionEditMenu: 置顶便签 action opens the sheet for that session and closes the drawer', () => {
     useStore.setState((s) => ({
       sessions: { s2: { session_id: 's2', title: '跑团夜', mode_id: 'trpg', updated_at: now(), role: 'asuka' } as never },
       ui: { ...s.ui, drawerOpen: true },
@@ -381,7 +381,7 @@ describe('entry points', () => {
     fireEvent.contextMenu(screen.getByText('跑团夜').closest('.k-srow')!.querySelector('.k-srow-main')!);
     const menu = screen.getByTestId('session-edit-menu');
     const btn = within(menu).getByTestId('session-action-notes');
-    expect(btn.textContent).toContain('置顶 Notes');
+    expect(btn.textContent).toContain('置顶便签');
     expect(btn.querySelector('[data-ui-icon="pin"]')).toBeTruthy();
     // Placed right after 重命名对话.
     expect(within(menu).getByTestId('session-action-rename').nextElementSibling).toBe(btn);

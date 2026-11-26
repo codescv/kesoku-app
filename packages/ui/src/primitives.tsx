@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useT } from './i18n';
 import { UiIcon } from './icons';
 
 type Tone = 'neutral' | 'primary' | 'accent' | 'ok' | 'warn' | 'danger' | 'mode';
@@ -147,6 +148,7 @@ export function Sheet({
   onBack?: () => void;
   height?: 'auto' | 'half' | 'full';
 }) {
+  const t = useT();
   const [rendered, setRendered] = useState(open);
   const [entering, setEntering] = useState(open);
   const [prevOpen, setPrevOpen] = useState(open);
@@ -618,7 +620,7 @@ export function Sheet({
             }}
           >
             {onBack && (
-              <button type="button" className="k-icon-btn" aria-label="返回" onClick={onBack}>
+              <button type="button" className="k-icon-btn" aria-label={t('common.back')} onClick={onBack}>
                 <UiIcon name="arrow-left" size={20} />
               </button>
             )}
@@ -626,7 +628,7 @@ export function Sheet({
             <button
               type="button"
               className="k-icon-btn"
-              aria-label="关闭"
+              aria-label={t('common.close')}
               onClick={() => {
                 setExitDragY(0);
                 onClose();
@@ -676,12 +678,13 @@ export function Sheet({
 }
 
 export function Avatar({ src, name, size = 34, ai, className }: { src?: string | null; name: string; size?: number; ai?: boolean; className?: string }) {
+  const t = useT();
   const letter = (name || '?').trim().slice(0, 1).toUpperCase();
   return (
     <span className={['k-avatar', className].filter(Boolean).join(' ')} style={{ width: size, height: size, fontSize: Math.round(size * 0.45) }}>
       {src ? <img src={src} alt={name} draggable={false} /> : <span aria-hidden>{letter}</span>}
       {ai && (
-        <span className="k-avatar-ai" title="AI 风格化生成">
+        <span className="k-avatar-ai" title={t('common.aiStylized')}>
           <UiIcon name="spark" size={Math.max(10, Math.round(size * 0.36))} styleVariant="duotone" />
         </span>
       )}

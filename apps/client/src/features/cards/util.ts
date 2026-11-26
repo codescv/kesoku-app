@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { t, type MessageKey } from '@kesoku/ui';
 import type { CardContext, GlossaryEntry, MediaRef } from './types';
 
 /* ------------------------------------------------------------------ */
@@ -150,15 +151,26 @@ export function toBBox(v: unknown): BBox | null {
   return [x, y, w, h];
 }
 
-/** `右上` / `左中` / `正中` from a bbox centre. */
+const POS_KEYS: Record<string, MessageKey> = {
+  tl: 'card.pos.tl',
+  tc: 'card.pos.tc',
+  tr: 'card.pos.tr',
+  ml: 'card.pos.ml',
+  mc: 'card.pos.mc',
+  mr: 'card.pos.mr',
+  bl: 'card.pos.bl',
+  bc: 'card.pos.bc',
+  br: 'card.pos.br',
+};
+
+/** Localized position label (e.g. Top-Right / 右上) from a bbox centre. */
 export function bboxPosition(b: BBox | null): string {
   if (!b) return '';
   const cx = b[0] + b[2] / 2;
   const cy = b[1] + b[3] / 2;
-  const h = cx < 1 / 3 ? '左' : cx < 2 / 3 ? '中' : '右';
-  const v = cy < 1 / 3 ? '上' : cy < 2 / 3 ? '中' : '下';
-  if (h === '中' && v === '中') return '正中';
-  return h + v;
+  const h = cx < 1 / 3 ? 'l' : cx < 2 / 3 ? 'c' : 'r';
+  const v = cy < 1 / 3 ? 't' : cy < 2 / 3 ? 'm' : 'b';
+  return t(POS_KEYS[v + h] ?? 'card.pos.mc');
 }
 
 /** Photo number shown to the user (`photo_index` is 1-based; 0 is tolerated as the first photo). */
@@ -277,7 +289,14 @@ export function versionOf(data: Dict): GameVersion {
   return data.cd_s != null || data.cd_sec != null || data.mega_stone != null ? 'za' : 'sv';
 }
 
-export const VERSION_LABEL: Record<GameVersion, string> = { sv: '朱／紫 SV', za: '传说 Z-A' };
+export const VERSION_LABEL: Record<GameVersion, string> = {
+  get sv() {
+    return t('pkmn.ver.sv');
+  },
+  get za() {
+    return t('pkmn.ver.za');
+  },
+};
 
 /* ------------------------------------------------------------------ */
 /* Plain text helpers                                                  */

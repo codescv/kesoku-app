@@ -1,5 +1,5 @@
 import { Component, useState, type ReactNode } from 'react';
-import { HpBar, ProgressBar } from '@kesoku/ui';
+import { HpBar, ProgressBar, t as tGlobal, useLocale, useT, type MessageKey } from '@kesoku/ui';
 import { VERSION_LABELS, comboGauge, partyCombos, resolveGameVersion, trpgPhase, type HudPanel } from '@kesoku/hud';
 import type { CardContext } from '../../cards/types';
 import { MatchupRows, TypeBadge, matchupOf } from '../../cards/pokemon';
@@ -48,10 +48,11 @@ export function mistakeItems(stateFiles: Record<string, unknown>): Dict[] {
 }
 
 function MistakesPanel({ stateFiles, ctx }: { stateFiles: Record<string, unknown>; ctx: CardContext }) {
+  const t = useT();
   const items = mistakeItems(stateFiles);
   return (
-    <Panel title="📕 待复习错题本" badge={items.length ? <span className="kc-badge kc-badge-danger-soft">{items.length} 项到期</span> : undefined} className="km-mistakes">
-      {!items.length && <Empty>暂无到期错题 🎉</Empty>}
+    <Panel title={t('panel.mistakesTitle')} badge={items.length ? <span className="kc-badge kc-badge-danger-soft">{t('panel.dueCount', { count: items.length })}</span> : undefined} className="km-mistakes">
+      {!items.length && <Empty>{t('panel.noDueMistakes')}</Empty>}
       <ul className="km-list">
         {items.map((it, i) => {
           const point = pick(it, 'point', 'title', 'grammar', 'note');
@@ -63,19 +64,19 @@ function MistakesPanel({ stateFiles, ctx }: { stateFiles: Record<string, unknown
             <li key={id || i} className="km-mistake">
               <div className="km-mistake-main">
                 <div className="km-mistake-point">
-                  <b lang="ja">{point || '错题'}</b>
-                  {lessonNo && <span className="kc-badge kc-badge-tag">{/^\d+$/.test(lessonNo) ? `第${lessonNo}课` : lessonNo}</span>}
+                  <b lang="ja">{point || t('panel.mistakeFallback')}</b>
+                  {lessonNo && <span className="kc-badge kc-badge-tag">{/^\d+$/.test(lessonNo) ? t('hud.lessonNo', { no: lessonNo }) : lessonNo}</span>}
                 </div>
                 {(wrong || right) && (
                   <div className="km-mistake-fix" lang="ja">
-                    {wrong && <span className="km-wrong">误：{wrong}</span>}
+                    {wrong && <span className="km-wrong">{t('panel.wrongPrefix')}{wrong}</span>}
                     {wrong && right && ' → '}
-                    {right && <span className="km-right">正：{right}</span>}
+                    {right && <span className="km-right">{t('panel.rightPrefix')}{right}</span>}
                   </div>
                 )}
               </div>
-              <button type="button" className="km-kill" onClick={() => ctx.sendText(`立即消灭错题${id ? ` #${id}` : ''}：${point}`)} disabled={!point}>
-                立即消灭
+              <button type="button" className="km-kill" onClick={() => ctx.sendText(t('panel.killMistakePrompt', { id: id ? ` #${id}` : '', point }))} disabled={!point}>
+                {t('panel.drillNow')}
               </button>
             </li>
           );
@@ -88,13 +89,14 @@ function MistakesPanel({ stateFiles, ctx }: { stateFiles: Record<string, unknown
 /* ------------------------------ roster ------------------------------ */
 
 function RosterAvatar({ refStr, name, ctx }: { refStr: string; name: string; ctx: CardContext }) {
+  const t = useT();
   const ref = refStr ? toMediaRef({ ref: refStr }) : null;
   const url = useImageUrl(ctx.resolveMedia, ref);
   return (
     <button
       type="button"
       className="km-roster-av"
-      aria-label={`${name} 定妆参考`}
+      aria-label={t('panel.rosterAvatarAria', { name })}
       onClick={() => url && ctx.openFullscreen(<img className="kc-full-img" src={url} alt={name} />)}
     >
       {url ? <img src={url} alt={name} draggable={false} /> : <span aria-hidden>{name.slice(0, 1)}</span>}
@@ -103,11 +105,12 @@ function RosterAvatar({ refStr, name, ctx }: { refStr: string; name: string; ctx
 }
 
 function RosterPanel({ stateFiles, ctx }: { stateFiles: Record<string, unknown>; ctx: CardContext }) {
+  const t = useT();
   const roster = file(stateFiles, 'game/roster.json');
   const members = Object.entries(obj(roster.members ?? roster.cast ?? roster.characters)).filter(([, v]) => isObj(v)) as Array<[string, Dict]>;
   return (
-    <Panel title="🎭 演员定妆表" badge={<span className="kc-badge kc-badge-mode">{members.length}</span>} className="km-roster">
-      {!members.length && <Empty>还没有登记角色</Empty>}
+    <Panel title={t('panel.rosterTitle')} badge={<span className="kc-badge kc-badge-mode">{members.length}</span>} className="km-roster">
+      {!members.length && <Empty>{t('panel.noRoster')}</Empty>}
       <ul className="km-list">
         {members.map(([key, m]) => {
           const name = pick(m, 'name') || key;
@@ -145,8 +148,29 @@ function RosterPanel({ stateFiles, ctx }: { stateFiles: Record<string, unknown>;
 
 /* ------------------------------ party ------------------------------ */
 
-const ROLE_LABEL: Record<string, string> = { player: '主角', active: '队友', support: '支援', narrator: '旁白', reserve: '后备' };
-const ATTR_LABEL: Record<string, string> = { ac: '护甲', hit: '命中', dmg: '伤害', atk: '攻击', def: '防御', mp: 'MP', max_mp: 'MP上限', spd: '速度', str: '力量', dex: '敏捷', int: '智力', level: '等级', xp: '经验', gold: '资金' };
+const ROLE_KEYS: Record<string, MessageKey> = {
+  player: 'trpg.role.player',
+  active: 'trpg.role.active',
+  support: 'trpg.role.support',
+  narrator: 'trpg.role.narrator',
+  reserve: 'trpg.role.reserve',
+};
+const ATTR_KEYS: ReadonlyArray<readonly [string, MessageKey]> = [
+  ['ac', 'trpg.attr.ac'],
+  ['hit', 'trpg.attr.hit'],
+  ['dmg', 'trpg.attr.dmg'],
+  ['atk', 'trpg.attr.atk'],
+  ['def', 'trpg.attr.def'],
+  ['mp', 'trpg.attr.mp'],
+  ['max_mp', 'trpg.attr.max_mp'],
+  ['spd', 'trpg.attr.spd'],
+  ['str', 'trpg.attr.str'],
+  ['dex', 'trpg.attr.dex'],
+  ['int', 'trpg.attr.int'],
+  ['level', 'trpg.attr.level'],
+  ['xp', 'trpg.attr.xp'],
+  ['gold', 'trpg.attr.gold'],
+];
 
 function itemsList(v: unknown): string[] {
   return arr(v)
@@ -161,12 +185,20 @@ function itemsList(v: unknown): string[] {
     .filter(Boolean);
 }
 
-const EQUIP_SLOTS: ReadonlyArray<readonly [string, string]> = [
-  ['weapon', '武器'],
-  ['armor', '护甲'],
-  ['accessory', '饰品'],
+const EQUIP_SLOTS: ReadonlyArray<readonly [string, MessageKey]> = [
+  ['weapon', 'trpg.slot.weapon'],
+  ['armor', 'trpg.slot.armor'],
+  ['accessory', 'trpg.slot.accessory'],
 ];
-const SKILL_TYPE_LABEL: Record<string, string> = { attack: '攻击', control: '控制', heal: '治疗', guard: '守护', buff: '增益', transform: '变身', narrative: '叙事' };
+const SKILL_TYPE_KEYS: Record<string, MessageKey> = {
+  attack: 'trpg.skill.attack',
+  control: 'trpg.skill.control',
+  heal: 'trpg.skill.heal',
+  guard: 'trpg.skill.guard',
+  buff: 'trpg.skill.buff',
+  transform: 'trpg.skill.transform',
+  narrative: 'trpg.skill.narrative',
+};
 
 /** True for a set flag/text field (`true`, non-empty string other than "false"/"0", non-zero number). */
 function flag(v: unknown): boolean {
@@ -188,13 +220,13 @@ export interface EquipRow {
   slot: string;
   name: string;
   bonuses: string[];
-  /** Exclusive (专属) gear granted by a personal quest. */
+  /** Exclusive gear granted by a personal quest. */
   exclusive: boolean;
   /** Trigger affixes: on-miss / on-crit text and combo-gauge gain. */
   tags: EquipTag[];
 }
 
-const COMBO_GAIN_TEXT: Record<string, string> = { hit: '命中+1格', crit: '暴击+1格' };
+const COMBO_GAIN_KEYS: Record<string, MessageKey> = { hit: 'trpg.comboGain.hit', crit: 'trpg.comboGain.crit' };
 
 /** Trigger text from the current `{ text, status, hp }` object or a legacy plain string. */
 function triggerText(v: unknown): string {
@@ -205,7 +237,8 @@ function equipTags(it: Dict): EquipTag[] {
   const tags: EquipTag[] = [];
   const miss = triggerText(it.on_miss);
   const crit = triggerText(it.on_crit);
-  const gain = COMBO_GAIN_TEXT[str(it.combo_gain).toLowerCase()];
+  const gainKey = COMBO_GAIN_KEYS[str(it.combo_gain).toLowerCase()];
+  const gain = gainKey ? tGlobal(gainKey) : '';
   if (miss) tags.push({ kind: 'miss', text: miss });
   if (crit) tags.push({ kind: 'crit', text: crit });
   if (gain) tags.push({ kind: 'combo', text: gain });
@@ -219,7 +252,8 @@ function equipTags(it: Dict): EquipTag[] {
 export function equipRows(equip: unknown): EquipRow[] {
   const e = obj(equip);
   const rows: EquipRow[] = [];
-  for (const [slot, label] of EQUIP_SLOTS) {
+  for (const [slot, labelKey] of EQUIP_SLOTS) {
+    const label = tGlobal(labelKey);
     const it = e[slot];
     if (isObj(it)) {
       const name = pick(it, 'name', 'label', 'item');
@@ -228,7 +262,12 @@ export function equipRows(equip: unknown): EquipRow[] {
       const ac = num(it.ac);
       const dmg = pick(it, 'dmg');
       const fx = pick(it, 'fx');
-      const bonuses = [hit ? `命中${signed(hit)}` : '', ac ? `AC${signed(ac)}` : '', dmg ? `伤害${dmg}` : '', fx].filter(Boolean);
+      const bonuses = [
+        hit ? `${tGlobal('trpg.attr.hit')}${signed(hit)}` : '',
+        ac ? `AC${signed(ac)}` : '',
+        dmg ? `${tGlobal('trpg.attr.dmg')}${dmg}` : '',
+        fx,
+      ].filter(Boolean);
       rows.push({ slot: label, name, bonuses, exclusive: it.exclusive === true, tags: equipTags(it) });
     } else {
       const name = str(it);
@@ -252,17 +291,25 @@ export function skillRows(skills: unknown): SkillRow[] {
       if (!isObj(s)) return { name: str(s), type: '', tail: '', derivedFrom: '' };
       const heal = pick(s, 'heal');
       const status = pick(s, 'status');
-      const tail = [pick(s, 'dmg'), status ? `状态:${status}` : '', flag(s.guard) ? '壁垒掩护' : '', heal ? `治疗:${heal}` : '', flag(s.buff) ? '战意鼓舞' : '', pick(s, 'desc')]
+      const tail = [
+        pick(s, 'dmg'),
+        status ? tGlobal('trpg.statusPrefix', { val: status }) : '',
+        flag(s.guard) ? tGlobal('trpg.guardText') : '',
+        heal ? tGlobal('trpg.healPrefix', { val: heal }) : '',
+        flag(s.buff) ? tGlobal('trpg.buffText') : '',
+        pick(s, 'desc'),
+      ]
         .filter(Boolean)
         .join(' · ');
       const type = pick(s, 'type').toLowerCase();
+      const typeKey = SKILL_TYPE_KEYS[type];
       const derivedFrom = pick(s, 'derived_from').replace(/^★+/, '').trim();
-      return { name: pick(s, 'name'), type: SKILL_TYPE_LABEL[type] ?? '', tail, derivedFrom };
+      return { name: pick(s, 'name'), type: typeKey ? tGlobal(typeKey) : '', tail, derivedFrom };
     })
     .filter((s) => s.name);
 }
 
-const FORM_RANGE_LABEL: Record<string, string> = { melee: '近战', ranged: '远程' };
+const FORM_RANGE_KEYS: Record<string, MessageKey> = { melee: 'trpg.range.melee', ranged: 'trpg.range.ranged' };
 
 function clipText(s: string, max = 60): string {
   const chars = Array.from(s);
@@ -272,11 +319,11 @@ function clipText(s: string, max = 60): string {
 export interface FormInfo {
   /** True when `form_state === 'transformed'`. */
   transformed: boolean;
-  /** Active form badge label (`form_kit.key`, else `transformed_appearance.form_key`, else `'变身中'`). */
+  /** Active form badge label (`form_kit.key`, else `transformed_appearance.form_key`, else localized fallback). */
   badge: string;
   /** Tooltip on the active form badge (`transformed_appearance` prompt, else `form_kit.passive`). */
   tooltip: string;
-  /** Combat range label (`近战` / `远程`) from `form_kit.range`, or `''`. */
+  /** Combat range label from `form_kit.range`, or `''`. */
   range: string;
   /** Active form passive from `form_kit.passive`, or `''`. */
   passive: string;
@@ -300,10 +347,11 @@ export function formInfo(rec: unknown): FormInfo | null {
     const kitKey = pick(kit, 'key');
     const passive = pick(kit, 'passive');
     const rawRange = pick(kit, 'range');
-    const range = FORM_RANGE_LABEL[rawRange.toLowerCase()] ?? rawRange;
+    const rangeKey = FORM_RANGE_KEYS[rawRange.toLowerCase()];
+    const range = rangeKey ? tGlobal(rangeKey) : rawRange;
     return {
       transformed: true,
-      badge: kitKey || tfKey || '变身中',
+      badge: kitKey || tfKey || tGlobal('panel.transformed'),
       tooltip: appearance || passive,
       range,
       passive,
@@ -341,9 +389,9 @@ export function growthInfo(growth: unknown): GrowthInfo | null {
   const stats = (
     [
       ['max_hp', 'HP'],
-      ['hit', '命中'],
+      ['hit', tGlobal('trpg.attr.hit')],
       ['ac', 'AC'],
-      ['dmg', '伤害'],
+      ['dmg', tGlobal('trpg.attr.dmg')],
     ] as const
   )
     .map(([k, l]) => {
@@ -355,13 +403,13 @@ export function growthInfo(growth: unknown): GrowthInfo | null {
   return traits.length || stats.length ? { traits, stats } : null;
 }
 
-const PENDING_LABEL: Record<string, string> = { gear: '专属装备', combo: '新合体技' };
+const PENDING_KEYS: Record<string, MessageKey> = { gear: 'trpg.pending.gear', combo: 'trpg.pending.combo' };
 
 export interface BondInfo {
   title: string;
   goal: string;
   done: boolean;
-  /** `stage/stages`, `完结`, or '' when the counters are missing. */
+  /** `stage/stages`, completed label, or '' when the counters are missing. */
   progress: string;
   /** Completed acts for the progress bar; null when `stage` / `stages` are not numbers. */
   bar: { value: number; max: number } | null;
@@ -374,22 +422,26 @@ export function bondInfo(bond: unknown): BondInfo | null {
   const title = pick(bond, 'title');
   const done = bond.done === true;
   const goal = done ? '' : pick(bond, 'goal');
-  const pending = strList(bond.pending).map((p) => PENDING_LABEL[p] ?? p);
+  const pending = strList(bond.pending).map((p) => (PENDING_KEYS[p] ? tGlobal(PENDING_KEYS[p]) : p));
   if (!title && !goal && !pending.length) return null;
   const stages = typeof bond.stages === 'number' && Number.isFinite(bond.stages) && bond.stages > 0 ? Math.floor(bond.stages) : null;
   const stage = typeof bond.stage === 'number' && Number.isFinite(bond.stage) ? Math.floor(bond.stage) : null;
   const bar = stages !== null && stage !== null ? { value: done ? stages : Math.max(0, Math.min(stages, stage - 1)), max: stages } : null;
-  const progress = done ? '完结' : bar ? `${Math.max(1, Math.min(stages!, stage!))}/${stages}` : '';
+  const progress = done ? tGlobal('panel.bondDone') : bar ? `${Math.max(1, Math.min(stages!, stage!))}/${stages}` : '';
   return { title, goal, done, progress, bar, pending };
 }
 
-const EQUIP_TAG_STYLE: Record<EquipTag['kind'], readonly [string, string]> = {
-  miss: ['kc-badge-warn', '打空'],
-  crit: ['kc-badge-primary', '暴击'],
-  combo: ['kc-badge-mode', '连携'],
+const EQUIP_TAG_STYLE: Record<EquipTag['kind'], readonly [string, MessageKey]> = {
+  miss: ['kc-badge-warn', 'trpg.equipTag.miss'],
+  crit: ['kc-badge-primary', 'trpg.equipTag.crit'],
+  combo: ['kc-badge-mode', 'trpg.equipTag.combo'],
 };
 
 function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolean }) {
+  const t = useT();
+  const locale = useLocale();
+  const listSep = locale === 'en' ? ', ' : '、';
+  const colon = locale === 'en' ? ': ' : '：';
   const hp = num(rec.hp);
   const max = num(rec.max_hp ?? rec.hp_max) ?? hp;
   const role = pick(rec, 'role');
@@ -397,9 +449,9 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
   const level = num(rec.level);
   const status = strList(rec.status ?? rec.statuses);
   const attrs = { ...obj(rec.base), ...rec };
-  const attrRows = Object.entries(ATTR_LABEL)
+  const attrRows = ATTR_KEYS
     .filter(([k]) => k !== 'level' && (typeof attrs[k] === 'number' || (typeof attrs[k] === 'string' && attrs[k] !== '')))
-    .map(([k, l]) => [l, String(attrs[k])] as const);
+    .map(([k, lKey]) => [t(lKey), String(attrs[k])] as const);
   const skills = skillRows(rec.skills);
   const equip = equipRows(rec.equip);
   const inv = itemsList(rec.inventory ?? rec.items ?? rec.bag);
@@ -408,11 +460,12 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
   const form = formInfo(rec);
   const formStripText = form?.transformed ? form.passive || form.appearanceSnippet : '';
   const formStripTitle = form?.transformed ? form.passive || form.appearance : '';
+  const roleKey = role ? ROLE_KEYS[role] : undefined;
   return (
     <li className={'km-fighter' + (enemy ? ' is-enemy' : '') + (form?.transformed ? ' is-transformed' : '')}>
       <div className="km-fighter-head">
         <b>{enemy ? '👹 ' : ''}{pick(rec, 'display_name', 'name') || name}</b>
-        {role && ROLE_LABEL[role] && <span className="kc-badge kc-badge-tag">{ROLE_LABEL[role]}</span>}
+        {roleKey && <span className="kc-badge kc-badge-tag">{t(roleKey)}</span>}
         {cls && <span className="kc-badge kc-badge-tag">{cls}</span>}
         {level !== null && <span className="kc-badge kc-badge-primary">Lv {level}</span>}
         {form?.transformed && (
@@ -434,7 +487,7 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
       </div>
       {hp !== null && max ? <HpBar hp={hp} max={max} /> : null}
       {form?.transformed && (form.range || formStripText) && (
-        <div className="km-form-strip" aria-label="变身形态">
+        <div className="km-form-strip" aria-label={t('panel.formStripAria')}>
           {form.range && <span className="kc-badge kc-badge-tag km-form-range">{form.range}</span>}
           {formStripText && (
             <span className="km-form-text" title={formStripTitle || undefined}>
@@ -444,8 +497,8 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
         </div>
       )}
       {form && !form.transformed && form.availableForms.length > 0 && (
-        <div className="km-form-avail" aria-label="可整活变身">
-          <span className="kc-badge kc-badge-tag km-form-pill">可整活变身：{form.availableForms.join('、')}</span>
+        <div className="km-form-avail" aria-label={t('panel.availFormsAria')}>
+          <span className="kc-badge kc-badge-tag km-form-pill">{t('panel.availFormsLabel', { forms: form.availableForms.join(listSep) })}</span>
         </div>
       )}
       {attrRows.length > 0 && (
@@ -458,11 +511,11 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
         </div>
       )}
       {growth && (
-        <div className="kc-chips km-growth" aria-label="觉醒">
-          <span className="kc-chip-k">觉醒</span>
-          {growth.traits.map((t) => (
-            <span key={t} className="kc-badge kc-badge-mode">
-              {t}
+        <div className="kc-chips km-growth" aria-label={t('panel.growth')}>
+          <span className="kc-chip-k">{t('panel.growth')}</span>
+          {growth.traits.map((tr) => (
+            <span key={tr} className="kc-badge kc-badge-mode">
+              {tr}
             </span>
           ))}
           {growth.stats.map((s) => (
@@ -473,25 +526,25 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
         </div>
       )}
       {bond && (
-        <div className="km-bond" aria-label="个人任务">
+        <div className="km-bond" aria-label={t('panel.bondAria')}>
           <div className="kc-chips">
             {bond.title && <b>《{bond.title}》</b>}
             {bond.progress && <span className={'kc-badge ' + (bond.done ? 'kc-badge-primary' : 'kc-badge-tag')}>{bond.progress}</span>}
             {bond.goal && <span className="km-bond-goal">{bond.goal}</span>}
-            {bond.pending.length > 0 && <span className="kc-badge kc-badge-warn">待领 {bond.pending.join(' / ')}</span>}
+            {bond.pending.length > 0 && <span className="kc-badge kc-badge-warn">{t('panel.bondPending', { items: bond.pending.join(' / ') })}</span>}
           </div>
           {bond.bar && <ProgressBar value={bond.bar.value} max={bond.bar.max} />}
         </div>
       )}
       {skills.length > 0 && (
-        <ul className="km-skills" aria-label="配招">
+        <ul className="km-skills" aria-label={t('panel.skillsAria')}>
           {skills.map((s, i) => (
-            <li key={i} title={s.derivedFrom ? `由主招式「${s.derivedFrom}」派生` : undefined}>
+            <li key={i} title={s.derivedFrom ? t('panel.derivedFromTitle', { name: s.derivedFrom }) : undefined}>
               <b>{s.name}</b>
               {s.type && <span className="kc-badge kc-badge-tag km-skill-type">{s.type}</span>}
               {s.derivedFrom && (
-                <span className="kc-badge kc-badge-accent km-skill-derived" title={`由主招式「${s.derivedFrom}」派生`}>
-                  派生自 {s.derivedFrom}
+                <span className="kc-badge kc-badge-accent km-skill-derived" title={t('panel.derivedFromTitle', { name: s.derivedFrom })}>
+                  {t('panel.derivedFrom', { name: s.derivedFrom })}
                 </span>
               )}
               {s.tail && <span> · {s.tail}</span>}
@@ -500,7 +553,7 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
         </ul>
       )}
       {equip.length > 0 && (
-        <ul className="km-equip" aria-label="装备">
+        <ul className="km-equip" aria-label={t('panel.equipAria')}>
           {equip.map((e) => (
             <li key={e.slot} className="km-equip-row">
               <span className="km-equip-slot">{e.slot}</span>
@@ -508,15 +561,16 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
                 {e.exclusive && '★'}
                 {e.name}
               </b>
-              {e.exclusive && <span className="kc-badge kc-badge-primary">专属</span>}
+              {e.exclusive && <span className="kc-badge kc-badge-primary">{t('panel.exclusive')}</span>}
               {e.bonuses.length > 0 && <span className="km-equip-bonus">{e.bonuses.join(' · ')}</span>}
               {e.tags.length > 0 && (
                 <span className="km-equip-tags">
-                  {e.tags.map((t) => {
-                    const [tone, prefix] = EQUIP_TAG_STYLE[t.kind];
+                  {e.tags.map((tag) => {
+                    const [tone, prefixKey] = EQUIP_TAG_STYLE[tag.kind];
+                    const prefix = t(prefixKey);
                     return (
-                      <span key={t.kind} className={`kc-badge ${tone} km-equip-tag`} title={`${prefix}：${t.text}`}>
-                        {prefix} {t.text}
+                      <span key={tag.kind} className={`kc-badge ${tone} km-equip-tag`} title={`${prefix}${colon}${tag.text}`}>
+                        {prefix} {tag.text}
                       </span>
                     );
                   })}
@@ -543,11 +597,12 @@ function Fighter({ name, rec, enemy }: { name: string; rec: Dict; enemy?: boolea
 const FIELD_ROLE_ORDER: Record<string, number> = { player: 0, active: 1, support: 2 };
 
 function PartyPanel({ stateFiles }: { stateFiles: Record<string, unknown> }) {
+  const t = useT();
   const party = file(stateFiles, 'game/party.json');
   const ledger = file(stateFiles, 'game/ledger.json');
   const base = file(stateFiles, 'game/base.json');
   const baseName = typeof base.name === 'string' ? base.name.trim() : '';
-  const reserveLabel = `场下队友（${baseName || '待命'}）`;
+  const reserveLabel = t('panel.reserveLabel', { base: baseName || t('panel.standby') });
   const allMembers = Object.entries(obj(party.members)).filter(([, v]) => isObj(v)) as Array<[string, Dict]>;
   const activeMembers: Array<[string, Dict]> = [];
   const reserveMembers: Array<[string, Dict]> = [];
@@ -573,10 +628,10 @@ function PartyPanel({ stateFiles }: { stateFiles: Record<string, unknown> }) {
   const combos = partyCombos(party);
   const gauge = comboGauge(party);
   return (
-    <Panel title="⚔️ 小队" className="km-party">
-      {!activeMembers.length && !showEnemies && !showReserve && <Empty>暂无队伍数据</Empty>}
+    <Panel title={t('panel.partyTitle')} className="km-party">
+      {!activeMembers.length && !showEnemies && !showReserve && <Empty>{t('panel.noParty')}</Empty>}
       {activeMembers.length > 0 && (
-        <ul className="km-list" aria-label="上场队友">
+        <ul className="km-list" aria-label={t('panel.activeMembersAria')}>
           {activeMembers.map(([k, m]) => (
             <Fighter key={k} name={k} rec={m} />
           ))}
@@ -584,8 +639,8 @@ function PartyPanel({ stateFiles }: { stateFiles: Record<string, unknown> }) {
       )}
       {showEnemies && (
         <>
-          <div className="km-sub">敌方</div>
-          <ul className="km-list" aria-label="敌方">
+          <div className="km-sub">{t('panel.enemies')}</div>
+          <ul className="km-list" aria-label={t('panel.enemies')}>
             {enemies.map(([k, e]) => (
               <Fighter key={k} name={k} rec={e} enemy />
             ))}
@@ -605,30 +660,33 @@ function PartyPanel({ stateFiles }: { stateFiles: Record<string, unknown> }) {
       {combos.length > 0 && (
         <>
           <div className="km-sub">
-            合体技{' '}
-            <span className="km-combo-gauge" aria-label={`连携槽 ${gauge.value}/${gauge.max}`}>
+            {t('panel.combos')}{' '}
+            <span className="km-combo-gauge" aria-label={t('hud.comboGaugeAria', { value: gauge.value, max: gauge.max })}>
               {'▰'.repeat(gauge.value) + '▱'.repeat(gauge.max - gauge.value)} {gauge.value}/{gauge.max}
             </span>
           </div>
-          <ul className="km-list" aria-label="合体技">
-            {combos.map((c, i) => (
-              <li key={`${c.name}#${i}`} className="km-combo-row" title={c.fx}>
-                <b>{c.name}</b>
-                <span>· {c.members.join('×')}</span>
-                <span>· {c.cost}格</span>
-                {(SKILL_TYPE_LABEL[c.type] ?? c.type) && <span className="kc-badge kc-badge-tag">{SKILL_TYPE_LABEL[c.type] ?? c.type}</span>}
-                {c.tail && <span>· {c.tail}</span>}
-                {c.state === 'ready' && <span className="kc-badge kc-badge-primary">可发动</span>}
-                {c.state === 'need' && <span className="kc-badge kc-badge-tag">需{c.cost}格</span>}
-                {c.state === 'missing' && <span className="kc-badge kc-badge-warn">缺员:{c.missing.join('、')}</span>}
-              </li>
-            ))}
+          <ul className="km-list" aria-label={t('panel.combos')}>
+            {combos.map((c, i) => {
+              const typeLabel = SKILL_TYPE_KEYS[c.type] ? t(SKILL_TYPE_KEYS[c.type]) : c.type;
+              return (
+                <li key={`${c.name}#${i}`} className="km-combo-row" title={c.fx}>
+                  <b>{c.name}</b>
+                  <span>· {c.members.join('×')}</span>
+                  <span>· {t('panel.comboCost', { cost: c.cost })}</span>
+                  {typeLabel && <span className="kc-badge kc-badge-tag">{typeLabel}</span>}
+                  {c.tail && <span>· {c.tail}</span>}
+                  {c.state === 'ready' && <span className="kc-badge kc-badge-primary">{t('panel.comboReady')}</span>}
+                  {c.state === 'need' && <span className="kc-badge kc-badge-tag">{t('panel.comboNeed', { cost: c.cost })}</span>}
+                  {c.state === 'missing' && <span className="kc-badge kc-badge-warn">{t('panel.comboMissing', { names: c.missing.join(' · ') })}</span>}
+                </li>
+              );
+            })}
           </ul>
         </>
       )}
       {(shared.length > 0 || gold !== null) && (
         <div className="kc-chips">
-          <span className="kc-chip-k">共享背包</span>
+          <span className="kc-chip-k">{t('panel.sharedBag')}</span>
           {gold !== null && <span className="kc-badge kc-badge-warn">💰 {gold}</span>}
           {shared.map((x) => (
             <span key={x} className="kc-badge kc-badge-tag">
@@ -644,6 +702,7 @@ function PartyPanel({ stateFiles }: { stateFiles: Record<string, unknown> }) {
 /* ------------------------------ dex ------------------------------ */
 
 function DexPanel({ stateFiles, modePrefs, ctx }: { stateFiles: Record<string, unknown>; modePrefs: Record<string, unknown>; ctx: CardContext }) {
+  const t = useT();
   const pk = file(stateFiles, 'game/pokemon.json');
   const version = resolveGameVersion(modePrefs, stateFiles);
   const pinned = modePrefs && Object.prototype.hasOwnProperty.call(modePrefs, 'pinned_context') ? str(modePrefs.pinned_context) : pick(pk, 'pinned_context', 'pinned');
@@ -653,22 +712,22 @@ function DexPanel({ stateFiles, modePrefs, ctx }: { stateFiles: Record<string, u
   const pinnedCard = pinned || pinnedId ? [...history].reverse().find((h) => (pinnedId && pick(h, 'species_id') === pinnedId) || (pinned && nameOf(h) === pinned)) : undefined;
   const recentQueries = strList(pk.recent_queries).slice(-6).reverse();
   return (
-    <Panel title="🔴 Dex" badge={<span className={`kc-badge kc-ver kc-ver-${version}`}>{VERSION_LABELS[version]}</span>} className={`km-dex kc-pkmn kc-pkmn-${version}`}>
+    <Panel title={t('panel.dexTitle')} badge={<span className={`kc-badge kc-ver kc-ver-${version}`}>{VERSION_LABELS[version]}</span>} className={`km-dex kc-pkmn kc-pkmn-${version}`}>
       {pinned || pinnedCard ? (
         <div className="km-dex-pinned">
           <div className="km-dex-name">
-            <span className="km-k">📌 锁定</span>
+            <span className="km-k">{t('panel.pinned')}</span>
             <b>{pinnedCard ? nameOf(pinnedCard) : pinned}</b>
-            {pinnedCard && strList(pinnedCard.types).map((t) => <TypeBadge key={t} t={t} />)}
+            {pinnedCard && strList(pinnedCard.types).map((tp) => <TypeBadge key={tp} t={tp} />)}
           </div>
-          {pinnedCard ? <MatchupRows m={matchupOf(pinnedCard.matchup)} foldResist={false} /> : <Empty>查询一次即可显示克制四组</Empty>}
+          {pinnedCard ? <MatchupRows m={matchupOf(pinnedCard.matchup)} foldResist={false} /> : <Empty>{t('panel.queryOnceMatchup')}</Empty>}
         </div>
       ) : (
-        <Empty>未锁定宝可梦</Empty>
+        <Empty>{t('panel.noPinnedPkmn')}</Empty>
       )}
       {history.length > 0 && (
         <>
-          <div className="km-sub">最近查询</div>
+          <div className="km-sub">{t('panel.recentQueries')}</div>
           <ul className="km-list km-dex-hist">
             {[...history]
               .reverse()
@@ -677,8 +736,8 @@ function DexPanel({ stateFiles, modePrefs, ctx }: { stateFiles: Record<string, u
                 <li key={i}>
                   <button type="button" className="km-dex-hist-btn" onClick={() => ctx.openFullscreen(<PokemonDex data={h} ctx={ctx} />)}>
                     <b>{nameOf(h)}</b>
-                    {strList(h.types).map((t) => (
-                      <TypeBadge key={t} t={t} />
+                    {strList(h.types).map((tp) => (
+                      <TypeBadge key={tp} t={tp} />
                     ))}
                     <span aria-hidden>›</span>
                   </button>
@@ -689,7 +748,7 @@ function DexPanel({ stateFiles, modePrefs, ctx }: { stateFiles: Record<string, u
       )}
       {!history.length && recentQueries.length > 0 && (
         <div className="kc-chips">
-          <span className="kc-chip-k">最近查询</span>
+          <span className="kc-chip-k">{t('panel.recentQueries')}</span>
           {recentQueries.map((q) => (
             <button key={q} type="button" className="kc-gloss" onClick={() => ctx.insertComposer(q)}>
               {q}
@@ -704,23 +763,24 @@ function DexPanel({ stateFiles, modePrefs, ctx }: { stateFiles: Record<string, u
 /* ------------------------------ lesson ------------------------------ */
 
 function LessonPanel({ stateFiles, ctx }: { stateFiles: Record<string, unknown>; ctx: CardContext }) {
+  const t = useT();
   const l = file(stateFiles, 'game/lesson.json');
   const segs = arr(l.segments);
   const idx = Math.max(0, Math.floor(num(l.segment_index) ?? 0));
   const book = pick(l, 'book');
   const no = pick(l, 'lesson');
   const title = pick(l, 'title');
-  const head = [book, no ? (/^\d+$/.test(no) ? `第${no}课` : no) : ''].filter(Boolean).join(' ');
+  const head = [book, no ? (/^\d+$/.test(no) ? t('hud.lessonNo', { no }) : no) : ''].filter(Boolean).join(' ');
   return (
     <>
-      <Panel title={`📘 ${head || '课程大纲'}`} badge={segs.length ? <span className="kc-badge kc-badge-mode">{Math.min(idx + 1, segs.length)}/{segs.length}</span> : undefined} className="km-lesson">
+      <Panel title={`📘 ${head || t('panel.lessonOutlineFallback')}`} badge={segs.length ? <span className="kc-badge kc-badge-mode">{Math.min(idx + 1, segs.length)}/{segs.length}</span> : undefined} className="km-lesson">
         {title && <div className="km-lesson-title">《{title}》</div>}
         {segs.length > 0 && <ProgressBar value={Math.min(idx + 1, segs.length)} max={segs.length} />}
-        {!segs.length && <Empty>尚未加载课程</Empty>}
+        {!segs.length && <Empty>{t('panel.noLessonLoaded')}</Empty>}
         <ol className="km-outline">
           {segs.map((s, i) => {
             const so = obj(s);
-            const label = pick(so, 'title', 'scene', 'name') || (pick(so, 'kind') === 'vocab' ? '词表' : pick(so, 'id')) || `片段 ${i + 1}`;
+            const label = pick(so, 'title', 'scene', 'name') || (pick(so, 'kind') === 'vocab' ? t('panel.vocab') : pick(so, 'id')) || t('panel.segmentN', { n: i + 1 });
             const state = i < idx ? 'is-done' : i === idx ? 'is-cur' : '';
             return (
               <li key={i} className={state}>
@@ -741,17 +801,18 @@ function LessonPanel({ stateFiles, ctx }: { stateFiles: Record<string, unknown>;
 /* ------------------------------ travel ------------------------------ */
 
 function TravelPanel({ stateFiles }: { stateFiles: Record<string, unknown> }) {
-  const t = file(stateFiles, 'game/travel.json');
-  const dietary = strList(t.dietary);
-  const order = arr(t.order ?? t.orders ?? t.items)
+  const t = useT();
+  const tr = file(stateFiles, 'game/travel.json');
+  const dietary = strList(tr.dietary);
+  const order = arr(tr.order ?? tr.orders ?? tr.items)
     .map((o) => (isObj(o) ? { name: pick(o, 'name_zh', 'name_local', 'name'), local: pick(o, 'name_local'), qty: num(o.qty) ?? 1, done: o.done === true || o.checked === true } : { name: str(o), local: '', qty: 1, done: false }))
     .filter((o) => o.name);
   const [checked, setChecked] = useState<Record<number, boolean>>({});
   return (
-    <Panel title={`🧭 ${pick(t, 'city') || '旅途'}`} className="km-travel">
+    <Panel title={`🧭 ${pick(tr, 'city') || t('panel.travelFallback')}`} className="km-travel">
       {dietary.length > 0 && (
         <div className="kc-chips">
-          <span className="kc-chip-k">🛡️ 忌口</span>
+          <span className="kc-chip-k">{t('panel.dietary')}</span>
           {dietary.map((d) => (
             <span key={d} className="kc-badge kc-badge-warn">
               {d}
@@ -759,8 +820,8 @@ function TravelPanel({ stateFiles }: { stateFiles: Record<string, unknown> }) {
           ))}
         </div>
       )}
-      <div className="km-sub">当前点单</div>
-      {!order.length && <Empty>还没有勾选菜品</Empty>}
+      <div className="km-sub">{t('panel.currentOrder')}</div>
+      {!order.length && <Empty>{t('panel.noDishes')}</Empty>}
       <ul className="km-list km-order">
         {order.map((o, i) => {
           const on = checked[i] ?? o.done;
@@ -790,7 +851,7 @@ class PanelBoundary extends Component<{ children?: ReactNode }, { failed: boolea
     return { failed: true };
   }
   override render(): ReactNode {
-    return this.state.failed ? <Empty>面板数据暂不可用</Empty> : this.props.children;
+    return this.state.failed ? <Empty>{tGlobal('panel.boundaryFallback')}</Empty> : this.props.children;
   }
 }
 

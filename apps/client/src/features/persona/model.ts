@@ -9,6 +9,7 @@ import {
   type ModeId,
   type PersonaSummary,
 } from '@kesoku/protocol';
+import { t } from '@kesoku/ui';
 
 /** Built-in roles render first, in this order. */
 export const BUILTIN_ORDER = ['asuka', 'default'] as const;
@@ -22,10 +23,18 @@ export const AVATAR_SOURCE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'im
 export const SOURCE_REUSE_MS = 9 * 60 * 1000;
 
 export const STYLE_PRESET_LABELS: Readonly<Record<AvatarStylePreset, string>> = Object.freeze({
-  anime_clean: '✦ 日系清透立绘',
-  cyber_flat: '赛博霓虹平涂',
-  watercolor: '温润水彩手绘',
-  pixel: '复古像素',
+  get anime_clean() {
+    return t('persona.style.anime_clean');
+  },
+  get cyber_flat() {
+    return t('persona.style.cyber_flat');
+  },
+  get watercolor() {
+    return t('persona.style.watercolor');
+  },
+  get pixel() {
+    return t('persona.style.pixel');
+  },
 });
 export const STYLE_PRESETS: readonly AvatarStylePreset[] = AVATAR_STYLE_PRESETS;
 
@@ -52,50 +61,47 @@ export function voicePresetOptions(
   const has = (id: string) => opts.some((o) => o.id === id);
   const extra: Array<{ id: string; label: string }> = [];
   const preset = role.voice_preset?.trim();
-  if (preset && !has(preset)) extra.push({ id: preset, label: `${name} 原声 (${preset})` });
+  if (preset && !has(preset)) extra.push({ id: preset, label: t('persona.voiceOriginal', { name, id: preset }) });
   const rid = role.role_id?.trim();
-  if (rid && rid !== 'default' && !has(rid) && preset !== rid) extra.push({ id: rid, label: `${name} 专属语音 (${rid})` });
+  if (rid && rid !== 'default' && !has(rid) && preset !== rid) extra.push({ id: rid, label: t('persona.voiceDedicated', { name, id: rid }) });
   return [...extra, ...opts];
 }
 
 export const INTRO_TEMPLATES: ReadonlyArray<{ id: string; label: string; text: string }> = Object.freeze([
-  {
+  Object.freeze({
     id: 'guide',
-    label: '伴游',
-    text: [
-      '# 角色设定',
-      '- 身份：随身伴游，熟悉当地交通、美食与礼仪。',
-      '- 性格：开朗细心，会主动提醒忌口与行程风险。',
-      '- 说话风格：口语化、简短；关键日语句子给出原文 + 振假名 + 译文。',
-      '- 禁区：不编造营业时间与价格，不确定时直说。',
-      '',
-    ].join('\n'),
-  },
-  {
+    get label() {
+      return t('persona.tpl.guide');
+    },
+    get text() {
+      return t('persona.tpl.guideText');
+    },
+  }),
+  Object.freeze({
     id: 'tutor',
-    label: '私教',
-    text: [
-      '# 角色设定',
-      '- 身份：日语私教，按教材进度循序渐进。',
-      '- 性格：耐心但严格，纠错直截了当。',
-      '- 说话风格：先给例句，再拆解语法；每轮最多一个新知识点。',
-      '- 禁区：不一次性灌输大量生词。',
-      '',
-    ].join('\n'),
-  },
-  {
+    get label() {
+      return t('persona.tpl.tutor');
+    },
+    get text() {
+      return t('persona.tpl.tutorText');
+    },
+  }),
+  Object.freeze({
     id: 'engineer',
-    label: '工程助手',
-    text: [
-      '# 角色设定',
-      '- 身份：工程助手，擅长阅读代码、定位问题与给出最小改动方案。',
-      '- 性格：冷静、务实。',
-      '- 说话风格：先结论后细节；代码块注明语言与文件路径。',
-      '- 禁区：不臆测未提供的代码，不执行破坏性操作。',
-      '',
-    ].join('\n'),
-  },
-  { id: 'blank', label: '空白', text: '' },
+    get label() {
+      return t('persona.tpl.engineer');
+    },
+    get text() {
+      return t('persona.tpl.engineerText');
+    },
+  }),
+  Object.freeze({
+    id: 'blank',
+    get label() {
+      return t('persona.tpl.blank');
+    },
+    text: '',
+  }),
 ]);
 
 export function utf8Bytes(s: string): number {
@@ -124,14 +130,14 @@ export function emptyDraft(): PersonaDraft {
 export function validatePersona(d: PersonaDraft, opts: { isNew: boolean; existingIds: readonly string[] }): DraftErrors {
   const e: DraftErrors = {};
   const name = d.display_name.trim();
-  if (!name) e.display_name = '请填写角色名称';
-  else if (d.display_name.length > LIMITS.DISPLAY_NAME_MAX) e.display_name = `最多 ${LIMITS.DISPLAY_NAME_MAX} 个字符`;
-  if (d.tagline.length > LIMITS.TAGLINE_MAX) e.tagline = `最多 ${LIMITS.TAGLINE_MAX} 个字符`;
-  if (utf8Bytes(d.intro_md) > LIMITS.PERSONA_FILE_MAX_BYTES) e.intro_md = '超过 64 KiB 上限';
-  if (utf8Bytes(d.preferences_md) > LIMITS.PERSONA_FILE_MAX_BYTES) e.preferences_md = '超过 64 KiB 上限';
+  if (!name) e.display_name = t('persona.errNameRequired');
+  else if (d.display_name.length > LIMITS.DISPLAY_NAME_MAX) e.display_name = t('persona.maxChars', { max: LIMITS.DISPLAY_NAME_MAX });
+  if (d.tagline.length > LIMITS.TAGLINE_MAX) e.tagline = t('persona.maxChars', { max: LIMITS.TAGLINE_MAX });
+  if (utf8Bytes(d.intro_md) > LIMITS.PERSONA_FILE_MAX_BYTES) e.intro_md = t('persona.exceeds64KiB');
+  if (utf8Bytes(d.preferences_md) > LIMITS.PERSONA_FILE_MAX_BYTES) e.preferences_md = t('persona.exceeds64KiB');
   if (opts.isNew && d.role_id) {
-    if (!ROLE_ID_RE.test(d.role_id)) e.role_id = '仅限小写字母 / 数字 / 下划线，2–32 位';
-    else if (opts.existingIds.includes(d.role_id)) e.role_id = '该 role_id 已存在';
+    if (!ROLE_ID_RE.test(d.role_id)) e.role_id = t('persona.errRoleIdFormat');
+    else if (opts.existingIds.includes(d.role_id)) e.role_id = t('persona.errRoleIdExists');
   }
   return e;
 }
@@ -180,7 +186,7 @@ export function fallbackRoleId(list: readonly PersonaSummary[]): string {
 
 /** Readable name for a role id when its persona summary is not loaded (generic, no persona-specific names). */
 export function roleFallbackName(roleId: string | null | undefined): string {
-  return roleId || 'AI 助手';
+  return roleId || t('common.aiAssistant');
 }
 
 /** Modes whose memory policy deviates from the defaults. */
@@ -228,7 +234,7 @@ export function errorCode(e: unknown): string {
 }
 
 export function checkAvatarFile(file: Blob): string | null {
-  if (file.type && !(AVATAR_SOURCE_MIMES as readonly string[]).includes(file.type)) return '仅支持 JPG / PNG / WebP / HEIC 图片';
-  if (file.size > LIMITS.AVATAR_SOURCE_MAX_BYTES) return '图片超过 12 MiB';
+  if (file.type && !(AVATAR_SOURCE_MIMES as readonly string[]).includes(file.type)) return t('persona.errFileType');
+  if (file.size > LIMITS.AVATAR_SOURCE_MAX_BYTES) return t('persona.errFileSize');
   return null;
 }

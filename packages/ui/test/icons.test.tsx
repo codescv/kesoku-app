@@ -15,6 +15,11 @@ import {
   useIconStyle,
 } from '../src/icons';
 import { MODES, POLICY_BADGE } from '../src/modes';
+import { setUiLanguage } from '../src';
+import { beforeAll as __beforeAll, afterAll as __afterAll } from 'vitest';
+
+__beforeAll(() => setUiLanguage('zh-CN'));
+__afterAll(() => setUiLanguage('system'));
 
 const EMOJI = /\p{Extended_Pictographic}/u;
 

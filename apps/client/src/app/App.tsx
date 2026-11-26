@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getUiLocale, refreshSystemLanguage, setUiLanguage, t } from '@kesoku/ui';
 import { kesoku } from '../lib/client';
 import { actions, DEFAULT_SETTINGS, useStore, type Settings } from '../lib/store';
 import { getAuthInfo, hasCredentials } from '../lib/auth';
@@ -57,6 +58,28 @@ function useTheme() {
   }, [theme]);
 }
 
+/** Mirror the resolved UI locale to native (iOS dialogs / QR scanner read Preferences `kesoku_ui_lang`). */
+function syncNativeUiLanguage(): void {
+  if (!isNative()) return;
+  const prefs = (window as unknown as { Capacitor?: { Plugins?: { Preferences?: { set?: (o: { key: string; value: string }) => Promise<unknown> } } } }).Capacitor?.Plugins?.Preferences;
+  void prefs?.set?.({ key: 'kesoku_ui_lang', value: getUiLocale() })?.catch?.(() => {});
+}
+
+function useLanguage() {
+  const language = useStore((s) => s.settings.language);
+  useEffect(() => {
+    setUiLanguage(language);
+    syncNativeUiLanguage();
+    if (language !== 'system' || typeof window === 'undefined') return;
+    const onChange = () => {
+      refreshSystemLanguage();
+      syncNativeUiLanguage();
+    };
+    window.addEventListener('languagechange', onChange);
+    return () => window.removeEventListener('languagechange', onChange);
+  }, [language]);
+}
+
 async function restoreLocal() {
   const settings = await kvGet<Settings>('settings', DEFAULT_SETTINGS);
   actions.setSettings({ ...DEFAULT_SETTINGS, ...settings });
@@ -74,6 +97,7 @@ async function restoreLocal() {
 
 export function App() {
   useTheme();
+  useLanguage();
   const auth = useStore((s) => s.auth);
   const [pairCode, setPairCode] = useState<string | undefined>();
   const [pairRelay, setPairRelay] = useState<string | undefined>();
@@ -131,7 +155,7 @@ export function App() {
           if (useStore.getState().auth !== 'ok') useStore.setState({ auth: 'needed' });
         } else if (link.kind === 'mode') {
           useStore.setState({ currentSessionId: null });
-          if (useStore.getState().auth === 'ok') void kesoku.createSession({ mode: link.mode_id as never }).catch(() => actions.toast('无法创建会话', 'error'));
+          if (useStore.getState().auth === 'ok') void kesoku.createSession({ mode: link.mode_id as never }).catch(() => actions.toast(t('app.createSessionFailed'), 'error'));
         }
       }),
     [],

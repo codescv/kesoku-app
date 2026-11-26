@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { MEMORY_POLICIES, type MemoryPolicy, type ModeId } from '@kesoku/protocol';
-import { POLICY_BADGE, Segmented, UiIcon } from '@kesoku/ui';
+import { getPolicyBadge, Segmented, UiIcon, useLocale, useT } from '@kesoku/ui';
 
 export interface PolicyBadgeProps {
   /** Used only for the segmented control's accent colour (`--m-<mode_id>`). */
@@ -12,21 +12,22 @@ export interface PolicyBadgeProps {
   className?: string;
 }
 
-const OPTIONS = MEMORY_POLICIES.map((value) => ({ value, label: POLICY_BADGE[value].label }));
-
 function isPolicy(v: unknown): v is MemoryPolicy {
   return typeof v === 'string' && (MEMORY_POLICIES as readonly string[]).includes(v);
 }
 
 /**
- * Memory-policy badge `[icon] 记忆：确认 ▾`. Tapping it reveals an inline `[自动 | 确认 | 忽略]`
+ * Memory-policy badge `[icon] Memory: Confirm ▾`. Tapping it reveals an inline `[Auto | Confirm | Ignore]`
  * segmented control; picking a segment calls `onPolicyChange` (zero LLM turn) and collapses it.
  */
 export function PolicyBadge({ modeId, policy, onPolicyChange, glass, className }: PolicyBadgeProps) {
+  const locale = useLocale();
+  const t = useT();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement | null>(null);
   const current: MemoryPolicy = isPolicy(policy) ? policy : 'confirm_only';
-  const meta = POLICY_BADGE[current];
+  const meta = getPolicyBadge(current, locale);
+  const options = MEMORY_POLICIES.map((value) => ({ value, label: getPolicyBadge(value, locale).label }));
 
   useEffect(() => {
     if (!open) return;
@@ -58,19 +59,19 @@ export function PolicyBadge({ modeId, policy, onPolicyChange, glass, className }
         onClick={() => setOpen((o) => !o)}
       >
         <UiIcon name={meta.iconName} size={15} className="k-hud-policy-icon" />
-        <span className="k-hud-policy-prefix">{`记忆：${meta.label}`}</span>
+        <span className="k-hud-policy-prefix">{t('policy.badgePrefix', { label: meta.label })}</span>
         <span className="k-hud-policy-short" aria-hidden="true">
           {meta.label}
         </span>
         <UiIcon name="chevron-down" size={13} className="k-caret" />
       </button>
       {open && (
-        <span className="k-hud-policy-pop" role="group" aria-label="当前模式记忆">
+        <span className="k-hud-policy-pop" role="group" aria-label={t('policy.modeMemory')}>
           <Segmented
             size="sm"
-            ariaLabel="当前模式记忆"
+            ariaLabel={t('policy.modeMemory')}
             color={color}
-            options={OPTIONS}
+            options={options}
             value={current}
             onChange={(v) => {
               setOpen(false);

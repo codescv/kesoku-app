@@ -7,7 +7,7 @@ import Foundation
 
 @available(iOS 16.0, *)
 struct OpenTranslatorIntent: AppIntent {
-    static let title: LocalizedStringResource = "打开通用翻译"
+    static let title: LocalizedStringResource = LocalizedStringResource("intent.open_translator.title", defaultValue: "Open Translator")
     static let openAppWhenRun: Bool = true
 
     @MainActor
@@ -19,7 +19,7 @@ struct OpenTranslatorIntent: AppIntent {
 
 @available(iOS 16.0, *)
 struct OpenTravelIntent: AppIntent {
-    static let title: LocalizedStringResource = "打开旅游助手"
+    static let title: LocalizedStringResource = LocalizedStringResource("intent.open_travel.title", defaultValue: "Open Travel Assistant")
     static let openAppWhenRun: Bool = true
 
     @MainActor
@@ -31,7 +31,7 @@ struct OpenTravelIntent: AppIntent {
 
 @available(iOS 16.0, *)
 struct OpenPokemonIntent: AppIntent {
-    static let title: LocalizedStringResource = "打开宝可梦助手"
+    static let title: LocalizedStringResource = LocalizedStringResource("intent.open_pokemon.title", defaultValue: "Open Pokémon Assistant")
     static let openAppWhenRun: Bool = true
 
     @MainActor
@@ -47,23 +47,29 @@ struct KesokuAppShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: OpenTranslatorIntent(),
             phrases: [
-                "用\(.applicationName)打开通用翻译",
-                "\(.applicationName)通用翻译"
-            ]
+                "Open Translator in \(.applicationName)",
+                "\(.applicationName) Translator"
+            ],
+            shortTitle: LocalizedStringResource("intent.open_translator.short_title", defaultValue: "Translator"),
+            systemImageName: "character.bubble"
         )
         AppShortcut(
             intent: OpenTravelIntent(),
             phrases: [
-                "用\(.applicationName)打开旅游助手",
-                "\(.applicationName)旅游助手"
-            ]
+                "Open Travel Assistant in \(.applicationName)",
+                "\(.applicationName) Travel Assistant"
+            ],
+            shortTitle: LocalizedStringResource("intent.open_travel.short_title", defaultValue: "Travel Assistant"),
+            systemImageName: "airplane.departure"
         )
         AppShortcut(
             intent: OpenPokemonIntent(),
             phrases: [
-                "用\(.applicationName)打开宝可梦助手",
-                "\(.applicationName)宝可梦助手"
-            ]
+                "Open Pokémon Assistant in \(.applicationName)",
+                "\(.applicationName) Pokémon Assistant"
+            ],
+            shortTitle: LocalizedStringResource("intent.open_pokemon.short_title", defaultValue: "Pokémon Assistant"),
+            systemImageName: "sparkles"
         )
     }
 }

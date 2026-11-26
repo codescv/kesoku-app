@@ -1,3 +1,4 @@
+import { useT, type MessageKey } from '@kesoku/ui';
 import type { CardProps } from '../types';
 import { CardShell } from '../parts';
 import { GlossPill, TypeBadge, VersionBadge, labelled } from '../pokemon';
@@ -13,17 +14,23 @@ function textOf(d: Dict, ...keys: string[]): string {
   return '';
 }
 
-const CATEGORY: Record<string, string> = { physical: '物理', special: '特殊', status: '变化' };
+const CATEGORY_KEYS: Record<string, MessageKey> = {
+  physical: 'card.moveCat.physical',
+  special: 'card.moveCat.special',
+  status: 'card.moveCat.status',
+};
 
-/** `pkmn_move_wiki` card: SV shows `PP · 先制`; Z-A shows `冷却 CD · 射程 · 招式＋` — never mixed. */
+/** `pkmn_move_wiki` card: SV shows `PP · Priority`; Z-A shows `CD · Range · Move+` — never mixed. */
 export function MoveWiki({ data, ctx }: CardProps<Dict>) {
+  const t = useT();
   const d = obj(data);
   const v = versionOf(d);
   const name = obj(d.name);
   const zh = pick(name, 'zh') || pick(d, 'name_zh', 'name');
   const alt = [pick(name, 'ja'), pick(name, 'en')].filter(Boolean).join(' · ');
   const type = pick(d, 'type');
-  const cat = pick(d, 'category_zh') || CATEGORY[pick(d, 'category').toLowerCase()] || pick(d, 'category');
+  const catRaw = pick(d, 'category').toLowerCase();
+  const cat = pick(d, 'category_zh') || (CATEGORY_KEYS[catRaw] ? t(CATEGORY_KEYS[catRaw]) : pick(d, 'category'));
   const power = num(d.power);
   const acc = num(d.accuracy);
   const glossary = glossaryMap(d.glossary);
@@ -36,17 +43,16 @@ export function MoveWiki({ data, ctx }: CardProps<Dict>) {
   const range = v === 'za' ? pick(d, 'range') : '';
   const plus = v === 'za' ? pick(d, 'plus_effect') : '';
 
-  // 招式说明 (flavor / description) and 招式效果 (mechanical effect) are distinct fields; show both when present.
   const description = textOf(d, 'description', 'desc', 'flavor_text', 'description_zh');
   const effect = textOf(d, 'effect_short', 'effect', 'effect_zh');
   const showEffect = !!effect && effect !== description;
 
-  const spec = [type, cat, power !== null ? `威力 ${power}` : '', acc !== null ? `命中 ${acc}` : ''].filter(Boolean).join(' · ');
+  const spec = [type, cat, power !== null ? t('card.movePower', { n: power }) : '', acc !== null ? t('card.moveAcc', { n: acc }) : ''].filter(Boolean).join(' · ');
 
   return (
     <CardShell kind="pkmn_move_wiki" className={`kc-pkmn kc-pkmn-${v}`}>
       <div className="kc-mv-head">
-        <b className="kc-mv-name">⚡ {zh || '招式'}</b>
+        <b className="kc-mv-name">⚡ {zh || t('card.moveFallback')}</b>
         {type && <TypeBadge t={type} />}
         {spec && <span className="kc-mv-spec">{spec}</span>}
         <VersionBadge v={v} />
@@ -54,21 +60,21 @@ export function MoveWiki({ data, ctx }: CardProps<Dict>) {
       {alt && <div className="kc-dex-alt">{alt}</div>}
       <div className="kc-chips">
         {pp !== null && <span className="kc-badge kc-badge-primary">PP {pp}</span>}
-        {prio !== null && prio !== 0 && <span className="kc-badge kc-badge-primary">先制 {prio > 0 ? `+${prio}` : prio}</span>}
-        {cd !== null && <span className="kc-badge kc-badge-danger">⏱ 冷却 CD {cd}s</span>}
+        {prio !== null && prio !== 0 && <span className="kc-badge kc-badge-primary">{t('card.movePriority', { n: prio > 0 ? `+${prio}` : prio })}</span>}
+        {cd !== null && <span className="kc-badge kc-badge-danger">{t('card.moveCooldown', { s: cd })}</span>}
         {range && <span className="kc-badge kc-badge-accent">🎯 {range}</span>}
-        {plus && <span className="kc-badge kc-badge-warn">✦ 招式＋ {plus}</span>}
+        {plus && <span className="kc-badge kc-badge-warn">{t('card.movePlus', { text: plus })}</span>}
       </div>
       {description && <p className="kc-mv-desc">{description}</p>}
       {showEffect && (
         <div className="kc-mv-effect">
-          <b>招式效果：</b>
+          <b>{t('card.moveEffect')}</b>
           {effect}
         </div>
       )}
       {(pills.length > 0 || extraPills.length > 0) && (
         <div className="kc-chips">
-          <span className="kc-chip-k">内联百科</span>
+          <span className="kc-chip-k">{t('card.inlineWiki')}</span>
           {[...pills, ...extraPills].map((p) => (
             <GlossPill key={p.label} id={p.id} label={p.label} glossary={glossary} ctx={ctx} />
           ))}

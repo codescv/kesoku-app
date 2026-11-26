@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { EngineToClientPayload } from '@kesoku/protocol';
-import { UiIcon, fileIconName, type UiIconName } from '@kesoku/ui';
+import { UiIcon, fileIconName, formatLocaleDate, t as tGlobal, useLocale, useT, type UiIconName, type ResolvedLocale, type MessageKey } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { Markdown } from '../segments/Markdown';
@@ -23,14 +23,14 @@ function fmtSize(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(2)} MiB`;
 }
 
-function fmtRelTime(ts: number): string {
+function fmtRelTime(ts: number, locale: ResolvedLocale, t: (k: MessageKey, p?: Record<string, string | number>) => string): string {
   if (!ts) return '';
   const d = Date.now() / 1000 - ts;
-  if (d < 60) return '刚刚';
-  if (d < 3600) return `${Math.floor(d / 60)} 分钟前`;
-  if (d < 86400) return `${Math.floor(d / 3600)} 小时前`;
-  if (d < 86400 * 7) return `${Math.floor(d / 86400)} 天前`;
-  return new Date(ts * 1000).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+  if (d < 60) return t('common.justNow');
+  if (d < 3600) return t('common.minutesAgo', { n: Math.floor(d / 60) });
+  if (d < 86400) return t('common.hoursAgo', { n: Math.floor(d / 3600) });
+  if (d < 86400 * 7) return t('common.daysAgo', { n: Math.floor(d / 86400) });
+  return formatLocaleDate(ts * 1000, { month: 'numeric', day: 'numeric' }, locale);
 }
 
 function joinPath(dir: string, name: string): string {
@@ -156,16 +156,18 @@ function ActBtn({
 }
 
 function ConfirmDelete({ name, onConfirm, onCancel, busy }: { name: string; onConfirm: () => void; onCancel: () => void; busy: boolean }): ReactNode {
+  const t = useT();
   return (
-    <span className="fb-confirm" role="group" aria-label={`确认删除 ${name}`}>
-      <span className="fb-confirm-text">确认删除?</span>
-      <ActBtn icon="trash" label="删除" tone="danger" onClick={onConfirm} disabled={busy} ariaLabel="确认删除" />
-      <ActBtn icon="close" label="取消" onClick={onCancel} disabled={busy} ariaLabel="取消删除" />
+    <span className="fb-confirm" role="group" aria-label={t('files.confirmDeleteAria', { name })}>
+      <span className="fb-confirm-text">{t('files.confirmDeleteQuestion')}</span>
+      <ActBtn icon="trash" label={t('common.delete')} tone="danger" onClick={onConfirm} disabled={busy} ariaLabel={t('files.confirmDeleteBtnAria')} />
+      <ActBtn icon="close" label={t('common.cancel')} onClick={onCancel} disabled={busy} ariaLabel={t('files.cancelDeleteBtnAria')} />
     </span>
   );
 }
 
 function MediaPreview({ file }: { file: ReadResult }) {
+  const t = useT();
   const ref = file.ref || file.rel_path;
   const entry = useStore((s) => s.media['ref:' + ref]);
   const [loading, setLoading] = useState(false);
@@ -194,12 +196,12 @@ function MediaPreview({ file }: { file: ReadResult }) {
   }, [ref, entry?.url, entry?.expires_at]);
 
   const url = entry?.url;
-  if (loading && !url) return <div className="k-empty">正在加载媒体预览…</div>;
-  if (failed || !url) return <div className="k-empty">媒体预览暂不可用</div>;
+  if (loading && !url) return <div className="k-empty">{t('files.loadingMedia')}</div>;
+  if (failed || !url) return <div className="k-empty">{t('files.mediaUnavailable')}</div>;
   if (file.mime.startsWith('image/')) {
     return (
       <div className="k-fb-media">
-        <button type="button" className="k-fb-img-btn" onClick={() => overlays.image(url)} aria-label="查看大图">
+        <button type="button" className="k-fb-img-btn" onClick={() => overlays.image(url)} aria-label={t('common.viewLargeImage')}>
           <img src={url} alt={file.name} />
         </button>
       </div>
@@ -212,10 +214,12 @@ function MediaPreview({ file }: { file: ReadResult }) {
       </div>
     );
   }
-  return <div className="k-empty">不支持预览 ({file.mime})</div>;
+  return <div className="k-empty">{t('files.previewUnsupported', { mime: file.mime })}</div>;
 }
 
 export function FileBrowser({ onClose }: { onClose: () => void }) {
+  const locale = useLocale();
+  const t = useT();
   const [relPath, setRelPath] = useState('');
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [loadingDir, setLoadingDir] = useState(false);
@@ -243,7 +247,7 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
       setDraft(null);
       setConfirmDel(null);
     } catch {
-      actions.toast('读取目录失败', 'error');
+      actions.toast(tGlobal('files.readDirFailed'), 'error');
     } finally {
       setLoadingDir(false);
     }
@@ -264,12 +268,12 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
         if (canEdit(res)) setDraft(res.content ?? '');
         else {
           setDraft(null);
-          actions.toast('该文件不可编辑', 'error');
+          actions.toast(tGlobal('files.notEditable'), 'error');
         }
       } else setDraft(null);
       return res;
     } catch {
-      actions.toast('读取文件失败', 'error');
+      actions.toast(tGlobal('files.readFileFailed'), 'error');
       return null;
     } finally {
       setLoadingFile(false);
@@ -307,21 +311,21 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
         for (const f of files) {
           const name = validEntryName(f.name);
           if (!name) {
-            actions.toast(`无效文件名: ${f.name}`, 'error');
+            actions.toast(tGlobal('files.invalidFileName', { name: f.name }), 'error');
             continue;
           }
           if (f.size > MAX_UPLOAD_BYTES) {
-            actions.toast(`${name} 过大 (上限 ${fmtSize(MAX_UPLOAD_BYTES)})`, 'error');
+            actions.toast(tGlobal('files.fileTooLarge', { name, max: fmtSize(MAX_UPLOAD_BYTES) }), 'error');
             continue;
           }
           const exists = entries.some((e) => e.name === name);
-          if (exists && typeof window.confirm === 'function' && !window.confirm(`已存在 ${name}，是否覆盖？`)) continue;
+          if (exists && typeof window.confirm === 'function' && !window.confirm(tGlobal('files.overwriteConfirm', { name }))) continue;
           const path = joinPath(dir, name);
           const chunks = Math.max(1, Math.ceil(f.size / UPLOAD_CHUNK_BYTES));
           let sent = 0;
           try {
             for (let i = 0; i < chunks; i++) {
-              if (chunks > 1) setProgress(`正在上传 ${name} · ${Math.round((i / chunks) * 100)}%`);
+              if (chunks > 1) setProgress(tGlobal('files.uploadingProgress', { name, pct: Math.round((i / chunks) * 100) }));
               const base64 = await readFileBase64(f.slice(i * UPLOAD_CHUNK_BYTES, (i + 1) * UPLOAD_CHUNK_BYTES));
               const payload = i === 0 ? { path, base64, overwrite: exists } : { path, base64, append: true };
               await kesoku.rpc('workspace.write', payload, { timeoutMs: 60_000 });
@@ -329,7 +333,7 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
             }
             ok++;
           } catch (err) {
-            actions.toast(errText(err, `上传 ${name} 失败`), 'error');
+            actions.toast(errText(err, tGlobal('files.uploadFailed', { name })), 'error');
             // Don't leave a truncated new file behind (an overwritten one is already lost either way).
             if (sent > 0 && !exists) void kesoku.rpc('workspace.delete', { path }).catch(() => {});
           }
@@ -338,7 +342,7 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
         setBusy(false);
         setProgress(null);
       }
-      if (ok) actions.toast(ok === 1 ? '已上传 1 个文件' : `已上传 ${ok} 个文件`);
+      if (ok) actions.toast(ok === 1 ? tGlobal('files.uploadedOne') : tGlobal('files.uploadedMany', { count: ok }));
       await loadDir(dir);
     },
     [entries, loadDir],
@@ -348,12 +352,12 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
     if (!creating) return;
     const name = validEntryName(newName);
     if (!name) {
-      actions.toast('名称无效：不能为空，且不能包含 / 或为 ..', 'error');
+      actions.toast(tGlobal('files.invalidEntryName'), 'error');
       return;
     }
     const kind = creating;
     if (entries.some((e) => e.name === name)) {
-      actions.toast(kind === 'dir' ? `已存在同名文件夹: ${name}` : `已存在同名文件: ${name}`, 'error');
+      actions.toast(kind === 'dir' ? tGlobal('files.existsDir', { name }) : tGlobal('files.existsFile', { name }), 'error');
       return;
     }
     const dir = relPathRef.current;
@@ -364,9 +368,9 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
       else await kesoku.rpc('workspace.write', { path, content: '', overwrite: false });
       setCreating(null);
       setNewName('');
-      actions.toast(kind === 'dir' ? `已创建文件夹 ${name}` : `已创建文件 ${name}`);
+      actions.toast(kind === 'dir' ? tGlobal('files.createdDir', { name }) : tGlobal('files.createdFile', { name }));
     } catch (err) {
-      actions.toast(errText(err, kind === 'dir' ? '创建文件夹失败' : '创建文件失败'), 'error');
+      actions.toast(errText(err, kind === 'dir' ? tGlobal('files.createDirFailed') : tGlobal('files.createFileFailed')), 'error');
       return;
     } finally {
       setBusy(false);
@@ -380,9 +384,9 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
     setBusy(true);
     try {
       await kesoku.rpc('workspace.write', { path, content: draft, overwrite: true });
-      actions.toast('已保存');
+      actions.toast(tGlobal('common.saved'));
     } catch (err) {
-      actions.toast(errText(err, '保存失败'), 'error');
+      actions.toast(errText(err, tGlobal('common.saveFailed')), 'error');
       return;
     } finally {
       setBusy(false);
@@ -404,10 +408,10 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
         } else if (res.url) {
           await downloadUrl(res.url, fileName);
         } else {
-          throw new Error('无下载数据');
+          throw new Error(tGlobal('files.noDownloadData'));
         }
       } catch (err) {
-        actions.toast(errText(err, '下载失败'), 'error');
+        actions.toast(errText(err, tGlobal('files.downloadFailed')), 'error');
       }
     },
     [openFile],
@@ -418,10 +422,10 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
       setBusy(true);
       try {
         const res = await kesoku.rpc<EngineToClientPayload<'workspace.delete.result'>>('workspace.delete', { path });
-        if (res && res.deleted === false) actions.toast(`${name} 不存在或已删除`, 'error');
-        else actions.toast(`已删除 ${name}`);
+        if (res && res.deleted === false) actions.toast(tGlobal('files.notFoundOrDeleted', { name }), 'error');
+        else actions.toast(tGlobal('files.deleted', { name }));
       } catch (err) {
-        actions.toast(errText(err, '删除失败'), 'error');
+        actions.toast(errText(err, tGlobal('common.deleteFailed')), 'error');
         return;
       } finally {
         setBusy(false);
@@ -441,14 +445,14 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
 
   const crumbs = useMemo(() => {
     const parts = relPath ? relPath.split('/').filter(Boolean) : [];
-    const list: Array<{ label: string; path: string }> = [{ label: '根目录', path: '' }];
+    const list: Array<{ label: string; path: string }> = [{ label: t('files.root'), path: '' }];
     let acc = '';
     for (const p of parts) {
       acc = acc ? `${acc}/${p}` : p;
       list.push({ label: p, path: acc });
     }
     return list;
-  }, [relPath]);
+  }, [relPath, t]);
 
   const parentPath = useMemo(() => {
     if (!relPath) return null;
@@ -471,7 +475,7 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
         <button
           type="button"
           className="k-icon-btn"
-          aria-label="返回"
+          aria-label={t('common.back')}
           onClick={() => {
             if (openFile) {
               setOpenFile(null);
@@ -484,14 +488,14 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
         </button>
         <h1 className="fb-title">
           <UiIcon name="folder" size={20} />
-          <span>Agent 目录</span>
+          <span>{t('files.title')}</span>
         </h1>
         <span style={{ flex: 1 }} />
-        <ActBtn icon="refresh" label="刷新" onClick={refresh} disabled={busy || loadingDir || loadingFile} />
+        <ActBtn icon="refresh" label={t('common.refresh')} onClick={refresh} disabled={busy || loadingDir || loadingFile} />
       </header>
 
       <div className="k-screen-body">
-        <nav className="k-fb-crumbs" aria-label="目录路径">
+        <nav className="k-fb-crumbs" aria-label={t('files.crumbsAria')}>
           {crumbs.map((c, i) => (
             <span key={c.path || 'root'} className="k-fb-crumb-item">
               {i > 0 && (
@@ -525,8 +529,8 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
               <div className="k-fb-viewer-meta">
                 <b>{openFile.name}</b>
                 <small>
-                  {openFile.rel_path} · {fmtSize(openFile.size)} · {fmtRelTime(openFile.updated_at)}
-                  {openFile.truncated ? ' · 已截断前 256 KiB' : ''}
+                  {openFile.rel_path} · {fmtSize(openFile.size)} · {fmtRelTime(openFile.updated_at, locale, t)}
+                  {openFile.truncated ? t('files.truncated') : ''}
                 </small>
               </div>
               <div className="k-fb-viewer-actions fb-actions">
@@ -534,22 +538,22 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
                   <ConfirmDelete name={openFile.name} busy={busy} onConfirm={() => void doDelete(openFile.rel_path, openFile.name)} onCancel={() => setConfirmDel(null)} />
                 ) : editing ? (
                   <>
-                    <ActBtn icon="save" label="保存" tone="primary" onClick={() => void saveEdit()} disabled={busy} />
-                    <ActBtn icon="close" label="取消" onClick={() => setDraft(null)} disabled={busy} />
+                    <ActBtn icon="save" label={t('common.save')} tone="primary" onClick={() => void saveEdit()} disabled={busy} />
+                    <ActBtn icon="close" label={t('common.cancel')} onClick={() => setDraft(null)} disabled={busy} />
                   </>
                 ) : (
                   <>
                     {isMarkdown && (
                       <ActBtn
                         icon={mdMode === 'preview' ? 'file-code' : 'file-text'}
-                        label={mdMode === 'preview' ? '源码' : '预览'}
+                        label={mdMode === 'preview' ? t('common.source') : t('common.preview')}
                         onClick={() => setMdMode((m) => (m === 'preview' ? 'raw' : 'preview'))}
                       />
                     )}
-                    {canEdit(openFile) && <ActBtn icon="edit" label="编辑" onClick={() => setDraft(openFile.content ?? '')} />}
-                    <ActBtn icon="download" label="下载" onClick={() => void download(openFile.rel_path, openFile.name)} />
-                    <ActBtn icon="trash" label="删除" tone="danger" onClick={() => setConfirmDel(openFile.rel_path)} />
-                    <ActBtn icon="arrow-left" label="返回列表" onClick={() => setOpenFile(null)} />
+                    {canEdit(openFile) && <ActBtn icon="edit" label={t('common.edit')} onClick={() => setDraft(openFile.content ?? '')} />}
+                    <ActBtn icon="download" label={t('common.download')} onClick={() => void download(openFile.rel_path, openFile.name)} />
+                    <ActBtn icon="trash" label={t('common.delete')} tone="danger" onClick={() => setConfirmDel(openFile.rel_path)} />
+                    <ActBtn icon="arrow-left" label={t('files.backToList')} onClick={() => setOpenFile(null)} />
                   </>
                 )}
               </div>
@@ -559,7 +563,7 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
                 className="fb-editor"
                 value={draft ?? ''}
                 onChange={(e) => setDraft(e.target.value)}
-                aria-label={`编辑 ${openFile.name}`}
+                aria-label={t('files.editAria', { name: openFile.name })}
                 spellCheck={false}
                 autoCapitalize="off"
                 autoCorrect="off"
@@ -576,28 +580,28 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
             ) : openFile.kind === 'media' ? (
               <MediaPreview file={openFile} />
             ) : (
-              <div className="k-empty">二进制文件 ({openFile.mime}) · {fmtSize(openFile.size)}</div>
+              <div className="k-empty">{t('files.binaryFile', { mime: openFile.mime, size: fmtSize(openFile.size) })}</div>
             )}
           </section>
         ) : (
           <section className="k-set-card k-fb-list-card">
             <div className="k-fb-toolbar fb-toolbar">
               {parentPath !== null && (
-                <ActBtn icon="arrow-left" label="上一级" onClick={() => void loadDir(parentPath)} />
+                <ActBtn icon="arrow-left" label={t('files.upDir')} onClick={() => void loadDir(parentPath)} />
               )}
               <input
                 type="search"
                 className="k-fb-search"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
-                placeholder="筛选当前目录文件名…"
-                aria-label="筛选文件名"
+                placeholder={t('files.filterPlaceholder')}
+                aria-label={t('files.filterAria')}
               />
               <div className="fb-actions fb-dir-actions">
-                <ActBtn icon="upload" label="上传" onClick={() => fileInput.current?.click()} disabled={busy} />
+                <ActBtn icon="upload" label={t('common.upload')} onClick={() => fileInput.current?.click()} disabled={busy} />
                 <ActBtn
                   icon="file-plus"
-                  label="新建文件"
+                  label={t('files.newFile')}
                   onClick={() => {
                     setCreating('file');
                     setNewName('');
@@ -606,7 +610,7 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
                 />
                 <ActBtn
                   icon="folder-plus"
-                  label="新建文件夹"
+                  label={t('files.newDir')}
                   onClick={() => {
                     setCreating('dir');
                     setNewName('');
@@ -644,8 +648,8 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
                   className="fb-create-input"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder={creating === 'dir' ? '新文件夹名称' : '新文件名称，如 notes.md'}
-                  aria-label={creating === 'dir' ? '新文件夹名称' : '新文件名称'}
+                  placeholder={creating === 'dir' ? t('files.newDirPlaceholder') : t('files.newFilePlaceholder')}
+                  aria-label={creating === 'dir' ? t('files.newDirPlaceholder') : t('files.newFilePlaceholder')}
                   autoFocus
                   autoCapitalize="off"
                   autoCorrect="off"
@@ -654,18 +658,18 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
                     if (e.key === 'Escape') setCreating(null);
                   }}
                 />
-                <button type="submit" className="fb-act is-primary" disabled={busy || !validEntryName(newName)} aria-label="创建" title="创建">
+                <button type="submit" className="fb-act is-primary" disabled={busy || !validEntryName(newName)} aria-label={t('common.create')} title={t('common.create')}>
                   <UiIcon name="check" size={16} />
-                  <span className="fb-act-label">创建</span>
+                  <span className="fb-act-label">{t('common.create')}</span>
                 </button>
-                <ActBtn icon="close" label="取消" onClick={() => setCreating(null)} disabled={busy} />
+                <ActBtn icon="close" label={t('common.cancel')} onClick={() => setCreating(null)} disabled={busy} />
               </form>
             )}
 
             {loadingDir || loadingFile ? (
-              <div className="k-empty">载入中…</div>
+              <div className="k-empty">{t('common.loading')}</div>
             ) : filtered.length === 0 ? (
-              <div className="k-empty">{filter ? '无匹配文件' : '此目录为空'}</div>
+              <div className="k-empty">{filter ? t('files.noMatchingFiles') : t('files.emptyDir')}</div>
             ) : (
               <div className="k-fb-rows" role="list">
                 {filtered.map((e) => (
@@ -677,7 +681,7 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
                       <span className="k-fb-name">{e.name}</span>
                       <span className="k-fb-meta">
                         {e.kind === 'file' && <span>{fmtSize(e.size)}</span>}
-                        <span className="fb-time">{fmtRelTime(e.updated_at)}</span>
+                        <span className="fb-time">{fmtRelTime(e.updated_at, locale, t)}</span>
                         {e.kind === 'dir' && <UiIcon name="chevron-right" size={16} />}
                       </span>
                     </button>
@@ -686,9 +690,9 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
                         <ConfirmDelete name={e.name} busy={busy} onConfirm={() => void doDelete(e.rel_path, e.name)} onCancel={() => setConfirmDel(null)} />
                       ) : (
                         <>
-                          {looksEditable(e) && <ActBtn icon="edit" label="编辑" iconOnly ariaLabel={`编辑 ${e.name}`} onClick={() => void openEntry(e, true)} />}
-                          {e.kind === 'file' && <ActBtn icon="download" label="下载" iconOnly ariaLabel={`下载 ${e.name}`} onClick={() => void download(e.rel_path, e.name)} />}
-                          <ActBtn icon="trash" label="删除" iconOnly tone="danger" ariaLabel={`删除 ${e.name}`} onClick={() => setConfirmDel(e.rel_path)} />
+                          {looksEditable(e) && <ActBtn icon="edit" label={t('common.edit')} iconOnly ariaLabel={t('files.editAria', { name: e.name })} onClick={() => void openEntry(e, true)} />}
+                          {e.kind === 'file' && <ActBtn icon="download" label={t('common.download')} iconOnly ariaLabel={t('files.downloadAria', { name: e.name })} onClick={() => void download(e.rel_path, e.name)} />}
+                          <ActBtn icon="trash" label={t('common.delete')} iconOnly tone="danger" ariaLabel={t('files.deleteAria', { name: e.name })} onClick={() => setConfirmDel(e.rel_path)} />
                         </>
                       )}
                     </span>

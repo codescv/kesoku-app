@@ -1,0 +1,13 @@
+/* Kesoku native UI strings (Japanese) */
+"intent.open_translator.title" = "翻訳を開く";
+"intent.open_translator.short_title" = "翻訳";
+"intent.open_travel.title" = "旅行アシスタントを開く";
+"intent.open_travel.short_title" = "旅行アシスタント";
+"intent.open_pokemon.title" = "ポケモンアシスタントを開く";
+"intent.open_pokemon.short_title" = "ポケモンアシスタント";
+"qr.hint" = "ターミナルの kesoku app pair QRコードに向けてください";
+"qr.cancel" = "キャンセル";
+"qr.pick_from_library" = "写真からQRコードを読み取る";
+"qr.not_found" = "選択した画像からQRコードを検出できませんでした";
+"dialog.cancel" = "キャンセル";
+"dialog.ok" = "OK";

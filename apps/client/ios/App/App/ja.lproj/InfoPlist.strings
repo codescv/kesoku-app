@@ -1,0 +1,5 @@
+/* Localized Info.plist strings (Japanese) */
+"NSCameraUsageDescription" = "Kesoku はメニュー、案内表示、ポケモン、QRコード、アバターを撮影して認識・翻訳するためにカメラを使用します。";
+"NSMicrophoneUsageDescription" = "Kesoku はリアルタイム会話や音声翻訳のためにマイクで音声を録音します。";
+"NSPhotoLibraryUsageDescription" = "Kesoku は AI パートナーに送信する画像やカスタムアバターを選択するために写真ライブラリにアクセスします。";
+"NSPhotoLibraryAddUsageDescription" = "Kesoku は撮影または生成した画像を写真ライブラリに保存します。";

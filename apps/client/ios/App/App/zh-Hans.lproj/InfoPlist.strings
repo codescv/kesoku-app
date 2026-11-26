@@ -1,0 +1,5 @@
+/* Localized Info.plist strings (Simplified Chinese) */
+"NSCameraUsageDescription" = "Kesoku 需要使用相机拍摄菜单、路牌、宝可梦、二维码或头像，以便识别与翻译。";
+"NSMicrophoneUsageDescription" = "Kesoku 需要使用麦克风录制语音消息，以便进行实时对话与语音翻译。";
+"NSPhotoLibraryUsageDescription" = "Kesoku 需要访问相册，以便选择图片或自定义头像发送给 AI 伙伴。";
+"NSPhotoLibraryAddUsageDescription" = "Kesoku 需要将拍摄或生成的图片保存到相册。";

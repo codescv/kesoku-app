@@ -77,7 +77,7 @@ async function renderRoot() {
 describe('FileBrowser · CRUD', () => {
   it('renders the root listing with 根目录 and never shows the awd name', async () => {
     await renderRoot();
-    expect(screen.getByText('Agent 目录')).toBeTruthy();
+    expect(screen.getByText('工作区文件')).toBeTruthy();
     expect(screen.getByRole('button', { name: '根目录' })).toBeTruthy();
     expect(screen.getByText('notes')).toBeTruthy();
     expect(screen.getByTestId('file-browser').textContent ?? '').not.toMatch(/band/i);
@@ -147,7 +147,7 @@ describe('FileBrowser · CRUD', () => {
   it('creates an empty file via workspace.write content ""', async () => {
     await renderRoot();
     fireEvent.click(screen.getByRole('button', { name: '新建文件' }));
-    fireEvent.change(screen.getByLabelText('新文件名称'), { target: { value: 'todo.md' } });
+    fireEvent.change(screen.getByLabelText('新文件名称，如 notes.md'), { target: { value: 'todo.md' } });
     fireEvent.click(screen.getByRole('button', { name: '创建' }));
     await waitFor(() => expect(calls('workspace.write')).toHaveLength(1));
     expect(calls('workspace.write')[0]![1]).toEqual({ path: 'todo.md', content: '', overwrite: false });
@@ -156,7 +156,7 @@ describe('FileBrowser · CRUD', () => {
   it('refuses to create a file whose name already exists in the listing', async () => {
     await renderRoot();
     fireEvent.click(screen.getByRole('button', { name: '新建文件' }));
-    fireEvent.change(screen.getByLabelText('新文件名称'), { target: { value: 'README.md' } });
+    fireEvent.change(screen.getByLabelText('新文件名称，如 notes.md'), { target: { value: 'README.md' } });
     fireEvent.click(screen.getByRole('button', { name: '创建' }));
     await waitFor(() => expect(useStore.getState().toasts.some((t) => t.text.includes('已存在同名文件') && t.tone === 'error')).toBe(true));
     expect(calls('workspace.write')).toHaveLength(0);
@@ -205,9 +205,9 @@ describe('FileBrowser · CRUD', () => {
     fireEvent.click(screen.getByRole('button', { name: '删除 cover.png' }));
     expect(calls('workspace.delete')).toHaveLength(0);
     const group = screen.getByRole('group', { name: '确认删除 cover.png' });
-    expect(within(group).getByText('确认删除?')).toBeTruthy();
+    expect(within(group).getByText('确认删除？')).toBeTruthy();
     fireEvent.click(within(group).getByRole('button', { name: '取消删除' }));
-    expect(screen.queryByText('确认删除?')).toBeNull();
+    expect(screen.queryByText('确认删除？')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '删除 cover.png' }));
     fireEvent.click(screen.getByRole('button', { name: '确认删除' }));

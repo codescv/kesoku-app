@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { t } from '@kesoku/ui';
 import type { CardContext } from '../cards/types';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
@@ -24,15 +25,15 @@ export function makeCardContext(sessionId: string, messageId: string, modeId: st
         kesoku
           .rpc<{ url?: string }>('voice.preview', { voice_preset: 'default', text: text.slice(0, 80) }, { timeoutMs: 30_000 })
           .then((r) => (r.url ? new Audio(r.url).play() : undefined))
-          .catch(() => actions.toast('朗读失败', 'error'));
+          .catch(() => actions.toast(t('tts.speakFailed'), 'error'));
         return;
       }
-      speak({ text, lang }).catch(() => actions.toast('此设备不支持朗读', 'error'));
+      speak({ text, lang }).catch(() => actions.toast(t('tts.unsupported'), 'error'));
     },
     copy: (text) => {
       void navigator.clipboard?.writeText(text).then(
-        () => actions.toast('已复制'),
-        () => actions.toast('复制失败', 'error'),
+        () => actions.toast(t('common.copied')),
+        () => actions.toast(t('common.copyFailed'), 'error'),
       );
     },
     toast: (msg) => actions.toast(msg),

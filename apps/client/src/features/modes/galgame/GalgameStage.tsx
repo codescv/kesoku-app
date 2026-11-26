@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent, type PointerEvent as RPointerEvent } from 'react';
 import type { BilingualSegment, EngineToClientPayload, FileSegment, LexToken, MemoryPolicy, Segment } from '@kesoku/protocol';
 import { PolicyBadge, SceneChips } from '@kesoku/hud';
-import { RubyText, VoicePill, parseRubyNotation, resolveRubyParts, type RubyPart } from '@kesoku/ui';
+import { RubyText, VoicePill, parseRubyNotation, resolveRubyParts, t as tGlobal, useT, type RubyPart } from '@kesoku/ui';
 import type { ChatItem, StreamPreview } from '../../../lib/types';
 import { kesoku } from '../../../lib/client';
 import { useStore } from '../../../lib/store';
@@ -106,8 +106,6 @@ export function latestTurn(items: ChatItem[]): { item: ChatItem; segments: Story
 }
 
 const GENERIC_NAMES = new Set(['kesoku', 'assistant']);
-/** Last-resort nameplate when neither the segment, the live persona nor the sender carries a name. */
-const DEFAULT_PERSONA = 'AI 助手';
 
 function nonGeneric(n: unknown): string | undefined {
   if (typeof n !== 'string') return undefined;
@@ -122,7 +120,7 @@ export function resolveSpeaker(segSpeaker: unknown, item: ChatItem | undefined, 
     nonGeneric(personaName) ||
     nonGeneric(item?.sender?.display_name) ||
     nonGeneric(item?.sender?.name) ||
-    DEFAULT_PERSONA
+    tGlobal('common.aiAssistant')
   );
 }
 
@@ -264,6 +262,7 @@ function Speech({
   onToggleZh: () => void;
   onOpenLex?: () => void;
 }) {
+  const t = useT();
   const parts = useMemo(() => resolveRubyParts(seg), [seg]);
   const plain = useMemo(() => parts.map((p) => p.base).join(''), [parts]);
   const units = useMemo(() => toWordUnits(parts, seg.tokens), [parts, seg.tokens]);
@@ -335,13 +334,13 @@ function Speech({
             onToggleZh();
           }}
         >
-          {zhOpen ? seg.zh : '中文 ▸'}
+          {zhOpen ? seg.zh : t('galgame.zhToggle')}
         </button>
       )}
       {lex && (
         <div ref={lexRef} className="gg-lex" onClick={(e) => e.stopPropagation()}>
           <LexCard token={lex} onClose={() => (setActive(null), setLex(null))} />
-          {loading && <div className="k-lex-loading">精讲生成中…</div>}
+          {loading && <div className="k-lex-loading">{t('seg.lexLoading')}</div>}
         </div>
       )}
     </div>
@@ -400,6 +399,7 @@ function StreamingBody({ text, speaker }: { text: string; speaker: string }) {
  * Voice playback is strictly tap-to-play; clips are only buffered in the background.
  */
 export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicyChange, onPick, onExit, personaName }: GalgameStageProps) {
+  const t = useT();
   const media = useStore((s) => s.media);
   const cgRef = useMemo(() => latestCg(items, media), [items, media]);
   const cgUrl = useImageUrl(ctx.resolveMedia, cgRef);
@@ -470,12 +470,12 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
       </div>
 
       <div className="gg-top">
-        <button type="button" className="gg-glass gg-back" onClick={onExit} aria-label="返回气泡流">
-          ← {roleName} · 约会
+        <button type="button" className="gg-glass gg-back" onClick={onExit} aria-label={t('galgame.backToBubblesAria')}>
+          {t('galgame.backLabel', { name: roleName })}
         </button>
         {cgStatus && (
           <span className={'gg-glass gg-cg-status is-' + cgStatus} role="status" data-testid="gg-cg-status">
-            {cgStatus === 'pending' ? '🎨 插画生成中…' : '⚠️ 插画未就绪'}
+            {cgStatus === 'pending' ? t('galgame.cgPending') : t('galgame.cgFailed')}
           </span>
         )}
         <SceneChips scene={stateFiles['game/scene.json']} glass />
@@ -489,7 +489,7 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
           </div>
         )}
         {question && !hasCharacterPortraits(question.seg) && (
-          <div className="gg-choices" role="group" aria-label={question.seg.prompt || '选项'}>
+          <div className="gg-choices" role="group" aria-label={question.seg.prompt || t('galgame.choicesAria')}>
             {question.seg.choices.map((c, idx) => {
               const on = multi.includes(c);
               return (
@@ -512,7 +512,7 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
             })}
             {question.seg.multi && (
               <button type="button" className="gg-choice is-confirm" disabled={!multi.length} onClick={() => onPick(question.id, multi)}>
-                确定 ({multi.length})
+                {t('galgame.confirmCount', { count: multi.length })}
               </button>
             )}
           </div>
@@ -533,7 +533,7 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
                     setExpanded((x) => !x);
                   }}
                 >
-                  {expanded ? '▴ 收起' : '▾ 展开'}
+                  {expanded ? t('galgame.collapse') : t('galgame.expand')}
                 </button>
               </div>
             </div>
@@ -546,7 +546,7 @@ export function GalgameStage({ items, preview, stateFiles, ctx, policy, onPolicy
                     <span />
                   </span>
                   <span className="k-typing-label">
-                    <b>{roleName}</b> 正在输入…
+                    <b>{roleName}</b> {t('stream.typing')}
                   </span>
                 </div>
               ) : streaming ? (

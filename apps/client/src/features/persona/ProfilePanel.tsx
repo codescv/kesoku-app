@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { LIMITS, type EngineToClientPayload, type UserProfile } from '@kesoku/protocol';
-import { Avatar, Skeleton, UiIcon } from '@kesoku/ui';
+import { Avatar, Skeleton, UiIcon, useT } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { useAvatarUrl } from './avatar';
@@ -28,6 +28,7 @@ export function ProfilePanel({
   sources: Record<string, AvatarSource | null>;
   setSource: (key: string, s: AvatarSource | null) => void;
 }) {
+  const t = useT();
   const profile = useStore((s) => s.profile);
   const [draft, setDraft] = useState<ProfileDraft | null>(null);
   const [saving, setSaving] = useState(false);
@@ -61,9 +62,9 @@ export function ProfilePanel({
         <div className="ps-body">
           {loadFailed ? (
             <div className="ps-card ps-row">
-              <span>个人档案加载失败</span>
+              <span>{t('persona.profileLoadFailed')}</span>
               <button type="button" className="ps-link" onClick={() => setLoadFailed(false)}>
-                重试
+                {t('common.retry')}
               </button>
             </div>
           ) : (
@@ -82,12 +83,12 @@ export function ProfilePanel({
   const hasAi = !!profile.avatar_ai;
   const profileBytes = utf8Bytes(d.profile_md);
   const errors = {
-    nickname: d.nickname.length > 32 ? '最多 32 个字符' : undefined,
-    profile_md: profileBytes > LIMITS.PROFILE_MD_MAX_BYTES ? '超过 12 KiB 上限' : undefined,
+    nickname: d.nickname.length > 32 ? t('persona.maxChars', { max: 32 }) : undefined,
+    profile_md: profileBytes > LIMITS.PROFILE_MD_MAX_BYTES ? t('persona.exceeds12KiB') : undefined,
   };
   const hasErrors = !!(errors.nickname || errors.profile_md);
   const dir = profile.character_dir;
-  const name = d.nickname || profile.nickname || '我';
+  const name = d.nickname || profile.nickname || t('common.me');
 
   const patch = (p: Partial<ProfileDraft>) => setDraft({ ...d, ...p });
 
@@ -102,9 +103,9 @@ export function ProfilePanel({
       });
       if (res?.profile) actions.setProfile(res.profile);
       setDraft(null);
-      actions.toast('个人形象已保存 · 下一条消息生效');
+      actions.toast(t('persona.profileSaved'));
     } catch (e) {
-      actions.toast(errorCode(e) === 'ENGINE_OFFLINE' ? '引擎离线，未保存' : '保存失败，请重试', 'error');
+      actions.toast(errorCode(e) === 'ENGINE_OFFLINE' ? t('common.engineOfflineUnsaved') : t('common.saveFailedRetry'), 'error');
     } finally {
       setSaving(false);
     }
@@ -123,9 +124,9 @@ export function ProfilePanel({
       });
       if (res?.profile) actions.setProfile(res.profile);
       setSource(USER_KEY, { object: up.object, preview: makePreviewUrl(file), at: Date.now() });
-      actions.toast('头像已更新');
+      actions.toast(t('persona.avatarUpdated'));
     } catch {
-      actions.toast('照片上传失败，请重试', 'error');
+      actions.toast(t('persona.photoUploadFailed'), 'error');
     } finally {
       setUploading(false);
     }
@@ -140,20 +141,20 @@ export function ProfilePanel({
           </span>
           <div className="ps-avatar-main">
             <div className="ps-row">
-              <span className="ps-title">我的头像与参考照</span>
+              <span className="ps-title">{t('persona.myAvatarTitle')}</span>
             </div>
             {hasAi && (
               <button type="button" className="ps-ai-badge" onClick={() => setGenOpen(true)}>
-                <UiIcon name="spark" size={14} /> 已由上传照片 AI 生成 · 重新生成
+                <UiIcon name="spark" size={14} /> {t('persona.aiGeneratedRegen')}
               </button>
             )}
             <div className="ps-row ps-actions">
-              <PickImageButton className="ps-btn-sm" onPick={setCropFile} disabled={uploading} label="上传照片文件">
-                {uploading ? '上传中…' : '上传照片'}
+              <PickImageButton className="ps-btn-sm" onPick={setCropFile} disabled={uploading} label={t('persona.uploadPhotoAria')}>
+                {uploading ? t('common.uploading') : t('persona.uploadPhoto')}
               </PickImageButton>
               <button type="button" className="ps-btn-sm ps-btn-sm-pri" onClick={() => setGenOpen(true)}>
                 <UiIcon name="spark" size={16} />
-                AI 风格化
+                {t('persona.aiStylize')}
               </button>
             </div>
           </div>
@@ -162,14 +163,14 @@ export function ProfilePanel({
         <section className="ps-card">
           <label className="ps-field">
             <span className="ps-label">
-              <span>我的昵称 / 称呼</span>
+              <span>{t('persona.myNickname')}</span>
               <Counter n={d.nickname.length} max={32} />
             </span>
             <input
               className={'ps-input ps-input-lg' + (errors.nickname ? ' is-err' : '')}
               value={d.nickname}
-              placeholder="希望角色怎么称呼你"
-              aria-label="我的昵称"
+              placeholder={t('persona.nicknamePlaceholder')}
+              aria-label={t('persona.nicknameAria')}
               aria-invalid={!!errors.nickname}
               onChange={(e) => patch({ nickname: e.target.value })}
             />
@@ -177,18 +178,18 @@ export function ProfilePanel({
           </label>
           <div className="ps-field">
             <MarkdownEditable
-              label="个人档案 (user/profile.md)"
-              ariaLabel="个人档案 (user/profile.md)"
+              label={t('persona.profileMdLabel')}
+              ariaLabel={t('persona.profileMdLabel')}
               value={d.profile_md}
               onChange={(v) => patch({ profile_md: v })}
               rows={6}
               invalid={!!errors.profile_md}
-              placeholder="职业、爱好、忌口、学习进度…"
+              placeholder={t('persona.profileMdPlaceholder')}
               actions={<span className={'ps-count' + (errors.profile_md ? ' is-err' : '')}>{`${fmtBytes(profileBytes)} / 12 KiB`}</span>}
             />
             <FieldError id="ps-err-bio" text={errors.profile_md} />
             <span className="ps-sub ps-icon-label">
-              <UiIcon name="brain" size={14} /> AI 会在对话中自动补充更新此档案，你也可以随时在此直接修改，所有角色共享且下一条消息生效
+              <UiIcon name="brain" size={14} /> {t('persona.profileMdHint')}
             </span>
           </div>
         </section>
@@ -196,13 +197,13 @@ export function ProfilePanel({
 
       <div className="ps-dock">
         <button type="button" className="ps-btn ps-btn-sec" disabled={!dirty || saving} onClick={() => setDraft(null)}>
-          重置修改
+          {t('persona.resetChanges')}
         </button>
         <button type="button" className="ps-btn ps-btn-pri" disabled={!dirty || hasErrors || saving} onClick={() => void save()}>
-          {saving ? '保存中…' : (
+          {saving ? t('common.saving') : (
             <>
               <UiIcon name="check" size={18} />
-              保存个人形象
+              {t('persona.saveProfile')}
             </>
           )}
         </button>

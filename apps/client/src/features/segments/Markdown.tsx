@@ -1,5 +1,5 @@
 import { Fragment, useState, type ReactNode } from 'react';
-import { parseRubyNotation, RubyText } from '@kesoku/ui';
+import { parseRubyNotation, RubyText, useT } from '@kesoku/ui';
 
 /**
  * Minimal SAFE Markdown → React elements renderer. Never produces HTML strings: every text run is a
@@ -28,6 +28,7 @@ function renderRuby(text: string, key: string): ReactNode {
 }
 
 function Spoiler({ children, block }: { children: ReactNode; block?: boolean }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   return (
     <span
@@ -45,7 +46,7 @@ function Spoiler({ children, block }: { children: ReactNode; block?: boolean }) 
           setOpen((x) => !x);
         }
       }}
-      title={open ? '点击隐藏' : '点击查看隐藏内容'}
+      title={open ? t('common.clickToHide') : t('common.clickToReveal')}
     >
       <span className="k-spoiler-inner">{children}</span>
     </span>

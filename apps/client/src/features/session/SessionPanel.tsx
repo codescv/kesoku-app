@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TouchEvent as ReactTouchEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { SessionSummary } from '@kesoku/protocol';
-import { Avatar, ModeIcon, UiIcon, modeMeta } from '@kesoku/ui';
+import { Avatar, ModeIcon, UiIcon, formatLocaleDate, modeMeta, useLocale, useT, type ResolvedLocale, type MessageKey } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { kvSet } from '../../lib/db';
@@ -11,17 +11,21 @@ import { useIsDesktop } from '../../app/useMedia';
 import { useAvatarUrl } from '../persona/avatar';
 import { fallbackRoleId, roleAvatarRef, roleFallbackName } from '../persona/model';
 
-const CHANNEL_LABEL: Record<string, string> = { discord: 'Discord', discord_asuka: 'Discord', wechat: '微信' };
+function channelLabel(chan: string, t: (k: MessageKey) => string): string {
+  if (chan === 'wechat') return t('shell.channel.wechat');
+  if (chan === 'discord' || chan === 'discord_asuka') return 'Discord';
+  return chan;
+}
 
 export const RECENT_SESSIONS_LIMIT = 10;
 
-function rel(ts: number): string {
+function rel(ts: number, locale: ResolvedLocale, t: (k: MessageKey, p?: Record<string, string | number>) => string): string {
   const d = Date.now() / 1000 - ts;
-  if (d < 60) return '刚刚';
-  if (d < 3600) return `${Math.floor(d / 60)} 分钟前`;
-  if (d < 86400) return `${Math.floor(d / 3600)} 小时前`;
-  if (d < 86400 * 7) return `${Math.floor(d / 86400)} 天前`;
-  return new Date(ts * 1000).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+  if (d < 60) return t('common.justNow');
+  if (d < 3600) return t('common.minutesAgo', { n: Math.floor(d / 60) });
+  if (d < 86400) return t('common.hoursAgo', { n: Math.floor(d / 3600) });
+  if (d < 86400 * 7) return t('common.daysAgo', { n: Math.floor(d / 86400) });
+  return formatLocaleDate(ts * 1000, { month: 'numeric', day: 'numeric' }, locale);
 }
 
 const LONG_PRESS_MS = 420;
@@ -54,6 +58,8 @@ function SessionRow({
   onOpen: () => void;
   onEdit: (mode: EditMode, anchor?: EditAnchor, openedByTouch?: boolean) => void;
 }) {
+  const locale = useLocale();
+  const t = useT();
   const touchRef = useRef<{ startX: number; startY: number; timer: ReturnType<typeof setTimeout> | null; longPressed: boolean }>({
     startX: 0,
     startY: 0,
@@ -62,7 +68,7 @@ function SessionRow({
   });
   const lastTouchAtRef = useRef(0);
   const chan = isForeign(s) ? s.chatbot_id! : null;
-  const m = modeMeta(s.mode_id || 'chat');
+  const m = modeMeta(s.mode_id || 'chat', locale);
 
   const clearTimer = () => {
     const t = touchRef.current;
@@ -158,17 +164,17 @@ function SessionRow({
               <ModeIcon mode={m.id} size={18} />
             </span>
           )}
-          {s.title || '未命名会话'}
+          {s.title || t('session.untitled')}
         </span>
         <span className="k-srow-meta">
           {chan && (
             <span className="k-pill k-pill-warn k-pill-sm">
-              [{CHANNEL_LABEL[chan] ?? chan} · {s.app_bound ? '普通接管' : '只读'}]
+              [{channelLabel(chan, t)} · {s.app_bound ? t('session.takenOver') : t('session.readOnly')}]
             </span>
           )}
           {m && <span className="k-pill k-pill-sm k-pill-neutral">{m.short}</span>}
-          <span>{rel(s.updated_at)}</span>
-          {s.unread ? <span className="k-dot" aria-label="未读" /> : null}
+          <span>{rel(s.updated_at, locale, t)}</span>
+          {s.unread ? <span className="k-dot" aria-label={t('session.unreadAria')} /> : null}
         </span>
       </button>
     </div>
@@ -191,6 +197,8 @@ function SessionEditMenu({
   onMode: (m: EditMode) => void;
   onClose: () => void;
 }) {
+  const locale = useLocale();
+  const t = useT();
   const s = useStore((st) => st.sessions[sessionId]);
   const desktop = useIsDesktop();
   const isPopover = Boolean(desktop && anchor && !openedByTouch);
@@ -242,9 +250,9 @@ function SessionEditMenu({
   }, [isPopover, onClose]);
 
   if (!s) return null;
-  const m = modeMeta(s.mode_id || 'chat');
+  const m = modeMeta(s.mode_id || 'chat', locale);
   const foreign = isForeign(s);
-  const name = s.title || '未命名会话';
+  const name = s.title || t('session.untitled');
   const save = () => {
     const next = title.trim();
     if (!next) return;
@@ -274,7 +282,7 @@ function SessionEditMenu({
       data-popover={isPopover ? 'true' : 'false'}
       role="dialog"
       aria-modal={!isPopover}
-      aria-label={`编辑会话 ${name}`}
+      aria-label={t('session.editAria', { name })}
       onClick={stop}
       onTouchStart={stop}
       onTouchEnd={stop}
@@ -371,13 +379,13 @@ function SessionEditMenu({
               save();
             }}
           >
-            <input autoFocus value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} aria-label="会话标题" data-testid="session-rename-input" />
+            <input autoFocus value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} aria-label={t('session.titleAria')} data-testid="session-rename-input" />
             <div className="k-sedit-row">
               <button type="button" className="k-btn k-btn-ghost" onClick={onClose}>
-                取消
+                {t('common.cancel')}
               </button>
               <button type="submit" className="k-btn k-btn-primary" data-testid="session-rename-save" disabled={!title.trim()}>
-                保存
+                {t('common.save')}
               </button>
             </div>
           </form>
@@ -393,7 +401,7 @@ function SessionEditMenu({
               }}
             >
               <UiIcon name="edit" size={20} />
-              重命名对话
+              {t('session.rename')}
             </button>
             <button
               type="button"
@@ -405,7 +413,7 @@ function SessionEditMenu({
               }}
             >
               <UiIcon name="pin" size={20} />
-              置顶 Notes
+              {t('topbar.pinnedNotes')}
             </button>
             <button
               type="button"
@@ -418,11 +426,11 @@ function SessionEditMenu({
               }}
             >
               <UiIcon name="trash" size={20} />
-              删除对话
+              {t('session.delete')}
             </button>
-            {foreign && <p className="k-sedit-hint">外部渠道会话不可在 App 内删除</p>}
+            {foreign && <p className="k-sedit-hint">{t('session.externalCannotDelete')}</p>}
             <button type="button" className="k-sedit-btn is-cancel" data-testid="session-action-cancel" onClick={onClose}>
-              取消
+              {t('common.cancel')}
             </button>
           </div>
         )}
@@ -434,6 +442,8 @@ function SessionEditMenu({
 
 /** Left drawer / desktop left column (Screen 03). */
 export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
+  const locale = useLocale();
+  const t = useT();
   const sessions = useStore((s) => s.sessions);
   const current = useStore((s) => s.currentSessionId);
   const allChannels = useStore((s) => s.settings.allChannels);
@@ -478,7 +488,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
   const activePersona = personas.find((p) => p.role_id === activeRole) ?? personas[0];
   const activeAvatarSrc = useAvatarUrl(activePersona ? roleAvatarRef(activePersona) : null, activePersona?.avatar_rev);
   const roles = [
-    { id: null as string | null, label: '全部' },
+    { id: null as string | null, label: t('common.all') },
     ...personas.map((p) => ({
       id: p.role_id as string | null,
       label: p.display_name || p.role_id,
@@ -489,7 +499,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav
       className="k-spanel"
-      aria-label="会话"
+      aria-label={t('session.navAria')}
       onContextMenu={(e) => {
         // Menu chrome is not text: never show the iOS/desktop callout on buttons, chips or rows.
         const t = e.target as HTMLElement;
@@ -503,22 +513,22 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
               type="button"
               className="k-btn k-btn-ghost k-btn-sm"
               data-testid="all-sessions-back"
-              aria-label="返回侧边栏"
+              aria-label={t('session.backToSidebarAria')}
               onClick={() => {
                 setQ('');
                 useStore.setState({ searchHits: [] });
                 setAllSessionsOpen(false);
               }}
             >
-              <UiIcon name="arrow-left" size={18} /> 返回
+              <UiIcon name="arrow-left" size={18} /> {t('common.back')}
             </button>
-            <b className="k-spanel-subtitle">全部会话 ({list.length})</b>
+            <b className="k-spanel-subtitle">{t('session.allSessionsCount', { count: list.length })}</b>
           </div>
           <div className="k-spanel-search">
             <UiIcon name="search" size={18} className="k-search-icon" />
-            <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索历史对话" aria-label="搜索历史对话" id="k-search" />
+            <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('session.searchPlaceholder')} aria-label={t('session.searchPlaceholder')} id="k-search" />
           </div>
-          <div className="k-chips" role="tablist" aria-label="角色筛选">
+          <div className="k-chips" role="tablist" aria-label={t('session.roleFilterAria')}>
             {roles.map((r) => (
               <button
                 key={r.id ?? 'all'}
@@ -536,7 +546,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
             ))}
           </div>
           <label className="k-switch-row">
-            <span>显示全部渠道 (Discord / 微信)</span>
+            <span>{t('session.showAllChannels')}</span>
             <input
               type="checkbox"
               role="switch"
@@ -560,12 +570,12 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
                     go();
                   }}
                 >
-                  <span className="k-hit-title">{h.title || sessions[h.session_id]?.title || '会话'}</span>
+                  <span className="k-hit-title">{h.title || sessions[h.session_id]?.title || t('session.fallbackTitle')}</span>
                   <span className="k-hit-snippet">{h.snippet}</span>
                   <span className="k-srow-meta">
                     {h.role && <span className="k-pill k-pill-sm k-pill-primary">{h.role}</span>}
-                    {h.chatbot_id && h.chatbot_id !== 'app' && <span className="k-pill k-pill-sm k-pill-warn">{CHANNEL_LABEL[h.chatbot_id] ?? h.chatbot_id}</span>}
-                    <span>{rel(h.ts)}</span>
+                    {h.chatbot_id && h.chatbot_id !== 'app' && <span className="k-pill k-pill-sm k-pill-warn">{channelLabel(h.chatbot_id, t)}</span>}
+                    <span>{rel(h.ts, locale, t)}</span>
                   </span>
                 </button>
               ))
@@ -583,7 +593,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
                 />
               ))
             ) : (
-              <div className="k-empty">没有符合条件的会话</div>
+              <div className="k-empty">{t('session.noMatching')}</div>
             )}
           </div>
         </div>
@@ -602,7 +612,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
               go();
             }}
           >
-            <UiIcon name="plus" size={18} /> 新会话
+            <UiIcon name="plus" size={18} /> {t('session.newSession')}
           </button>
           <div className="k-slist">
             {recentList.length ? (
@@ -619,7 +629,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
                 />
               ))
             ) : (
-              <div className="k-empty">还没有会话 · 点「新会话」开始</div>
+              <div className="k-empty">{t('session.emptyHint')}</div>
             )}
           </div>
           <button
@@ -629,7 +639,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
             onClick={() => setAllSessionsOpen(true)}
           >
             <UiIcon name="clock" size={19} />
-            <span>全部会话</span>
+            <span>{t('session.allSessions')}</span>
             <span className="k-all-sessions-count">{list.length}</span>
             <UiIcon name="chevron-right" size={16} />
           </button>
@@ -641,8 +651,8 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
                 onClick={() => (actions.setUi({ screen: 'memory', drawerOpen: false }), go())}
               >
                 <UiIcon name="brain" size={18} />
-                <span>记忆库</span>
-                {pending > 0 && <span className="k-badge-dot" aria-label={`${pending} 条待确认`}>{pending}</span>}
+                <span>{t('session.memory')}</span>
+                {pending > 0 && <span className="k-badge-dot" aria-label={t('session.pendingCountAria', { count: pending })}>{pending}</span>}
               </button>
               <button
                 type="button"
@@ -652,7 +662,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
                 onClick={() => (actions.setUi({ screen: 'notes', drawerOpen: false }), go())}
               >
                 <UiIcon name="note" size={14} />
-                <span>便签</span>
+                <span>{t('session.notes')}</span>
               </button>
             </div>
             <button
@@ -662,7 +672,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
               aria-current={screen === 'studio' ? 'page' : undefined}
               onClick={() => (actions.setUi({ screen: 'studio', drawerOpen: false }), go())}
             >
-              <Avatar src={activeAvatarSrc} name={activePersona?.display_name ?? roleFallbackName(activeRole)} size={22} ai={activePersona?.avatar_ai} /> 角色与形象工坊
+              <Avatar src={activeAvatarSrc} name={activePersona?.display_name ?? roleFallbackName(activeRole)} size={22} ai={activePersona?.avatar_ai} /> {t('session.studio')}
             </button>
             <button
               type="button"
@@ -671,7 +681,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
               aria-current={screen === 'files' ? 'page' : undefined}
               onClick={() => (actions.setUi({ screen: 'files', drawerOpen: false }), go())}
             >
-              <UiIcon name="folder" size={20} /> 文件管理
+              <UiIcon name="folder" size={20} /> {t('session.files')}
             </button>
             <button
               type="button"
@@ -680,11 +690,19 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
               aria-current={screen === 'settings' ? 'page' : undefined}
               onClick={() => (actions.setUi({ screen: 'settings', drawerOpen: false }), go())}
             >
-              <UiIcon name="sliders" size={20} /> 设置
+              <UiIcon name="sliders" size={20} /> {t('session.settings')}
             </button>
             <div className="k-conn-line">
               <span className={'k-conn-dot' + (conn.status === 'online' ? (conn.engineOnline ? ' is-ok' : ' is-bad') : conn.status === 'reconnecting' ? ' is-warn' : '')} aria-hidden />
-              {conn.status === 'online' ? (conn.engineOnline ? `已连接${conn.latencyMs != null ? ` · ${conn.latencyMs}ms` : ''}` : '引擎离线') : conn.status === 'reconnecting' ? '重连中…' : '未连接'}
+              {conn.status === 'online'
+                ? conn.engineOnline
+                  ? conn.latencyMs != null
+                    ? t('settings.connectedLatency', { ms: conn.latencyMs })
+                    : t('settings.connected')
+                  : t('session.engineOffline')
+                : conn.status === 'reconnecting'
+                  ? t('shell.reconnecting')
+                  : t('client.notConnected')}
             </div>
           </div>
         </>

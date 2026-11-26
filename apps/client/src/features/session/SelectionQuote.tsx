@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { t as tGlobal, useT } from '@kesoku/ui';
 import { actions } from '../../lib/store';
 
 export const MAX_QUOTE_CHARS = 2000;
@@ -24,7 +25,7 @@ export function findQuoteContainer(node: Node | null): HTMLElement | null {
 
 /** Detect a short speaker label for the message container (used in the composer quote header). */
 export function detectSpeaker(container: HTMLElement): string | undefined {
-  if (container.classList.contains('k-row-user')) return '我';
+  if (container.classList.contains('k-row-user')) return tGlobal('common.me');
   const nameEl =
     container.querySelector<HTMLElement>('.k-assistant-name') ??
     container.closest<HTMLElement>('.gg-box')?.querySelector<HTMLElement>('.gg-speaker');
@@ -149,6 +150,7 @@ function isCoarsePointer(): boolean {
  * Works on desktop (mouse drag) and touch devices (iOS/Android long-press text selection).
  */
 export function SelectionQuote({ sessionId, disabled }: { sessionId: string | null; disabled?: boolean }) {
+  const t = useT();
   const [sel, setSel] = useState<ActiveSelection | null>(null);
 
   const readSelection = useCallback(() => {
@@ -248,7 +250,7 @@ export function SelectionQuote({ sessionId, disabled }: { sessionId: string | nu
       className={`k-sel-quote is-${sel.pos.placement}`}
       style={{ left: `${sel.pos.left}px`, top: `${sel.pos.top}px` }}
       role="toolbar"
-      aria-label="选中文本操作"
+      aria-label={t('quote.toolbarAria')}
       data-testid="selection-quote-popover"
     >
       <button
@@ -261,7 +263,7 @@ export function SelectionQuote({ sessionId, disabled }: { sessionId: string | nu
           <path d="M9 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v6a4 4 0 0 1-4 4" />
           <path d="M21 17h-4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v6a4 4 0 0 1-4 4" />
         </svg>
-        <span>引用回复</span>
+        <span>{t('composer.quoteReply')}</span>
       </button>
     </div>,
     document.body,

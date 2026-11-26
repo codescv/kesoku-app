@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { LexToken } from '@kesoku/protocol';
-import { RubyText, Sheet, VoicePill, resolveRubyParts, type RubyPart, type RubySpecInput } from '@kesoku/ui';
+import { RubyText, Sheet, VoicePill, resolveRubyParts, useT, type RubyPart, type RubySpecInput } from '@kesoku/ui';
 import { LexCard, explainLexCached, findToken, getCachedSentenceLex, mergeTokens, toWordUnits } from '../segments/BilingualCard';
 import type { CardContext } from './types';
 import { bboxPosition, cardMedia, hasKana, isObj, num, photoRef, pick, toBBox, useImageUrl, type BBox, type Dict } from './util';
@@ -44,6 +44,7 @@ const KANA_ONLY_RE = /^[\u3041-\u309f\u30a0-\u30ffー・\s]+$/;
  * get the reading from a matching analysed token.
  */
 function InteractiveJa({ parts, className, ctx, tokens }: { parts: RubyPart[]; className?: string; ctx: CardContext; tokens?: LexToken[] }) {
+  const t = useT();
   const plain = useMemo(() => parts.map((p) => p.base).join(''), [parts]);
   const [sentenceTokens, setSentenceTokens] = useState<LexToken[] | undefined>(() => getCachedSentenceLex(plain));
   useEffect(() => setSentenceTokens(getCachedSentenceLex(plain)), [plain]);
@@ -101,7 +102,7 @@ function InteractiveJa({ parts, className, ctx, tokens }: { parts: RubyPart[]; c
       {lex && (
         <div className="kc-tr-lex" onClick={(e) => e.stopPropagation()}>
           <LexCard token={lex} onClose={close} />
-          {loading && <div className="k-lex-loading">精讲生成中…</div>}
+          {loading && <div className="k-lex-loading">{t('seg.lexLoading')}</div>}
         </div>
       )}
     </>
@@ -197,11 +198,12 @@ export function PhotoTag({
   ctx: CardContext;
   zoom?: boolean;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   if (n === null) return null;
   const b = toBBox(bbox);
   const pos = position || bboxPosition(b);
-  const label = `第${n}张图${pos ? ` · ${pos}` : ''}`;
+  const label = t('card.photoTag', { n, pos: pos ? ` · ${pos}` : '' });
   if (!zoom) return <span className="kc-photo-tag">{label}</span>;
   return (
     <>
@@ -212,7 +214,7 @@ export function PhotoTag({
           e.stopPropagation();
           setOpen(true);
         }}
-        aria-label={`${label}，查看原图位置`}
+        aria-label={t('card.photoTagAria', { label })}
       >
         {label} <span aria-hidden>🔍</span>
       </button>
@@ -237,6 +239,7 @@ export function PhotoLocator({
   ctx: CardContext;
   onClose: () => void;
 }) {
+  const t = useT();
   const ref = photoRef(ctx, data, n);
   const url = useImageUrl(ctx.resolveMedia, ref);
   return (
@@ -254,7 +257,7 @@ export function PhotoLocator({
             )}
           </div>
         ) : (
-          <div className="kc-locator-empty">{url === undefined && ref ? '原图加载中…' : '原图不可用'}</div>
+          <div className="kc-locator-empty">{url === undefined && ref ? t('card.photoLoading') : t('card.photoUnavailable')}</div>
         )}
       </div>
     </Sheet>

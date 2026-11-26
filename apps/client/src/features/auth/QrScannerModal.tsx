@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ensureCameraPermission, pickImages } from '../../native/camera';
 import { decodeQrFromBlob, decodeQrFromSource } from '../../native/qr';
-import { UiIcon } from '@kesoku/ui';
+import { UiIcon, useT } from '@kesoku/ui';
 
 export function QrScannerModal({
   onDetect,
@@ -10,6 +10,7 @@ export function QrScannerModal({
   onDetect: (value: string) => void;
   onClose: () => void;
 }) {
+  const tr = useT();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [camState, setCamState] = useState<'starting' | 'ready' | 'unavailable'>('starting');
   const [hint, setHint] = useState<string | null>(null);
@@ -27,8 +28,6 @@ export function QrScannerModal({
         return;
       }
       try {
-        // Android WebView: the OS CAMERA runtime permission must be granted before getUserMedia
-        // (BridgeWebChromeClient's VIDEO_CAPTURE request), otherwise the preview silently fails.
         await ensureCameraPermission();
         if (!active) return;
         stream = await navigator.mediaDevices.getUserMedia({
@@ -91,23 +90,23 @@ export function QrScannerModal({
       if (decoded) {
         onDetect(decoded);
       } else {
-        setHint('未在所选图片中识别到二维码，请确保二维码清晰完整');
+        setHint(tr('qr.notFound'));
       }
     } catch {
-      setHint('读取图片失败，请重试');
+      setHint(tr('qr.readFailed'));
     } finally {
       setPicking(null);
     }
   }
 
   return (
-    <div className="k-modal-backdrop" role="dialog" aria-modal="true" aria-label="扫描配对二维码" onClick={onClose}>
+    <div className="k-modal-backdrop" role="dialog" aria-modal="true" aria-label={tr('qr.modalAria')} onClick={onClose}>
       <div className="k-modal k-qr-modal" onClick={(e) => e.stopPropagation()}>
         <div className="k-qr-head">
           <strong className="k-ico-label">
-            <UiIcon name="qr" size={20} /> 扫描配对二维码
+            <UiIcon name="qr" size={20} /> {tr('qr.title')}
           </strong>
-          <button type="button" className="k-icon-btn" aria-label="关闭扫码" onClick={onClose}>
+          <button type="button" className="k-icon-btn" aria-label={tr('qr.closeAria')} onClick={onClose}>
             <UiIcon name="close" size={20} />
           </button>
         </div>
@@ -122,16 +121,14 @@ export function QrScannerModal({
               <span className="k-qr-corner br" />
             </div>
           )}
-          {camState === 'starting' && <div className="k-qr-overlay-msg">正在开启摄像头…</div>}
-          {camState === 'unavailable' && (
-            <div className="k-qr-overlay-msg">
-              当前环境无法直接打开摄像头预览，请点击下方按钮拍照或从相册选择二维码图片
-            </div>
-          )}
+          {camState === 'starting' && <div className="k-qr-overlay-msg">{tr('qr.startingCamera')}</div>}
+          {camState === 'unavailable' && <div className="k-qr-overlay-msg">{tr('qr.cameraUnavailable')}</div>}
         </div>
 
         <p className="k-auth-hint" style={{ marginTop: 10 }}>
-          在引擎主机运行 <code>kesoku app pair</code>，将摄像头对准终端二维码即可自动填入并连接
+          {tr('qr.hintBefore')}
+          <code>kesoku app pair</code>
+          {tr('qr.hintAfter')}
         </p>
 
         {hint && (
@@ -149,10 +146,10 @@ export function QrScannerModal({
             onClick={() => void handlePickImage('camera')}
           >
             {picking === 'camera' ? (
-              '识别中…'
+              tr('qr.decoding')
             ) : (
               <>
-                <UiIcon name="camera" size={18} /> 拍照识别
+                <UiIcon name="camera" size={18} /> {tr('qr.takePhoto')}
               </>
             )}
           </button>
@@ -164,10 +161,10 @@ export function QrScannerModal({
             onClick={() => void handlePickImage('gallery')}
           >
             {picking === 'gallery' ? (
-              '识别中…'
+              tr('qr.decoding')
             ) : (
               <>
-                <UiIcon name="image" size={18} /> 从相册选择
+                <UiIcon name="image" size={18} /> {tr('qr.pickGallery')}
               </>
             )}
           </button>

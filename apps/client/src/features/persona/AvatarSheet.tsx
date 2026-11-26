@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { LIMITS, type AvatarStylePreset, type EngineToClientPayload } from '@kesoku/protocol';
-import { Sheet, UiIcon } from '@kesoku/ui';
+import { Sheet, UiIcon, useT } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { SOURCE_REUSE_MS, STYLE_PRESETS, STYLE_PRESET_LABELS, errorCode, sanitizePromptHint } from './model';
@@ -53,13 +53,14 @@ function Candidate({
   onSelect: () => void;
   onRetry: () => void;
 }) {
+  const t = useT();
   const entry = useStore((s) => s.media[placeholder]);
   const status = entry?.status ?? 'pending';
   if (status === 'failed') {
     return (
       <div className="ps-cand is-failed" data-testid="ps-cand">
         <button type="button" className="ps-cand-retry" onClick={onRetry}>
-          生成失败 · 重试
+          {t('avatar.candFailedRetry')}
         </button>
         <span className="ps-cand-no">#{index + 1}</span>
       </div>
@@ -67,7 +68,7 @@ function Candidate({
   }
   if (status !== 'ready' || !entry?.url) {
     return (
-      <div className="ps-cand is-pending" data-testid="ps-cand" aria-busy="true" aria-label={`候选 #${index + 1} 生成中`}>
+      <div className="ps-cand is-pending" data-testid="ps-cand" aria-busy="true" aria-label={t('avatar.candPendingAria', { n: index + 1 })}>
         <span className="ps-cand-pulse" />
         <span className="ps-cand-no">#{index + 1}</span>
       </div>
@@ -79,13 +80,13 @@ function Candidate({
       className={'ps-cand is-ready' + (selected ? ' is-picked' : '')}
       data-testid="ps-cand"
       aria-pressed={selected}
-      aria-label={`候选 #${index + 1}`}
+      aria-label={t('avatar.candAria', { n: index + 1 })}
       onClick={onSelect}
     >
-      <img src={entry.url} alt={`候选头像 #${index + 1}`} draggable={false} />
+      <img src={entry.url} alt={t('avatar.candAlt', { n: index + 1 })} draggable={false} />
       {selected && (
         <span className="ps-cand-check">
-          <UiIcon name="check" size={13} /> 已选中
+          <UiIcon name="check" size={13} /> {t('avatar.selected')}
         </span>
       )}
       <span className="ps-cand-no">#{index + 1}</span>
@@ -94,6 +95,7 @@ function Candidate({
 }
 
 function BatchThumb({ batch, n, active, onClick }: { batch: Batch; n: number; active: boolean; onClick: () => void }) {
+  const t = useT();
   const urls = useStore((s) => batch.placeholders.map((p) => (s.media[p]?.status === 'ready' ? s.media[p]?.url ?? '' : '')).join('\n'));
   const list = urls.split('\n');
   return (
@@ -101,7 +103,7 @@ function BatchThumb({ batch, n, active, onClick }: { batch: Batch; n: number; ac
       <span className="ps-hist-grid" aria-hidden>
         {list.map((u, i) => (u ? <img key={i} src={u} alt="" /> : <i key={i} />))}
       </span>
-      <span>第 {n} 批</span>
+      <span>{t('avatar.batchN', { n })}</span>
     </button>
   );
 }
@@ -126,6 +128,7 @@ export function AvatarSheet({
   /** The engine already keeps an original image for the target → generation needs no upload. */
   hasExistingSource?: boolean;
 }) {
+  const t = useT();
   const [style, setStyle] = useState<AvatarStylePreset>('anime_clean');
   const [hint, setHint] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -165,7 +168,7 @@ export function AvatarSheet({
       const r = await kesoku.upload(file, 'avatar_source');
       onSource({ object: r.object, preview: makePreviewUrl(file), at: Date.now() });
     } catch {
-      actions.toast('原图上传失败，请重试', 'error');
+      actions.toast(t('avatar.sourceUploadFailed'), 'error');
     } finally {
       setUploading(false);
     }
@@ -175,7 +178,7 @@ export function AvatarSheet({
     const freshNow = isFreshSource(source);
     const useExisting = !source && !!hasExistingSource;
     if ((!freshNow && !useExisting) || requesting) {
-      if (!freshNow && !useExisting) actions.toast(source && hasExistingSource ? '上传的原图已过期，请重新上传或使用默认原图' : '请先上传原图', 'error');
+      if (!freshNow && !useExisting) actions.toast(source && hasExistingSource ? t('avatar.sourceExpiredChoose') : t('avatar.uploadSourceFirst'), 'error');
       return;
     }
     const prompt_hint = sanitizePromptHint(hint, { trim: true });
@@ -202,12 +205,12 @@ export function AvatarSheet({
       setView(next.length - 1);
     } catch (e) {
       const code = errorCode(e);
-      if (code === 'RATE_LIMITED') actions.toast('生成太频繁，请稍后再试', 'error');
+      if (code === 'RATE_LIMITED') actions.toast(t('avatar.rateLimited'), 'error');
       else if (code === 'AVATAR_SOURCE_INVALID') {
-        actions.toast(freshNow ? '原图无效或已过期，请重新上传' : '默认原图不可用，请上传原图', 'error');
+        actions.toast(freshNow ? t('avatar.sourceInvalidReupload') : t('avatar.defaultSourceUnavailable'), 'error');
         onSource(null);
-      } else if (code === 'ENGINE_OFFLINE') actions.toast('引擎离线，无法生成', 'error');
-      else actions.toast('生成请求失败，请重试', 'error');
+      } else if (code === 'ENGINE_OFFLINE') actions.toast(t('avatar.engineOfflineGen'), 'error');
+      else actions.toast(t('avatar.genRequestFailed'), 'error');
     } finally {
       setRequesting(false);
     }
@@ -222,22 +225,22 @@ export function AvatarSheet({
         { job_id: pick.job_id, index: pick.index, target_type: target.type, target_id: target.id, register_reference: registerRef },
         { timeoutMs: 30_000 },
       );
-      actions.toast(target.type === 'user' ? '已应用为我的头像' : `已应用为「${target.name}」的头像`);
+      actions.toast(target.type === 'user' ? t('avatar.appliedUser') : t('avatar.appliedRole', { name: target.name }));
       onApplied?.(res?.avatar_rev);
       onClose();
     } catch (e) {
-      actions.toast(errorCode(e) === 'NOT_FOUND' ? '候选已过期，请重新生成' : '应用头像失败，请重试', 'error');
+      actions.toast(errorCode(e) === 'NOT_FOUND' ? t('avatar.candExpired') : t('avatar.applyFailed'), 'error');
     } finally {
       setApplying(false);
     }
   }
 
   const etaLeft = batch && !requesting ? Math.ceil((batch.startedAt + batch.eta_ms - now) / 1000) : 20;
-  const progress = etaLeft > 0 ? `生成中 · 约 ${etaLeft}s` : '生成中 · 即将完成';
-  const applyLabel = target.type === 'user' ? '应用为我的头像' : '应用为角色头像';
+  const progress = etaLeft > 0 ? t('avatar.generatingEta', { sec: etaLeft }) : t('avatar.generatingSoon');
+  const applyLabel = target.type === 'user' ? t('avatar.applyUserBtn') : t('avatar.applyRoleBtn');
 
   return (
-    <Sheet open onClose={onClose} title="头像二次 AI 风格化" className="ps-gen" height="full">
+    <Sheet open onClose={onClose} title={t('avatar.sheetTitle')} className="ps-gen" height="full">
       <div className="ps-gen-body">
         <section className="ps-gen-card">
           <div className="ps-gen-src-row">
@@ -245,30 +248,30 @@ export function AvatarSheet({
               <span className="ps-gen-src-thumb">
                 {usingExisting ? (
                   existingAvatarUrl ? (
-                    <img src={existingAvatarUrl} alt="当前原图" />
+                    <img src={existingAvatarUrl} alt={t('avatar.currentSource')} />
                   ) : (
                     <UiIcon name="check" size={24} />
                   )
                 ) : source?.preview ? (
-                  <img src={source.preview} alt="已上传原图" />
+                  <img src={source.preview} alt={t('avatar.uploadedSourceAlt')} />
                 ) : (
                   <UiIcon name={fresh ? 'check' : 'plus'} size={24} />
                 )}
-                <span className="ps-gen-src-tag">{usingExisting ? '当前原图' : '原图'}</span>
+                <span className="ps-gen-src-tag">{usingExisting ? t('avatar.currentSource') : t('avatar.sourceTag')}</span>
               </span>
-              <PickImageButton className="ps-link" onPick={(f) => void upload(f)} disabled={uploading} label="上传原图文件">
-                {uploading ? '上传中…' : source || usingExisting ? '更换原图' : '上传原图'}
+              <PickImageButton className="ps-link" onPick={(f) => void upload(f)} disabled={uploading} label={t('avatar.uploadSourceAria')}>
+                {uploading ? t('common.uploading') : source || usingExisting ? t('avatar.changeSource') : t('avatar.uploadSource')}
               </PickImageButton>
               {source && !fresh && hasExistingSource && (
                 <button type="button" className="ps-link" onClick={() => onSource(null)}>
-                  使用默认原图
+                  {t('avatar.useDefaultSource')}
                 </button>
               )}
             </div>
             <span className="ps-gen-arrow" aria-hidden>
               <UiIcon name="chevron-right" size={20} />
             </span>
-            <div className="ps-presets" role="radiogroup" aria-label="画风预设">
+            <div className="ps-presets" role="radiogroup" aria-label={t('avatar.stylePresetsAria')}>
               {STYLE_PRESETS.map((p) => (
                 <button
                   key={p}
@@ -285,15 +288,15 @@ export function AvatarSheet({
             </div>
           </div>
           {source && !fresh && (
-            <div className="ps-gen-warn">{hasExistingSource ? '上传的原图已超过 10 分钟，请重新上传或使用默认原图' : '原图已超过 10 分钟，请重新上传后再生成'}</div>
+            <div className="ps-gen-warn">{hasExistingSource ? t('avatar.sourceExpiredWarnExisting') : t('avatar.sourceExpiredWarn')}</div>
           )}
           <label className="ps-hint">
-            <span className="ps-hint-k">细节补充</span>
+            <span className="ps-hint-k">{t('avatar.detailHintLabel')}</span>
             <input
               value={hint}
               maxLength={LIMITS.PROMPT_HINT_MAX}
-              placeholder="可选，如：保留刘海特征，微侧头浅笑，柔和暖光"
-              aria-label="细节补充"
+              placeholder={t('avatar.detailHintPlaceholder')}
+              aria-label={t('avatar.detailHintLabel')}
               onChange={(e) => setHint(sanitizePromptHint(e.target.value))}
             />
             <span className="ps-count">{`${Array.from(hint).length}/${LIMITS.PROMPT_HINT_MAX}`}</span>
@@ -306,7 +309,7 @@ export function AvatarSheet({
             ) : (
               <>
                 <UiIcon name="spark" size={18} />
-                生成 4 张候选
+                {t('avatar.generateFour')}
               </>
             )}
           </button>
@@ -316,12 +319,12 @@ export function AvatarSheet({
           <section className="ps-gen-grid-wrap">
             <div className="ps-gen-head">
               <span className="ps-strong ps-icon-label">
-                <UiIcon name="spark" size={16} /> AI 候选头像 · 点击择一
+                <UiIcon name="spark" size={16} /> {t('avatar.candidatesHeading')}
               </span>
               <span className="ps-pill-mini">{presetLabel(batch.style)}</span>
               <button type="button" className="ps-link" disabled={!canGenerate || generating || uploading} onClick={() => void generate()}>
                 <UiIcon name="refresh" size={15} />
-                换一批
+                {t('avatar.regenerate')}
               </button>
             </div>
             <div className="ps-cand-grid">
@@ -336,9 +339,9 @@ export function AvatarSheet({
                 />
               ))}
             </div>
-            {allFailed && <div className="ps-gen-warn">全部生成失败 · 试试更换原图或画风</div>}
+            {allFailed && <div className="ps-gen-warn">{t('avatar.allFailed')}</div>}
             {batches.length > 1 && (
-              <div className="ps-hist-strip" aria-label="历史批次">
+              <div className="ps-hist-strip" aria-label={t('avatar.historyBatchesAria')}>
                 {batches.map((b, i) => (
                   <BatchThumb key={b.job_id} batch={b} n={i + 1} active={i === view} onClick={() => setView(i)} />
                 ))}
@@ -346,23 +349,23 @@ export function AvatarSheet({
             )}
           </section>
         ) : (
-          <div className="ps-gen-empty">{canGenerate ? '选择画风后生成 4 张候选 · 仅参考五官与发型，自动忽略道具、服饰与背景' : '① 上传原图 · ② 选画风 · ③ 生成 4 张候选'}</div>
+          <div className="ps-gen-empty">{canGenerate ? t('avatar.emptyReady') : t('avatar.emptySteps')}</div>
         )}
 
         <div className="ps-gen-toggle">
           <div>
-            <div className="ps-strong">同步为场景生图的锁脸参考</div>
-            <div className="ps-sub">后续场景插画将保持同一张脸</div>
+            <div className="ps-strong">{t('avatar.registerRefTitle')}</div>
+            <div className="ps-sub">{t('avatar.registerRefSub')}</div>
           </div>
-          <Switch checked={registerRef} onChange={setRegisterRef} label="同步为场景生图的锁脸参考" />
+          <Switch checked={registerRef} onChange={setRegisterRef} label={t('avatar.registerRefTitle')} />
         </div>
       </div>
       <div className="ps-dock ps-dock-sheet">
         <button type="button" className="ps-btn ps-btn-sec" onClick={onClose}>
-          取消
+          {t('common.cancel')}
         </button>
         <button type="button" className="ps-btn ps-btn-pri" disabled={!pickedReady || applying} onClick={() => void apply()}>
-          {applying ? '应用中…' : applyLabel}
+          {applying ? t('avatar.applying') : applyLabel}
         </button>
       </div>
     </Sheet>

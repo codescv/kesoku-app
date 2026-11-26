@@ -244,7 +244,7 @@ describe('session long-press & right-click edit menu (v0.1.17)', () => {
     render(<SessionPanel onNavigate={() => {}} />);
     fireEvent.contextMenu(rowOf('Discord 群聊').querySelector('.k-srow-main')!);
     expect((screen.getByTestId('session-action-delete') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText('外部渠道会话不可在 App 内删除')).toBeTruthy();
+    expect(screen.getByText('外部渠道会话不可在应用内删除')).toBeTruthy();
   });
 });
 

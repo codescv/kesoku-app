@@ -1,3 +1,4 @@
+import { useT } from '@kesoku/ui';
 import type { CardProps } from '../types';
 import { CardShell, Ja } from '../parts';
 import { arr, isObj, obj, pick, strList, type Dict } from '../util';
@@ -61,10 +62,11 @@ export function BreakdownBody({ data }: { data: Dict }) {
 }
 
 export function Breakdown({ data }: CardProps<Dict>) {
+  const t = useT();
   const d = obj(data);
   const source = pick(d, 'source', 'sentence', 'ja');
   return (
-    <CardShell kind="breakdown" head={<span className="kc-title kc-title-accent">🔍 语法拆解</span>}>
+    <CardShell kind="breakdown" head={<span className="kc-title kc-title-accent">{t('card.breakdownTitle')}</span>}>
       {source && (
         <div className="kc-bd-source">
           <Ja text={source} ruby={d.source_ruby ?? d.ruby} rubyParts={d.ruby_parts} />

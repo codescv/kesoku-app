@@ -1,6 +1,21 @@
 import { useEffect, useState } from 'react';
 import { MODEL_CATALOG, MODE_IDS, type Device, type EngineToClientPayload } from '@kesoku/protocol';
-import { ICON_STYLE_OPTIONS, ModeIcon, POLICY_BADGE, Segmented, UiIcon, modeMeta, setIconStyle, useIconStyle, type UiIconName } from '@kesoku/ui';
+import {
+  ModeIcon,
+  Segmented,
+  UiIcon,
+  formatLocaleDate,
+  formatLocaleDateTime,
+  getIconStyleOptions,
+  getPolicyBadge,
+  modeMeta,
+  setIconStyle,
+  useIconStyle,
+  useLocale,
+  useT,
+  type LanguageSetting,
+  type UiIconName,
+} from '@kesoku/ui';
 import { APP_VERSION, kesoku } from '../../lib/client';
 import { getPlatform } from '../../native/platform';
 import {
@@ -21,8 +36,9 @@ function save(patch: Partial<Settings>) {
   void kvSet('settings', useStore.getState().settings);
 }
 
-/** 翻译模式 · 母语 select + 常用外语 multi-select chips (at least one foreign language is always kept). */
+/** Translator mode native select + foreign multi-select chips (at least one foreign language is always kept). */
 export function TranslatorLangFields() {
+  const tr = useT();
   const settings = useStore((s) => s.settings);
   const { native_lang: native, foreign_langs: foreign } = translatorLangs(settings);
   const setNative = (code: string) => {
@@ -39,8 +55,8 @@ export function TranslatorLangFields() {
   return (
     <>
       <label className="k-kv">
-        <span>翻译母语</span>
-        <select aria-label="翻译母语" value={TRANSLATOR_LANGS.find((l) => isNativeLang(l.code, native))?.code ?? native} onChange={(e) => setNative(e.target.value)}>
+        <span>{tr('settings.translatorNativeLang')}</span>
+        <select aria-label={tr('settings.translatorNativeLang')} value={TRANSLATOR_LANGS.find((l) => isNativeLang(l.code, native))?.code ?? native} onChange={(e) => setNative(e.target.value)}>
           {TRANSLATOR_LANGS.map((l) => (
             <option key={l.code} value={l.code}>
               {l.label} · {l.name}
@@ -49,8 +65,8 @@ export function TranslatorLangFields() {
         </select>
       </label>
       <div className="k-kv k-kv-stack">
-        <span>常用外语</span>
-        <div className="k-lang-chips" role="group" aria-label="常用外语">
+        <span>{tr('settings.translatorForeignLangs')}</span>
+        <div className="k-lang-chips" role="group" aria-label={tr('settings.translatorForeignLangs')}>
           {TRANSLATOR_LANGS.filter((l) => !isNativeLang(l.code, native)).map((l) => {
             const on = foreign.some((c) => langKey(c) === langKey(l.code));
             return (
@@ -75,16 +91,19 @@ export function TranslatorLangFields() {
 
 const PREVIEW_MODES = ['chat', 'galgame', 'trpg', 'pokemon_assistant'] as const;
 
-/** 图标风格 picker with a live preview of each rendering. */
+/** Icon style picker with a live preview of each rendering. */
 export function IconStyleCard() {
+  const locale = useLocale();
+  const tr = useT();
   const current = useIconStyle();
+  const options = getIconStyleOptions(locale);
   return (
     <section className="k-set-card" aria-labelledby="k-iconstyle-title">
       <h2 id="k-iconstyle-title">
-        <UiIcon name="spark" size={20} /> 图标风格
+        <UiIcon name="spark" size={20} /> {tr('iconStyle.title')}
       </h2>
-      <div className="k-iconstyle-grid" role="radiogroup" aria-label="图标风格">
-        {ICON_STYLE_OPTIONS.map((o) => {
+      <div className="k-iconstyle-grid" role="radiogroup" aria-label={tr('iconStyle.title')}>
+        {options.map((o) => {
           const on = current === o.value;
           return (
             <button key={o.value} type="button" role="radio" aria-checked={on} className={'k-iconstyle' + (on ? ' is-on' : '')} data-style={o.value} onClick={() => setIconStyle(o.value)}>
@@ -114,21 +133,23 @@ function deviceIcon(d: Device): UiIconName {
 }
 
 export function MemoryPolicyCard() {
+  const locale = useLocale();
+  const tr = useT();
   const policies = useStore((s) => s.policies);
   const differs = MODE_IDS.some((m) => policies.policies[m] !== policies.defaults[m]);
   return (
     <section className="k-set-card" id="memory-policies">
       <div className="k-set-card-head">
         <h2>
-          <UiIcon name="brain" size={20} /> 记忆策略
+          <UiIcon name="brain" size={20} /> {tr('settings.memoryPolicy')}
         </h2>
         <button type="button" className="k-btn k-btn-sm k-btn-ghost" disabled={!differs} onClick={() => void kesoku.resetPolicies()}>
-          恢复默认
+          {tr('settings.resetDefaults')}
         </button>
       </div>
       <div className="k-policy-rows">
         {MODE_IDS.map((id) => {
-          const m = modeMeta(id);
+          const m = modeMeta(id, locale);
           return (
             <div key={id} className="k-policy-row" data-mode={id}>
               <span className="k-policy-mode">
@@ -140,17 +161,22 @@ export function MemoryPolicyCard() {
         })}
       </div>
       <div className="k-policy-legend">
-        {(['full', 'confirm_only', 'isolated'] as const).map((p) => (
-          <span key={p} className="k-pill k-pill-sm k-pill-neutral">
-            <UiIcon name={POLICY_BADGE[p].iconName} size={13} /> {POLICY_BADGE[p].label} = {POLICY_BADGE[p].explain}
-          </span>
-        ))}
+        {(['full', 'confirm_only', 'isolated'] as const).map((p) => {
+          const b = getPolicyBadge(p, locale);
+          return (
+            <span key={p} className="k-pill k-pill-sm k-pill-neutral">
+              <UiIcon name={b.iconName} size={13} /> {b.label} = {b.explain}
+            </span>
+          );
+        })}
       </div>
     </section>
   );
 }
 
 function Devices() {
+  const locale = useLocale();
+  const tr = useT();
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   const me = useStore((s) => s.conn.deviceId);
@@ -164,17 +190,17 @@ function Devices() {
   }, []);
   return (
     <div className="k-devices">
-      {devices === null && <div className="k-empty">载入设备列表…</div>}
+      {devices === null && <div className="k-empty">{tr('settings.loadingDevices')}</div>}
       {devices?.map((d) => (
         <div key={d.device_id} className={'k-device' + (d.revoked_at ? ' is-revoked' : '')}>
           <span className="k-device-main">
             <b>
               <UiIcon name={deviceIcon(d)} size={18} /> {d.name}
-              {(d.current || d.device_id === me) && <span className="k-pill k-pill-sm k-pill-primary">本机</span>}
+              {(d.current || d.device_id === me) && <span className="k-pill k-pill-sm k-pill-primary">{tr('settings.thisDevice')}</span>}
             </b>
             <small>
-              {d.platform ?? ''} · 绑定于 {new Date(d.created_at * 1000).toLocaleDateString('zh-CN')}
-              {d.revoked_at ? ' · 已撤销' : ''}
+              {d.platform ?? ''} · {tr('settings.boundOn', { date: formatLocaleDate(d.created_at * 1000, undefined, locale) })}
+              {d.revoked_at ? tr('settings.revokedTag') : ''}
             </small>
           </span>
           {!d.revoked_at &&
@@ -185,15 +211,15 @@ function Devices() {
                 onClick={() =>
                   void kesoku
                     .rpc('device.revoke', { device_id: d.device_id })
-                    .then(() => (actions.toast('已撤销'), setConfirm(null), load()))
-                    .catch(() => actions.toast('撤销失败', 'error'))
+                    .then(() => (actions.toast(tr('settings.revokedToast')), setConfirm(null), load()))
+                    .catch(() => actions.toast(tr('settings.revokeFailedToast'), 'error'))
                 }
               >
-                确认撤销
+                {tr('settings.confirmRevoke')}
               </button>
             ) : (
               <button type="button" className="k-btn k-btn-sm k-btn-danger-ghost" onClick={() => setConfirm(d.device_id)}>
-                撤销
+                {tr('settings.revoke')}
               </button>
             ))}
         </div>
@@ -243,8 +269,10 @@ export async function checkAndroidUpdate(currentVersion = APP_VERSION): Promise<
   };
 }
 
-/** Screen 14 · 安全配对与模型设置 */
+/** Screen 14 · Security pairing & settings */
 export function SettingsScreen({ onClose }: { onClose: () => void }) {
+  const locale = useLocale();
+  const tr = useT();
   const conn = useStore((s) => s.conn);
   const settings = useStore((s) => s.settings);
   const authKind = useStore((s) => s.authKind);
@@ -272,7 +300,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
       if (disposed || !ev.installerLaunched) return;
       setDownloadedApk((prev) => {
         const version = prev?.version ?? '';
-        setUpdateStatus(version ? `已下载 v${version}，正在调起系统安装…` : '正在调起系统安装…');
+        setUpdateStatus(version ? tr('settings.downloadedLaunching', { version }) : tr('settings.launchingInstaller'));
         return prev ? { ...prev, filePath: ev.filePath || prev.filePath, needsPermission: false } : prev;
       });
     }).then((h) => {
@@ -283,7 +311,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
       disposed = true;
       if (removeFn) void removeFn();
     };
-  }, [isAndroid]);
+  }, [isAndroid, tr]);
 
   const onCheckUpdate = async () => {
     if (checkingUpdate || downloadingUpdate) return;
@@ -294,8 +322,9 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
       res = await checkAndroidUpdate(APP_VERSION);
     } catch {
       setCheckingUpdate(false);
-      setUpdateStatus('检查更新失败，请检查网络连接');
-      actions.toast('检查更新失败，请检查网络连接', 'error');
+      const msg = tr('settings.checkUpdateFailed');
+      setUpdateStatus(msg);
+      actions.toast(msg, 'error');
       return;
     }
     setCheckingUpdate(false);
@@ -303,21 +332,26 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
     if (!res.hasUpdate) {
       setDownloadedApk(null);
       setDownloadPercent(null);
-      setUpdateStatus(`当前已是最新版本 (v${APP_VERSION})`);
-      actions.toast(`当前已是最新版本 (v${APP_VERSION})`);
+      const msg = tr('settings.alreadyLatest', { version: APP_VERSION });
+      setUpdateStatus(msg);
+      actions.toast(msg);
       return;
     }
 
     setDownloadingUpdate(true);
     setDownloadPercent(0);
     setDownloadedApk(null);
-    setUpdateStatus(`正在下载 v${res.latestVersion}…`);
-    actions.toast(`发现新版本 v${res.latestVersion}，正在自动下载…`);
+    setUpdateStatus(tr('settings.downloadingVersion', { version: res.latestVersion }));
+    actions.toast(tr('settings.foundNewVersion', { version: res.latestVersion }));
 
     const progressHandle = await onApkDownloadProgress((ev) => {
       const pct = typeof ev.percent === 'number' && ev.percent >= 0 ? Math.min(100, Math.round(ev.percent)) : -1;
       setDownloadPercent(pct >= 0 ? pct : null);
-      setUpdateStatus(pct >= 0 ? `正在下载 v${res.latestVersion} (${pct}%)…` : `正在下载 v${res.latestVersion}…`);
+      setUpdateStatus(
+        pct >= 0
+          ? tr('settings.downloadingVersionPercent', { version: res.latestVersion, pct })
+          : tr('settings.downloadingVersion', { version: res.latestVersion }),
+      );
     });
 
     try {
@@ -333,16 +367,18 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
         needsPermission,
       });
       if (needsPermission) {
-        setUpdateStatus('请开启「允许安装未知应用」权限以完成安装');
-        actions.toast('请开启「允许安装未知应用」权限以完成安装');
+        const msg = tr('settings.installPermissionNeeded');
+        setUpdateStatus(msg);
+        actions.toast(msg);
       } else {
-        setUpdateStatus(`已下载 v${res.latestVersion}，正在调起系统安装…`);
-        actions.toast(`已下载 v${res.latestVersion}，正在调起系统安装…`);
+        const msg = tr('settings.downloadedLaunching', { version: res.latestVersion });
+        setUpdateStatus(msg);
+        actions.toast(msg);
       }
     } catch {
       setDownloadPercent(null);
-      setUpdateStatus(`下载 v${res.latestVersion} 失败，请点击重试`);
-      actions.toast(`下载 v${res.latestVersion} 失败，请重试`, 'error');
+      setUpdateStatus(tr('settings.downloadFailedRetry', { version: res.latestVersion }));
+      actions.toast(tr('settings.downloadFailedToast', { version: res.latestVersion }), 'error');
     } finally {
       await progressHandle.remove().catch(() => {});
       setDownloadingUpdate(false);
@@ -356,14 +392,16 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
       const needsPermission = Boolean(res.needsPermission);
       setDownloadedApk((prev) => (prev ? { ...prev, needsPermission } : prev));
       if (needsPermission) {
-        setUpdateStatus('请开启「允许安装未知应用」权限以完成安装');
-        actions.toast('请开启「允许安装未知应用」权限以完成安装');
+        const msg = tr('settings.installPermissionNeeded');
+        setUpdateStatus(msg);
+        actions.toast(msg);
       } else {
-        setUpdateStatus(`已下载 v${downloadedApk.version}，正在调起系统安装…`);
+        setUpdateStatus(tr('settings.downloadedLaunching', { version: downloadedApk.version }));
       }
     } catch {
-      setUpdateStatus('调起系统安装失败，请重新检查更新');
-      actions.toast('调起系统安装失败，请重新检查更新', 'error');
+      const msg = tr('settings.launchInstallFailed');
+      setUpdateStatus(msg);
+      actions.toast(msg, 'error');
     }
   };
 
@@ -371,19 +409,21 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const status =
     conn.status === 'online'
       ? conn.engineOnline
-        ? `已连接${conn.latencyMs != null ? ` · ${conn.latencyMs}ms` : ''}`
-        : '离线'
+        ? conn.latencyMs != null
+          ? tr('settings.connectedLatency', { ms: conn.latencyMs })
+          : tr('settings.connected')
+        : tr('settings.offline')
       : conn.status === 'reconnecting'
-        ? `重连中 (${Math.round((conn.retryInMs ?? 0) / 1000)}s)`
-        : '离线';
+        ? tr('settings.reconnectingSec', { sec: Math.round((conn.retryInMs ?? 0) / 1000) })
+        : tr('settings.offline');
 
   return (
     <div className="k-screen k-settings">
       <header className="k-screen-head">
-        <button type="button" className="k-icon-btn" aria-label="返回" onClick={onClose}>
+        <button type="button" className="k-icon-btn" aria-label={tr('common.back')} onClick={onClose}>
           <UiIcon name="arrow-left" size={22} />
         </button>
-        <h1>设置</h1>
+        <h1>{tr('settings.title')}</h1>
       </header>
       <div className="k-screen-body">
         <section className="k-set-card k-conn-card" onClick={() => setShowConn((v) => !v)} role="button" tabIndex={0}>
@@ -393,34 +433,40 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
           </div>
           {showConn && (
             <div className="k-conn-detail">
-              <span>设备：{conn.deviceId ?? '—'}</span>
-              <span>当前会话 seq：{head ?? '—'}</span>
-              <span>引擎在线自：{conn.engineSince ? new Date(conn.engineSince * 1000).toLocaleString('zh-CN') : '—'}</span>
+              <span>{tr('settings.deviceLabel', { id: conn.deviceId ?? '—' })}</span>
+              <span>{tr('settings.sessionSeqLabel', { seq: head ?? '—' })}</span>
+              <span>
+                {tr('settings.engineSinceLabel', {
+                  time: conn.engineSince ? formatLocaleDateTime(conn.engineSince * 1000, undefined, locale) : '—',
+                })}
+              </span>
             </div>
           )}
         </section>
 
         <section className="k-set-card">
           <h2>
-            <UiIcon name="shield" size={20} /> 身份与设备
+            <UiIcon name="shield" size={20} /> {tr('settings.identityDevices')}
           </h2>
           {authKind === 'google' && email && (
             <div className="k-kv">
-              <span>Google 白名单</span>
+              <span>{tr('settings.googleAllowlist')}</span>
               <span className="k-pill k-pill-ok k-pill-sm">{email}</span>
             </div>
           )}
           <Devices />
           <button type="button" className="k-btn k-btn-ghost k-btn-block" onClick={() => setPairHelp((v) => !v)}>
-            <UiIcon name="qr" size={18} /> 配对新设备
+            <UiIcon name="qr" size={18} /> {tr('settings.pairNewDevice')}
           </button>
           {pairHelp && (
             <ol className="k-pair-help">
               <li>
-                在引擎主机终端运行 <code>kesoku app pair --name "我的设备"</code>
+                {tr('settings.pairStep1Before')}
+                <code>kesoku app pair --name &quot;My Device&quot;</code>
+                {tr('settings.pairStep1After')}
               </li>
-              <li>2 分钟内在新设备上输入显示的 6 位码</li>
-              <li>连续 5 次输错该码即作废，需重新生成</li>
+              <li>{tr('settings.pairStep2')}</li>
+              <li>{tr('settings.pairStep3')}</li>
             </ol>
           )}
           {confirmLogout ? (
@@ -434,21 +480,21 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
                 useStore.setState({ auth: 'needed' });
               }}
             >
-              确认退出登录（本机需重新配对）
+              {tr('settings.confirmLogout')}
             </button>
           ) : (
             <button type="button" className="k-btn k-btn-danger-ghost k-btn-block" onClick={() => setConfirmLogout(true)}>
-              退出登录
+              {tr('settings.logout')}
             </button>
           )}
         </section>
 
         <section className="k-set-card">
           <h2>
-            <UiIcon name="spark" size={20} /> 模型与思考深度
+            <UiIcon name="spark" size={20} /> {tr('settings.modelSection')}
           </h2>
           <label className="k-kv">
-            <span>默认模型</span>
+            <span>{tr('settings.defaultModel')}</span>
             <select
               value={settings.defaultModel.model_name}
               onChange={(e) => {
@@ -464,7 +510,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
             </select>
           </label>
           <label className="k-kv">
-            <span>通用翻译极速模型</span>
+            <span>{tr('settings.translatorModel')}</span>
             <select value={settings.translatorModel} onChange={(e) => save({ translatorModel: e.target.value })}>
               {MODEL_CATALOG.map((m) => (
                 <option key={m.model_name} value={m.model_name}>
@@ -477,32 +523,47 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
 
         <section className="k-set-card">
           <h2>
-            <UiIcon name="palette" size={20} /> 外观
+            <UiIcon name="palette" size={20} /> {tr('settings.appearance')}
           </h2>
-          <div className="k-kv">
-            <span>主题</span>
-            <Segmented
-              ariaLabel="主题"
+          <div className="k-kv k-kv-stack" data-testid="settings-language-row">
+            <span>{tr('settings.language')}</span>
+            <Segmented<LanguageSetting>
+              ariaLabel={tr('settings.language')}
               size="sm"
-              value={settings.theme}
-              onChange={(v) => save({ theme: v })}
+              value={settings.language}
+              onChange={(v) => save({ language: v })}
               options={[
-                { value: 'system', label: '跟随系统' },
-                { value: 'light', label: '浅色' },
-                { value: 'dark', label: '深色' },
+                { value: 'system', label: tr('settings.followSystem') },
+                { value: 'zh-CN', label: '中文' },
+                { value: 'en', label: 'English' },
+                { value: 'ja', label: '日本語' },
               ]}
             />
           </div>
           <div className="k-kv">
-            <span>字号</span>
+            <span>{tr('settings.theme')}</span>
             <Segmented
-              ariaLabel="字号"
+              ariaLabel={tr('settings.theme')}
+              size="sm"
+              value={settings.theme}
+              onChange={(v) => save({ theme: v })}
+              options={[
+                { value: 'system', label: tr('settings.followSystem') },
+                { value: 'light', label: tr('settings.themeLight') },
+                { value: 'dark', label: tr('settings.themeDark') },
+              ]}
+            />
+          </div>
+          <div className="k-kv">
+            <span>{tr('settings.fontSize')}</span>
+            <Segmented
+              ariaLabel={tr('settings.fontSize')}
               size="sm"
               value={settings.fontSize}
               onChange={(v) => save({ fontSize: v })}
               options={[
-                { value: 'standard', label: '标准' },
-                { value: 'large', label: '大' },
+                { value: 'standard', label: tr('settings.fontStandard') },
+                { value: 'large', label: tr('settings.fontLarge') },
               ]}
             />
           </div>
@@ -512,7 +573,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
 
         <section className="k-set-card">
           <div className="k-kv is-disabled">
-            <span>版本</span>
+            <span>{tr('settings.version')}</span>
             <b>Kesoku v{APP_VERSION}</b>
           </div>
           {isAndroid && (
@@ -526,12 +587,12 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
               >
                 <UiIcon name="refresh" size={18} />
                 {checkingUpdate
-                  ? '检查更新中…'
+                  ? tr('settings.checkingUpdate')
                   : downloadingUpdate
                     ? downloadPercent != null
-                      ? `正在下载 (${downloadPercent}%)…`
-                      : '正在下载更新…'
-                    : '检查更新'}
+                      ? tr('settings.downloadingPercent', { pct: downloadPercent })
+                      : tr('settings.downloadingUpdate')
+                    : tr('settings.checkUpdate')}
               </button>
               {downloadingUpdate && downloadPercent != null && (
                 <div className="k-update-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={downloadPercent}>
@@ -551,8 +612,8 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
                   onClick={() => void onInstallCachedApk()}
                 >
                   {downloadedApk.needsPermission
-                    ? `继续安装 v${downloadedApk.version}`
-                    : `安装 v${downloadedApk.version}`}
+                    ? tr('settings.continueInstall', { version: downloadedApk.version })
+                    : tr('settings.installVersion', { version: downloadedApk.version })}
                 </button>
               )}
             </div>

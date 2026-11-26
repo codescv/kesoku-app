@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useT } from '@kesoku/ui';
 import type { CardProps } from '../types';
 import { CardShell, Ja } from '../parts';
 import { BreakdownBody } from './Breakdown';
@@ -48,6 +49,7 @@ export function TranslationShow({ data }: { data: Dict }) {
 
 /** Translator result card (Screen 09): zero persona — source (ruby) + big bold target + action row. */
 export function Translation({ data, ctx }: CardProps<Dict>) {
+  const t = useT();
   const d = obj(data);
   const source = pick(d, 'source', 'src', 'original');
   const target = pick(d, 'target', 'translation', 'dst');
@@ -62,7 +64,7 @@ export function Translation({ data, ctx }: CardProps<Dict>) {
 
   const onBreakdown = () => {
     if (hasBreakdown) setBdOpen((o) => !o);
-    else if (source) ctx.sendText(`语法拆解：${source}`);
+    else if (source) ctx.sendText(t('card.breakdownPrompt', { source }));
   };
 
   return (
@@ -117,16 +119,16 @@ export function Translation({ data, ctx }: CardProps<Dict>) {
       )}
       <div className="kc-actions">
         <button type="button" className="kc-btn" onClick={() => ctx.copy(target)} disabled={!target}>
-          📋 复制
+          {t('card.copyBtn')}
         </button>
         <button type="button" className="kc-btn kc-btn-primary" onClick={() => ctx.speak(target, speechLang(dstLang, target))} disabled={!target}>
-          ▶ 朗读
+          {t('card.speakBtn')}
         </button>
         <button type="button" className="kc-btn" onClick={() => ctx.openFullscreen(<TranslationShow data={d} />)} disabled={!target}>
-          ⛶ 全屏出示
+          {t('card.fullscreenShow')}
         </button>
         <button type="button" className="kc-btn" aria-expanded={hasBreakdown ? bdOpen : undefined} onClick={onBreakdown} disabled={!source}>
-          语法拆解 {hasBreakdown && bdOpen ? '▴' : '▾'}
+          {t('card.breakdownBtn')} {hasBreakdown && bdOpen ? '▴' : '▾'}
         </button>
       </div>
       {hasBreakdown && bdOpen && (

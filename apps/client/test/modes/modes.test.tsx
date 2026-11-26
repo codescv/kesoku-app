@@ -175,7 +175,7 @@ describe('GalgameStage', () => {
     fireEvent.click(screen.getByRole('button', { name: '返回气泡流' }));
     expect(props.onExit).toHaveBeenCalled();
     fireEvent.click(screen.getByText('你好'));
-    expect(screen.getByText('中文 ▸')).toBeTruthy();
+    expect(screen.getByText('译文 ▸')).toBeTruthy();
     fireEvent.click(screen.getByText(/记忆：确认/));
     fireEvent.click(screen.getByRole('radio', { name: '忽略' }));
     expect(props.onPolicyChange).toHaveBeenCalledWith('isolated');

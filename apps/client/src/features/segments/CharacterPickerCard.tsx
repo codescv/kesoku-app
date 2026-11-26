@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChoiceItem, QuestionSegment } from '@kesoku/protocol';
-import { UiIcon } from '@kesoku/ui';
+import { UiIcon, useT } from '@kesoku/ui';
 import type { CardContext } from '../cards/types';
 import { actions, useStore } from '../../lib/store';
 import { overlays } from '../session/overlays';
@@ -83,6 +83,7 @@ interface CharacterCardProps {
 }
 
 function CharacterCard({ item, ctx, selected, dim, disabled, multi, onSelect }: CharacterCardProps) {
+  const t = useT();
   const label = item.name || item.value;
   const { url, failed, onImgError } = usePortraitUrl(item.avatar, ctx);
   const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
@@ -124,7 +125,7 @@ function CharacterCard({ item, ctx, selected, dim, disabled, multi, onSelect }: 
         <button
           type="button"
           className="k-cpick-zoom"
-          aria-label={`查看 ${label} 大图`}
+          aria-label={t('seg.zoomCharacterAria', { label })}
           onClick={(e) => {
             e.stopPropagation();
             overlays.image(url);
@@ -154,6 +155,7 @@ export interface CharacterPickerCardProps {
  * (e.g. "🎲 再帮我想 8 个不同的候选") render as secondary pills and submit in one tap while nothing is selected.
  */
 export function CharacterPickerCard({ seg, qid, ctx, onPick, disabled, variant = 'list' }: CharacterPickerCardProps) {
+  const t = useT();
   const [sel, setSel] = useState<string[]>([]);
   useEffect(() => setSel([]), [qid]);
   const items = seg.choice_items ?? [];
@@ -188,11 +190,11 @@ export function CharacterPickerCard({ seg, qid, ctx, onPick, disabled, variant =
   }
 
   return (
-    <div className={'k-cpick' + (variant === 'stage' ? ' is-stage' : '')} data-testid="character-picker" role="group" aria-label={seg.prompt || '选择角色'}>
+    <div className={'k-cpick' + (variant === 'stage' ? ' is-stage' : '')} data-testid="character-picker" role="group" aria-label={seg.prompt || t('seg.chooseCharacter')}>
       <div className="k-cpick-head">
-        <div className="k-cpick-prompt">{seg.prompt ? renderInline(seg.prompt, 'cpp') : '选择角色'}</div>
+        <div className="k-cpick-prompt">{seg.prompt ? renderInline(seg.prompt, 'cpp') : t('seg.chooseCharacter')}</div>
         <span className="k-cpick-status" data-testid="cpick-status">
-          {multi ? `已选 ${sel.length}${capLabel}` : '单选'}
+          {multi ? t('seg.selectedCount', { count: sel.length, cap: capLabel }) : t('seg.singleSelect')}
         </span>
       </div>
       <div className="k-cpick-grid">
@@ -238,11 +240,11 @@ export function CharacterPickerCard({ seg, qid, ctx, onPick, disabled, variant =
         <div className="k-cpick-bar">
           {sel.length > 0 && (
             <button type="button" className="k-cpick-clear" onClick={() => setSel([])}>
-              清空
+              {t('common.clear')}
             </button>
           )}
           <button type="button" className="k-cpick-confirm" disabled={sel.length === 0} onClick={() => onPick(qid, sel)}>
-            {`确认选择 (${sel.length}${capLabel})`}
+            {t('seg.confirmSelection', { count: sel.length, cap: capLabel })}
           </button>
         </div>
       )}

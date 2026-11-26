@@ -5,6 +5,11 @@ import { alignRuby, fromRubySpec, parseRubyNotation, partsToPlain, resolveRubyPa
 import { RubyText } from '../src/RubyText';
 import { VoicePill } from '../src/VoicePill';
 import { Segmented } from '../src/primitives';
+import { setUiLanguage } from '../src';
+import { beforeAll as __beforeAll, afterAll as __afterAll } from 'vitest';
+
+__beforeAll(() => setUiLanguage('zh-CN'));
+__afterAll(() => setUiLanguage('system'));
 
 afterEach(() => cleanup());
 

@@ -36,15 +36,15 @@ describe('v0.1.21+ · version & mobile small-screen (< 768px) UI optimizations',
   });
 
   it('modelShortLabel formats compact model + thinking level labels across all catalog entries', () => {
-    expect(modelShortLabel(null)).toBe('Neon · L');
-    expect(modelShortLabel(undefined)).toBe('Neon · L');
-    expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-4-neon', thinking_level: 'low', stream: true })).toBe('Neon · L');
-    expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-4-hydrogen', thinking_level: 'minimal', stream: true })).toBe('Hydrogen · Min');
-    expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-3.5-flash-lite', thinking_level: 'low', stream: true })).toBe('Lite · L');
-    expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-4-carbon', thinking_level: 'medium', stream: true })).toBe('Carbon · M');
-    expect(modelShortLabel({ llm: 'claude', model_name: 'claude-sonnet-5-5', thinking_level: 'medium', stream: true })).toBe('Sonnet · M');
-    expect(modelShortLabel({ llm: 'claude', model_name: 'claude-opus-5-5', thinking_level: 'high', stream: true })).toBe('Opus · H');
-    expect(modelLabel({ llm: 'gemini', model_name: 'gemini-4-neon', thinking_level: 'low', stream: true })).toBe('Neon · Low');
+    expect(modelShortLabel(null)).toBe('Neon · 低');
+    expect(modelShortLabel(undefined)).toBe('Neon · 低');
+    expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-4-neon', thinking_level: 'low', stream: true })).toBe('Neon · 低');
+    expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-4-hydrogen', thinking_level: 'minimal', stream: true })).toBe('Hydrogen · 极简');
+    expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-3.5-flash-lite', thinking_level: 'low', stream: true })).toBe('Lite · 低');
+    expect(modelShortLabel({ llm: 'gemini', model_name: 'gemini-4-carbon', thinking_level: 'medium', stream: true })).toBe('Carbon · 中');
+    expect(modelShortLabel({ llm: 'claude', model_name: 'claude-sonnet-5-5', thinking_level: 'medium', stream: true })).toBe('Sonnet · 中');
+    expect(modelShortLabel({ llm: 'claude', model_name: 'claude-opus-5-5', thinking_level: 'high', stream: true })).toBe('Opus · 高');
+    expect(modelLabel({ llm: 'gemini', model_name: 'gemini-4-neon', thinking_level: 'low', stream: true })).toBe('Neon · 低');
   });
 
   it('ModelCapsule renders both .k-model-text-full and .k-model-text-short', () => {
@@ -55,9 +55,9 @@ describe('v0.1.21+ · version & mobile small-screen (< 768px) UI optimizations',
     });
     render(<ModelCapsule sessionId="s1" />);
     const btn = screen.getByRole('button', { name: '模型与思考档位' });
-    expect(btn.querySelector('.k-model-text-full')?.textContent).toBe('Neon · Medium');
+    expect(btn.querySelector('.k-model-text-full')?.textContent).toBe('Neon · 中');
     const shortEl = btn.querySelector('.k-model-text-short');
-    expect(shortEl?.textContent).toBe('Neon · M');
+    expect(shortEl?.textContent).toBe('Neon · 中');
     expect(shortEl?.getAttribute('aria-hidden')).toBe('true');
   });
 

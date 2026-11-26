@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { BilingualSegment, LexToken } from '@kesoku/protocol';
-import { RubyText, VoicePill, resolveRubyParts, type RubyPart } from '@kesoku/ui';
+import { RubyText, VoicePill, resolveRubyParts, useT, type RubyPart } from '@kesoku/ui';
 import { useStore } from '../../lib/store';
 import { Markdown } from './Markdown';
 
@@ -246,8 +246,9 @@ export interface BilingualCardProps {
 }
 
 export function LexCard({ token, onClose }: { token: LexToken; onClose?: () => void }) {
+  const t = useT();
   return (
-    <div className="k-lex" role="region" aria-label="词汇与语法拆解">
+    <div className="k-lex" role="region" aria-label={t('seg.lexAria')}>
       <div className="k-lex-head">
         <span className="k-lex-surface" lang="ja">
           {token.surface}
@@ -259,7 +260,7 @@ export function LexCard({ token, onClose }: { token: LexToken; onClose?: () => v
         )}
         {token.pos && <span className="k-pill k-pill-accent k-pill-sm">{token.pos}</span>}
         {onClose && (
-          <button type="button" className="k-lex-close" aria-label="收起" onClick={onClose}>
+          <button type="button" className="k-lex-close" aria-label={t('common.collapse')} onClick={onClose}>
             ✕
           </button>
         )}
@@ -268,23 +269,23 @@ export function LexCard({ token, onClose }: { token: LexToken; onClose?: () => v
       <div className="k-lex-grid">
         {token.lemma && (
           <span>
-            <b>原形</b> <span lang="ja">{token.lemma}</span>
+            <b>{t('seg.lemma')}</b> <span lang="ja">{token.lemma}</span>
           </span>
         )}
         {token.conj && (
           <span>
-            <b>变形</b> {token.conj}
+            <b>{t('seg.conj')}</b> {token.conj}
           </span>
         )}
       </div>
       {(token.textbook || token.colloquial) && (
         <div className="k-lex-dual">
           <div className="k-lex-col is-book">
-            <span className="k-lex-tag">📘 教科书体</span>
+            <span className="k-lex-tag">{t('seg.textbook')}</span>
             <span lang="ja">{token.textbook ?? '—'}</span>
           </div>
           <div className="k-lex-col is-live">
-            <span className="k-lex-tag">🔥 口语约音</span>
+            <span className="k-lex-tag">{t('seg.colloquial')}</span>
             <span lang="ja">{token.colloquial ?? '—'}</span>
           </div>
         </div>
@@ -315,6 +316,7 @@ function zhWithBreaks(zh: string): ReactNode {
 
 /** Integrated bilingual card: real <ruby>, tap-to-play ▶ (never autoplay), tap-to-toggle 中文, tap-any-word breakdown. */
 export function BilingualCard({ seg, resolveVoice, explain, onWord, compact, inlineLex = true, preloadVoice }: BilingualCardProps) {
+  const t = useT();
   const entry = useStore(
     (s) =>
       (seg.voice?.placeholder_id ? s.media[seg.voice.placeholder_id] : undefined) ??
@@ -416,7 +418,7 @@ export function BilingualCard({ seg, resolveVoice, explain, onWord, compact, inl
       {lex && inlineLex && (
         <div onClick={(e) => e.stopPropagation()}>
           <LexCard token={lex} onClose={() => (setActiveAt(null), setLex(null))} />
-          {loading && <div className="k-lex-loading">精讲生成中…</div>}
+          {loading && <div className="k-lex-loading">{t('seg.lexLoading')}</div>}
         </div>
       )}
     </div>

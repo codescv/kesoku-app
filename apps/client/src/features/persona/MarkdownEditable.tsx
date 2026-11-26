@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { UiIcon } from '@kesoku/ui';
+import { UiIcon, useT } from '@kesoku/ui';
 import { Markdown } from '../segments/Markdown';
 
 export interface MarkdownEditableProps {
@@ -38,6 +38,7 @@ export function MarkdownEditable({
   resetKey,
   className,
 }: MarkdownEditableProps) {
+  const t = useT();
   const [editing, setEditing] = useState(Boolean(defaultEditing));
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const focusNext = useRef(false);
@@ -72,11 +73,11 @@ export function MarkdownEditable({
           {actions}
           {show ? (
             <button type="button" className="k-btn k-btn-sm k-btn-ghost ps-md-toggle" onClick={() => setEditing(false)} disabled={!!invalid}>
-              <UiIcon name="check" size={14} /> 完成预览
+              <UiIcon name="check" size={14} /> {t('common.donePreview')}
             </button>
           ) : (
             <button type="button" className="k-btn k-btn-sm k-btn-ghost ps-md-toggle" onClick={startEdit}>
-              <UiIcon name="edit" size={14} /> 编辑
+              <UiIcon name="edit" size={14} /> {t('common.edit')}
             </button>
           )}
         </span>
@@ -98,8 +99,8 @@ export function MarkdownEditable({
           className="ps-md-preview"
           role="button"
           tabIndex={0}
-          aria-label={ariaLabel ? `${ariaLabel}（点击编辑）` : '点击编辑'}
-          title="点击编辑"
+          aria-label={ariaLabel ? t('common.clickToEditWithLabel', { label: ariaLabel }) : t('common.clickToEdit')}
+          title={t('common.clickToEdit')}
           onClick={(e) => {
             // Let links inside the rendered Markdown work without entering edit mode.
             if ((e.target as HTMLElement).closest('a')) return;
@@ -116,7 +117,7 @@ export function MarkdownEditable({
         </div>
       ) : (
         <button type="button" className="ps-md-empty" onClick={startEdit}>
-          {placeholder || '点击输入内容…'}
+          {placeholder || t('common.clickToInput')}
         </button>
       )}
     </div>

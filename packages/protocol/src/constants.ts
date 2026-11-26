@@ -35,9 +35,9 @@ export const DEFAULT_MEMORY_POLICIES: Readonly<Record<ModeId, MemoryPolicy>> = O
 });
 
 export const MEMORY_POLICY_LABELS: Readonly<Record<MemoryPolicy, string>> = Object.freeze({
-  full: '自动',
-  confirm_only: '确认',
-  isolated: '忽略',
+  full: 'Auto',
+  confirm_only: 'Confirm',
+  isolated: 'Ignore',
 });
 
 export const PROPOSAL_STATUSES = ['pending', 'applied', 'dismissed', 'expired'] as const;

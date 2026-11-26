@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { Sheet, UiIcon } from '@kesoku/ui';
+import { Sheet, UiIcon, useT } from '@kesoku/ui';
 import { checkAvatarFile } from './model';
 import { actions } from '../../lib/store';
 
@@ -44,6 +44,7 @@ export function PickImageButton({
   disabled?: boolean;
   label?: string;
 }) {
+  const t = useT();
   const ref = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -55,7 +56,7 @@ export function PickImageButton({
         type="file"
         accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
         className="ps-file"
-        aria-label={label ?? '选择图片'}
+        aria-label={label ?? t('persona.pickImageAria')}
         tabIndex={-1}
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -110,6 +111,7 @@ const OUT = 1024;
  * center-crops on its side).
  */
 export function CropSheet({ file, onCancel, onConfirm }: { file: File; onCancel: () => void; onConfirm: (blob: File) => void }) {
+  const t = useT();
   const url = useObjectUrl(file);
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
   const [broken, setBroken] = useState(false);
@@ -157,7 +159,7 @@ export function CropSheet({ file, onCancel, onConfirm }: { file: File; onCancel:
   }
 
   return (
-    <Sheet open onClose={onCancel} title="裁切头像 · 1:1" className="ps-crop">
+    <Sheet open onClose={onCancel} title={t('persona.cropTitle')} className="ps-crop">
       <div className="ps-crop-body">
         <div
           className="ps-crop-view"
@@ -172,7 +174,7 @@ export function CropSheet({ file, onCancel, onConfirm }: { file: File; onCancel:
             <img
               ref={imgRef}
               src={url}
-              alt="裁切预览"
+              alt={t('persona.cropPreviewAlt')}
               draggable={false}
               onLoad={(e) => setNat({ w: e.currentTarget.naturalWidth || VIEW, h: e.currentTarget.naturalHeight || VIEW })}
               onError={() => setBroken(true)}
@@ -187,12 +189,12 @@ export function CropSheet({ file, onCancel, onConfirm }: { file: File; onCancel:
               }
             />
           ) : (
-            <span className="ps-crop-na">无法预览此格式 · 将按中心裁切</span>
+            <span className="ps-crop-na">{t('persona.cropUnavailable')}</span>
           )}
           <span className="ps-crop-ring" aria-hidden />
         </div>
         <label className="ps-crop-zoom">
-          <span>缩放</span>
+          <span>{t('persona.zoom')}</span>
           <input
             type="range"
             min={1}
@@ -209,11 +211,11 @@ export function CropSheet({ file, onCancel, onConfirm }: { file: File; onCancel:
         </label>
         <div className="ps-dock ps-dock-inline">
           <button type="button" className="ps-btn ps-btn-sec" onClick={onCancel}>
-            取消
+            {t('common.cancel')}
           </button>
           <button type="button" className="ps-btn ps-btn-pri" onClick={() => void confirm()}>
             <UiIcon name="check" size={18} />
-            使用此图
+            {t('persona.usePhoto')}
           </button>
         </div>
       </div>

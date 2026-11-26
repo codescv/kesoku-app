@@ -1,9 +1,11 @@
+import { useT } from '@kesoku/ui';
 import type { CardProps } from '../types';
 import { CardShell, PhotoTag } from '../parts';
 import { cardMedia, obj, photoNumber, pick, useImageUrl, type Dict } from '../util';
 
-/** Direction big-text card (`问路大字卡`): same persona-free, voice-free template as the order card. */
+/** Direction big-text card: same persona-free, voice-free template as the order card. */
 export function DirectionCardBody({ data, ctx, fullscreen }: CardProps<Dict> & { fullscreen?: boolean }) {
+  const t = useT();
   const d = obj(data);
   const line = pick(d, 'text_local', 'destination_local', 'line_local', 'local', 'text');
   const address = pick(d, 'address_local', 'address');
@@ -20,7 +22,7 @@ export function DirectionCardBody({ data, ctx, fullscreen }: CardProps<Dict> & {
         </div>
       )}
       {mapRef && (
-        <div className="kc-show-map">{mapUrl ? <img src={mapUrl} alt="地图" draggable={false} /> : <div className="kc-locator-empty">{mapUrl === undefined ? '地图加载中…' : '地图不可用'}</div>}</div>
+        <div className="kc-show-map">{mapUrl ? <img src={mapUrl} alt={t('card.mapAlt')} draggable={false} /> : <div className="kc-locator-empty">{mapUrl === undefined ? t('card.mapLoading') : t('card.mapUnavailable')}</div>}</div>
       )}
       <PhotoTag n={photoNumber(d.photo_index)} bbox={d.bbox} position={pick(d, 'position')} data={d} ctx={ctx} />
     </div>
@@ -28,15 +30,16 @@ export function DirectionCardBody({ data, ctx, fullscreen }: CardProps<Dict> & {
 }
 
 export function DirectionCard({ data, ctx }: CardProps<Dict>) {
+  const t = useT();
   return (
     <CardShell
       kind="direction_card"
       className="kc-showcard"
       head={
         <>
-          <span className="kc-badge kc-badge-ink">🧭 问路大字卡</span>
+          <span className="kc-badge kc-badge-ink">{t('card.directionTitle')}</span>
           <button type="button" className="kc-btn kc-btn-ink" onClick={() => ctx.openFullscreen(<DirectionCardBody data={data} ctx={ctx} fullscreen />)}>
-            ⛶ 全屏出示
+            {t('card.fullscreenShow')}
           </button>
         </>
       }

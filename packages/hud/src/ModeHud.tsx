@@ -1,6 +1,6 @@
 import { Component, useEffect, useState, type CSSProperties, type ErrorInfo, type ReactNode } from 'react';
 import type { MemoryPolicy, ModeId } from '@kesoku/protocol';
-import { ModeIcon, ProgressBar, UiIcon } from '@kesoku/ui';
+import { ModeIcon, ProgressBar, UiIcon, t, useT, type MessageKey } from '@kesoku/ui';
 import { detectActiveMode, normalizeModeId, type GameInstance } from './activeMode';
 import { PolicyBadge } from './PolicyBadge';
 import { arr, entries, file, label, labels, num, obj, str, type Obj } from './safe';
@@ -170,6 +170,7 @@ function clockText(v: unknown): string | undefined {
 
 /** Galgame scene pills, also reused by the Galgame stage's top glass row. */
 export function SceneChips({ scene, glass }: { scene: unknown; glass?: boolean }) {
+  const tr = useT();
   const sc = obj(scene);
   const marks = timedMarks(sc);
   const soonest = marks.reduce<number | null>((acc, m) => (m.expiresAt === undefined ? acc : acc === null ? m.expiresAt : Math.min(acc, m.expiresAt)), null);
@@ -193,9 +194,9 @@ export function SceneChips({ scene, glass }: { scene: unknown; glass?: boolean }
           tail = formatRemaining(left);
         } else if (m.turns !== undefined) {
           if (m.turns <= 0) return null;
-          tail = `剩余${m.turns}轮`;
+          tail = tr('hud.remainingTurns', { n: m.turns });
         } else if (m.until) {
-          tail = `至 ${clockText(m.until) ?? m.until}`;
+          tail = tr('hud.untilTime', { time: clockText(m.until) ?? m.until });
         }
         return (
           <Chip key={m.key} tone="danger" className={['k-hud-mark', tone].filter(Boolean).join(' ')}>
@@ -239,13 +240,14 @@ export function mistakesCount(stateFiles: Record<string, unknown>): number | und
 }
 
 function LessonHud({ stateFiles, badge, onOpenPanel }: HudCtx) {
+  const tr = useT();
   const lesson = file(stateFiles, 'game/lesson.json');
   const book = str(lesson?.book);
   const no = num(lesson?.lesson);
   const total = arr(lesson?.segments).length || num(lesson?.total_segments) || 0;
   const idx = num(lesson?.segment_index) ?? 0;
   const pos = total ? Math.max(1, Math.min(total, Math.floor(idx) + 1)) : 0;
-  const head = [book, no ? `第${no}课` : str(lesson?.title)].filter(Boolean).join(' ');
+  const head = [book, no ? tr('hud.lessonNo', { no }) : str(lesson?.title)].filter(Boolean).join(' ');
   const count = mistakesCount(stateFiles);
   return (
     <Row badge={badge}>
@@ -257,7 +259,7 @@ function LessonHud({ stateFiles, badge, onOpenPanel }: HudCtx) {
       <Chip tone="danger" onClick={() => onOpenPanel('mistakes')} className={'k-hud-mistakes' + (count !== undefined ? ' has-count' : '')}>
         <UiIcon name="book" size={15} />
         <span>
-          <span className="k-hud-mistakes-label">错题</span>
+          <span className="k-hud-mistakes-label">{tr('hud.mistakes')}</span>
           {count !== undefined ? ` ${count}` : ''}
         </span>
       </Chip>
@@ -266,9 +268,10 @@ function LessonHud({ stateFiles, badge, onOpenPanel }: HudCtx) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// travel_companion · 🛡️ 已启用忌口
+// travel_companion · 🛡️ dietary enabled
 
 function TravelHud({ stateFiles, badge, onOpenPanel, instance }: HudCtx) {
+  const tr = useT();
   const travel = file(stateFiles, 'game/travel.json');
   const dietary = labels(travel?.dietary ?? slot(instance, 'dietary'));
   const city = label(travel?.city ?? slot(instance, 'city'));
@@ -276,9 +279,9 @@ function TravelHud({ stateFiles, badge, onOpenPanel, instance }: HudCtx) {
   return (
     <Row badge={badge}>
       {dietary.length > 0 && (
-        <Chip tone="primary" onClick={() => onOpenPanel('memory')} className="k-hud-dietary" title="记忆库 · 个人档案">
+        <Chip tone="primary" onClick={() => onOpenPanel('memory')} className="k-hud-dietary" title={tr('hud.dietaryTitle')}>
           <UiIcon name="shield" size={15} />
-          <span className="k-hud-ellipsis">已启用忌口：{dietary.join(' · ')}</span>
+          <span className="k-hud-ellipsis">{tr('hud.dietaryEnabled', { list: dietary.join(' · ') })}</span>
         </Chip>
       )}
       {city && (
@@ -290,7 +293,7 @@ function TravelHud({ stateFiles, badge, onOpenPanel, instance }: HudCtx) {
       {order.length > 0 && (
         <Chip tone="mode" onClick={() => onOpenPanel('travel')}>
           <UiIcon name="receipt" size={15} />
-          <span>点单 {order.length}</span>
+          <span>{tr('hud.orderCount', { n: order.length })}</span>
         </Chip>
       )}
     </Row>
@@ -309,21 +312,32 @@ export interface TranslatorLang {
   name: string;
 }
 
-/** Translator language catalog (母语 / 常用外语 pickers, HUD pills). */
+function liveLang(code: string, name: string): TranslatorLang {
+  const key = `tlang.${code}` as MessageKey;
+  return Object.freeze({
+    code,
+    get label() {
+      return t(key);
+    },
+    name,
+  });
+}
+
+/** Translator language catalog (native / foreign language pickers, HUD pills). */
 export const TRANSLATOR_LANGS: ReadonlyArray<TranslatorLang> = Object.freeze([
-  { code: 'zh-CN', label: '简中', name: '简体中文' },
-  { code: 'zh-TW', label: '繁中', name: '繁體中文' },
-  { code: 'ja', label: '日语', name: '日本語' },
-  { code: 'en', label: '英语', name: 'English' },
-  { code: 'ko', label: '韩语', name: '한국어' },
-  { code: 'fr', label: '法语', name: 'Français' },
-  { code: 'de', label: '德语', name: 'Deutsch' },
-  { code: 'es', label: '西语', name: 'Español' },
-  { code: 'ru', label: '俄语', name: 'Русский' },
-  { code: 'th', label: '泰语', name: 'ไทย' },
-  { code: 'vi', label: '越南语', name: 'Tiếng Việt' },
-  { code: 'it', label: '意语', name: 'Italiano' },
-  { code: 'pt', label: '葡语', name: 'Português' },
+  liveLang('zh-CN', '简体中文'),
+  liveLang('zh-TW', '繁體中文'),
+  liveLang('ja', '日本語'),
+  liveLang('en', 'English'),
+  liveLang('ko', '한국어'),
+  liveLang('fr', 'Français'),
+  liveLang('de', 'Deutsch'),
+  liveLang('es', 'Español'),
+  liveLang('ru', 'Русский'),
+  liveLang('th', 'ไทย'),
+  liveLang('vi', 'Tiếng Việt'),
+  liveLang('it', 'Italiano'),
+  liveLang('pt', 'Português'),
 ]);
 export const DEFAULT_NATIVE_LANG = 'zh-CN';
 export const DEFAULT_FOREIGN_LANGS: readonly string[] = Object.freeze(['ja', 'en', 'ko']);
@@ -416,13 +430,14 @@ export function resolveTranslatorPair(
   return { nativeLang, foreignLangs, src, dst, foreign, formality };
 }
 
-const FORMALITIES = [
-  { id: 'polite', label: '礼貌敬体' },
-  { id: 'casual', label: '自然口语' },
-] as const;
+const FORMALITIES: ReadonlyArray<{ id: 'polite' | 'casual'; key: MessageKey }> = [
+  { id: 'polite', key: 'hud.formalityPolite' },
+  { id: 'casual', key: 'hud.formalityCasual' },
+];
 
-/** Inline 母语 · 常用外语 · 语体 configurator (opened from the translator HUD's 语言设置 button). */
+/** Inline native / foreign / formality configurator (opened from the translator HUD's language button). */
 function TranslatorLangSettings({ pair, onPrefsChange }: { pair: TranslatorPair; onPrefsChange(p: Record<string, unknown>): void }) {
+  const tr = useT();
   const { nativeLang, foreignLangs, foreign } = pair;
   const setNative = (code: string) => {
     if (isNativeLang(code, nativeLang)) return;
@@ -442,10 +457,10 @@ function TranslatorLangSettings({ pair, onPrefsChange }: { pair: TranslatorPair;
     onPrefsChange(patch);
   };
   return (
-    <div className="k-hud-langcfg" role="region" aria-label="翻译语言设置">
+    <div className="k-hud-langcfg" role="region" aria-label={tr('hud.translatorSettingsAria')}>
       <label className="k-hud-langcfg-row">
-        <span className="k-hud-langcfg-k">母语</span>
-        <select aria-label="母语" value={TRANSLATOR_LANGS.find((l) => isNativeLang(l.code, nativeLang))?.code ?? nativeLang} onChange={(e) => setNative(e.target.value)}>
+        <span className="k-hud-langcfg-k">{tr('hud.nativeLang')}</span>
+        <select aria-label={tr('hud.nativeLang')} value={TRANSLATOR_LANGS.find((l) => isNativeLang(l.code, nativeLang))?.code ?? nativeLang} onChange={(e) => setNative(e.target.value)}>
           {TRANSLATOR_LANGS.map((l) => (
             <option key={l.code} value={l.code}>
               {l.label} · {l.name}
@@ -453,8 +468,8 @@ function TranslatorLangSettings({ pair, onPrefsChange }: { pair: TranslatorPair;
           ))}
         </select>
       </label>
-      <div className="k-hud-langcfg-row" role="group" aria-label="常用外语">
-        <span className="k-hud-langcfg-k">常用外语</span>
+      <div className="k-hud-langcfg-row" role="group" aria-label={tr('hud.foreignLangs')}>
+        <span className="k-hud-langcfg-k">{tr('hud.foreignLangs')}</span>
         <span className="k-hud-langcfg-chips">
           {TRANSLATOR_LANGS.filter((l) => !isNativeLang(l.code, nativeLang)).map((l) => {
             const on = foreignLangs.some((c) => langKey(c) === langKey(l.code));
@@ -464,7 +479,7 @@ function TranslatorLangSettings({ pair, onPrefsChange }: { pair: TranslatorPair;
                 type="button"
                 className={'k-hud-quick is-sm' + (on ? ' is-on' : '')}
                 aria-pressed={on}
-                aria-label={`常用外语 ${l.label}`}
+                aria-label={tr('hud.foreignLangAria', { label: l.label })}
                 title={l.name}
                 onClick={() => toggleForeign(l.code)}
               >
@@ -474,8 +489,8 @@ function TranslatorLangSettings({ pair, onPrefsChange }: { pair: TranslatorPair;
           })}
         </span>
       </div>
-      <div className="k-hud-langcfg-row" role="group" aria-label="语体">
-        <span className="k-hud-langcfg-k">语体</span>
+      <div className="k-hud-langcfg-row" role="group" aria-label={tr('hud.formality')}>
+        <span className="k-hud-langcfg-k">{tr('hud.formality')}</span>
         <span className="k-hud-langcfg-chips">
           {FORMALITIES.map((f) => (
             <button
@@ -485,7 +500,7 @@ function TranslatorLangSettings({ pair, onPrefsChange }: { pair: TranslatorPair;
               aria-pressed={pair.formality === f.id}
               onClick={() => onPrefsChange({ formality: f.id })}
             >
-              {f.label}
+              {tr(f.key)}
             </button>
           ))}
         </span>
@@ -495,6 +510,7 @@ function TranslatorLangSettings({ pair, onPrefsChange }: { pair: TranslatorPair;
 }
 
 function TranslatorHud({ stateFiles, modePrefs, badge, onPrefsChange, instance }: HudCtx) {
+  const tr = useT();
   const [cfgOpen, setCfgOpen] = useState(false);
   const pair = resolveTranslatorPair(modePrefs, stateFiles, instance);
   const { nativeLang, foreignLangs, src, dst, foreign } = pair;
@@ -503,17 +519,17 @@ function TranslatorHud({ stateFiles, modePrefs, badge, onPrefsChange, instance }
     else if (isNativeLang(src, nativeLang)) onPrefsChange({ src_lang: src, dst_lang: code });
     else onPrefsChange({ src_lang: code, dst_lang: nativeLang });
   };
-  // The active foreign language always has a pill, even when it is not one of the user's 常用外语.
+  // The active foreign language always has a pill, even when it is not one of the user's foreign languages.
   const pills = foreignLangs.some((c) => langKey(c) === langKey(foreign)) || isNativeLang(foreign, nativeLang) ? foreignLangs : [...foreignLangs, foreign];
   return (
     <>
       <Row badge={badge}>
-        <span className="k-hud-pair" role="group" aria-label="语言对">
+        <span className="k-hud-pair" role="group" aria-label={tr('hud.langPairAria')}>
           <span className="k-hud-pair-lang">{langLabel(src)}</span>
           <button
             type="button"
             className="k-hud-swap"
-            aria-label="互换语言"
+            aria-label={tr('hud.swapLangAria')}
             onClick={() => onPrefsChange({ src_lang: dst, dst_lang: src })}
           >
             <UiIcon name="swap" size={16} />
@@ -534,12 +550,12 @@ function TranslatorHud({ stateFiles, modePrefs, badge, onPrefsChange, instance }
         <button
           type="button"
           className={'k-hud-quick k-hud-langbtn' + (cfgOpen ? ' is-on' : '')}
-          aria-label="语言设置"
+          aria-label={tr('hud.langSettingsAria')}
           aria-expanded={cfgOpen}
-          title={`母语 ${langLabel(nativeLang)} · 常用外语`}
+          title={tr('hud.langSettingsTitle', { native: langLabel(nativeLang) })}
           onClick={() => setCfgOpen((v) => !v)}
         >
-          <UiIcon name="globe" size={15} /> 母语·外语
+          <UiIcon name="globe" size={15} /> {tr('hud.langSettingsBtn')}
         </button>
       </Row>
       {cfgOpen && <TranslatorLangSettings pair={pair} onPrefsChange={onPrefsChange} />}
@@ -592,14 +608,18 @@ export function squad(party: Obj | undefined): { members: Fighter[]; enemies: Fi
 const COMBO_FIELD_ROLES = new Set(['player', 'active', 'support']);
 const COMBO_DEFAULT_COST = 2;
 const COMBO_DEFAULT_MAX = 3;
-const COMBO_STATUS_LABEL: Record<string, string> = { exposed: '破绽', staggered: '失衡', weakened: '受制' };
+const COMBO_STATUS_KEYS: Record<string, MessageKey> = {
+  exposed: 'hud.comboStatus.exposed',
+  staggered: 'hud.comboStatus.staggered',
+  weakened: 'hud.comboStatus.weakened',
+};
 
 export interface ComboInfo {
   name: string;
   members: string[];
   cost: number;
   type: string;
-  /** Effect summary, e.g. `2d8+4 · 失衡` / `治疗 2d6+2`. */
+  /** Effect summary, e.g. `2d8+4 · Staggered` / `Heal 2d6+2`. */
   tail: string;
   fx?: string;
   state: 'ready' | 'need' | 'missing';
@@ -618,7 +638,8 @@ export function comboGauge(party: Obj | undefined): { value: number; max: number
 function comboTail(c: Obj): string {
   const status = str(c.status);
   const heal = str(c.heal);
-  return [str(c.dmg), c.aoe === true ? '群体' : '', status ? (COMBO_STATUS_LABEL[status.toLowerCase()] ?? status) : '', heal ? `治疗 ${heal}` : '']
+  const statusKey = status ? COMBO_STATUS_KEYS[status.toLowerCase()] : undefined;
+  return [str(c.dmg), c.aoe === true ? t('hud.comboAoe') : '', status ? (statusKey ? t(statusKey) : status) : '', heal ? t('hud.comboHeal', { val: heal }) : '']
     .filter(Boolean)
     .join(' · ');
 }
@@ -667,6 +688,7 @@ export function trpgPhase(stateFiles: Record<string, unknown> | undefined): stri
 }
 
 function TrpgHud({ stateFiles, badge, onOpenPanel, instance, inspectorVisible }: HudCtx) {
+  const tr = useT();
   const world = label(slot(instance, 'world'));
   const scenario = label(slot(instance, 'scenario')) ?? label(slot(instance, 'chapter'));
   const phase = (label(slot(instance, 'phase')) ?? '').trim().toLowerCase();
@@ -677,7 +699,7 @@ function TrpgHud({ stateFiles, badge, onOpenPanel, instance, inspectorVisible }:
   const gauge = comboGauge(party);
   const readyCount = partyCombos(party).filter((c) => c.state === 'ready').length;
   // Always one compact row: no live HP strip. Full HP / stats / equipment live in the party panel —
-  // the desktop right sidebar shows it permanently; elsewhere a small 小队 button opens it on demand.
+  // the desktop right sidebar shows it permanently; elsewhere a small Party button opens it on demand.
   return (
     <Row badge={badge}>
       {(world || scenario) && (
@@ -687,11 +709,11 @@ function TrpgHud({ stateFiles, badge, onOpenPanel, instance, inspectorVisible }:
         </Chip>
       )}
       {!inspectorVisible && (
-        <Chip tone="primary" className="k-hud-party-btn" onClick={() => onOpenPanel('party')} title="查看小队血量与装备" testId="trpg-party-btn">
+        <Chip tone="primary" className="k-hud-party-btn" onClick={() => onOpenPanel('party')} title={tr('hud.partyBtnTitle')} testId="trpg-party-btn">
           <UiIcon name="shield" size={14} />
-          <span className="k-hud-party-label">{members.length > 0 ? `小队 (${members.length})` : '小队·装备'}</span>
+          <span className="k-hud-party-label">{members.length > 0 ? tr('hud.partyCount', { n: members.length }) : tr('hud.partyEquip')}</span>
           {showEnemies && (
-            <span className="k-hud-party-enemy" aria-label={`${enemies.length} 个敌人`} data-testid="trpg-party-enemies">
+            <span className="k-hud-party-enemy" aria-label={tr('hud.enemyCountAria', { n: enemies.length })} data-testid="trpg-party-enemies">
               <UiIcon name="target" size={12} />
               <span className="k-hud-num">{enemies.length}</span>
             </span>
@@ -699,7 +721,11 @@ function TrpgHud({ stateFiles, badge, onOpenPanel, instance, inspectorVisible }:
           {(gauge.value > 0 || showEnemies) && (
             <span
               className={'k-hud-party-combo' + (readyCount > 0 ? ' is-ready' : '')}
-              aria-label={`连携槽 ${gauge.value}/${gauge.max}` + (readyCount > 0 ? `，${readyCount} 个合体技可发动` : '')}
+              aria-label={
+                readyCount > 0
+                  ? tr('hud.comboGaugeReadyAria', { value: gauge.value, max: gauge.max, ready: readyCount })
+                  : tr('hud.comboGaugeAria', { value: gauge.value, max: gauge.max })
+              }
               data-testid="trpg-party-combo"
             >
               <span className="k-hud-num">
@@ -717,7 +743,14 @@ function TrpgHud({ stateFiles, badge, onOpenPanel, instance, inspectorVisible }:
 // pokemon_assistant · version switcher + pinned chip
 
 export type GameVersion = 'sv' | 'za';
-export const VERSION_LABELS: Readonly<Record<GameVersion, string>> = Object.freeze({ sv: '朱／紫 SV', za: '传说 Z-A' });
+export const VERSION_LABELS: Readonly<Record<GameVersion, string>> = Object.freeze({
+  get sv() {
+    return t('pkmn.ver.sv');
+  },
+  get za() {
+    return t('pkmn.ver.za');
+  },
+});
 
 export function resolveGameVersion(modePrefs: Record<string, unknown> | undefined, stateFiles: Record<string, unknown>): GameVersion {
   const raw = (str(modePrefs?.game_version) ?? str(file(stateFiles, 'game/pokemon.json')?.game_version) ?? 'sv').toLowerCase();
@@ -731,6 +764,7 @@ function pinnedName(modePrefs: Record<string, unknown> | undefined, stateFiles: 
 }
 
 function PokemonHud({ stateFiles, modePrefs, badge, onPrefsChange, onOpenPanel }: HudCtx) {
+  const tr = useT();
   const [open, setOpen] = useState(false);
   const version = resolveGameVersion(modePrefs, stateFiles);
   const pinned = pinnedName(modePrefs, stateFiles);
@@ -742,7 +776,7 @@ function PokemonHud({ stateFiles, modePrefs, badge, onPrefsChange, onOpenPanel }
           className={`k-hud-ver is-${version}`}
           aria-haspopup="true"
           aria-expanded={open}
-          aria-label={`作品版本：${VERSION_LABELS[version]}`}
+          aria-label={tr('hud.gameVersionAria', { label: VERSION_LABELS[version] })}
           onClick={() => setOpen((o) => !o)}
         >
           {VERSION_LABELS[version]}
@@ -751,7 +785,7 @@ function PokemonHud({ stateFiles, modePrefs, badge, onPrefsChange, onOpenPanel }
           </span>
         </button>
         {open && (
-          <span className="k-hud-ver-pop" role="group" aria-label="切换作品版本">
+          <span className="k-hud-ver-pop" role="group" aria-label={tr('hud.switchGameVersionAria')}>
             {(Object.keys(VERSION_LABELS) as GameVersion[]).map((v) => (
               <button
                 key={v}
@@ -771,10 +805,10 @@ function PokemonHud({ stateFiles, modePrefs, badge, onPrefsChange, onOpenPanel }
       </span>
       {pinned && (
         <span className="k-hud-pin">
-          <button type="button" className="k-hud-pin-body" onClick={() => onOpenPanel('dex')} title="展开图鉴">
+          <button type="button" className="k-hud-pin-body" onClick={() => onOpenPanel('dex')} title={tr('hud.openDexTitle')}>
             <UiIcon name="pin" size={14} /> {pinned}
           </button>
-          <button type="button" className="k-hud-pin-x" aria-label={`解除锁定 ${pinned}`} onClick={() => onPrefsChange({ pinned_context: null })}>
+          <button type="button" className="k-hud-pin-x" aria-label={tr('hud.unpinAria', { name: pinned })} onClick={() => onPrefsChange({ pinned_context: null })}>
             <UiIcon name="close" size={13} />
           </button>
         </span>
@@ -784,13 +818,14 @@ function PokemonHud({ stateFiles, modePrefs, badge, onPrefsChange, onOpenPanel }
 }
 
 // ---------------------------------------------------------------------------------------------
-// story_theater · 📖 chapter (片段 i/n) + 🎭 定妆表 (N)
+// story_theater · 📖 chapter + 🎭 cast sheet
 
 function StoryHud({ stateFiles, badge, onOpenPanel, instance }: HudCtx) {
+  const tr = useT();
   const src = file(stateFiles, 'game/source.json');
   const book = str(src?.book_title) ?? label(slot(instance, 'book')) ?? str(instance?.title);
   const chapterNo = num(src?.chapter_idx) ?? num(slot(instance, 'chapter'));
-  const chapter = str(src?.chapter_title) ?? (chapterNo ? `第${chapterNo}回` : undefined);
+  const chapter = str(src?.chapter_title) ?? (chapterNo ? tr('hud.chapterNo', { no: chapterNo }) : undefined);
   const chunks = arr(src?.chunks).length || num(src?.total_chunks) || 0;
   const ci = num(src?.chunk_index) ?? 0;
   const pos = chunks ? Math.max(1, Math.min(chunks, Math.floor(ci) + 1)) : 0;
@@ -804,7 +839,7 @@ function StoryHud({ stateFiles, badge, onOpenPanel, instance }: HudCtx) {
         <span className="k-hud-chapter">
           <span className="k-hud-ellipsis">
             <UiIcon name="book" size={14} /> {head}
-            {chunks ? <b className="k-hud-num"> (片段 {pos}/{chunks})</b> : null}
+            {chunks ? <b className="k-hud-num">{tr('hud.chunkProgress', { pos, total: chunks })}</b> : null}
           </span>
           {chunks > 0 && (
             <span className="k-hud-chapter-bar">
@@ -815,7 +850,10 @@ function StoryHud({ stateFiles, badge, onOpenPanel, instance }: HudCtx) {
       )}
       <Chip tone="mode" onClick={() => onOpenPanel('roster')} className="k-hud-roster">
         <ModeIcon mode="story_theater" size={15} styleVariant="line" color="currentColor" />
-        <span>定妆表{rosterN !== undefined ? ` (${rosterN})` : ''}</span>
+        <span>
+          {tr('hud.roster')}
+          {rosterN !== undefined ? ` (${rosterN})` : ''}
+        </span>
       </Chip>
     </Row>
   );
@@ -854,6 +892,7 @@ class HudBoundary extends Component<{ fallback: ReactNode; resetKey: unknown; ch
  * the rest is driven purely by `$STAGING_DIR/game/*.json` state files and per-session mode prefs.
  */
 export function ModeHud(props: ModeHudProps) {
+  const tr = useT();
   const { modeId, stateFiles, policy, onPolicyChange } = props;
   if (!modeId || modeId === 'chat') return null;
   const files = stateFiles && typeof stateFiles === 'object' ? stateFiles : {};
@@ -870,7 +909,7 @@ export function ModeHud(props: ModeHudProps) {
     <section
       className="k-hud"
       data-mode={modeId}
-      aria-label="模式状态"
+      aria-label={tr('hud.ariaLabel')}
       style={{ '--mode': `var(--m-${modeId})` } as CSSProperties}
     >
       <HudBoundary fallback={fallback} resetKey={files}>

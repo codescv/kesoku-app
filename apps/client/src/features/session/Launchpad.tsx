@@ -1,19 +1,19 @@
 import { useMemo, useRef, useState } from 'react';
 import type { MemoryPolicy, ModeId, PersonaSummary } from '@kesoku/protocol';
-import { Avatar, MODE_LIST, ModeIcon, POLICY_BADGE, Sheet, UiIcon, type ModeMeta } from '@kesoku/ui';
+import { Avatar, ModeIcon, Sheet, UiIcon, formatLocaleDateTime, getModeList, getPolicyBadge, modeMeta, useLocale, useT, type ModeMeta } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { PolicySegmented } from '../memory/PolicySegmented';
 import { useAvatarUrl } from '../persona/avatar';
 import { fallbackRoleId, roleAvatarRef, roleFallbackName, sortRoles } from '../persona/model';
 
-const MODEL_LABEL: Record<string, string> = { 'gemini-4-neon': 'Neon · Low' };
-
 function ModeTile({ m, onOpen, onInfo }: { m: ModeMeta; onOpen: () => void; onInfo: () => void }) {
+  const locale = useLocale();
+  const t = useT();
   const policy = useStore((s) => s.policies.policies[m.id]) as MemoryPolicy | undefined;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const long = useRef(false);
-  const b = POLICY_BADGE[policy ?? 'confirm_only'];
+  const b = getPolicyBadge(policy ?? 'confirm_only', locale);
   return (
     <button
       type="button"
@@ -40,7 +40,7 @@ function ModeTile({ m, onOpen, onInfo }: { m: ModeMeta; onOpen: () => void; onIn
           <ModeIcon mode={m.id} size={26} />
         </span>
         {m.badge && <span className="k-mode-badge">{m.badge}</span>}
-        <span className="k-mode-policy" title={`记忆：${b.label}`}>
+        <span className="k-mode-policy" title={t('policy.badgePrefix', { label: b.label })}>
           <UiIcon name={b.iconName} size={13} /> {b.label}
         </span>
       </span>
@@ -57,8 +57,9 @@ function RoleAvatar({ role, size }: { role: PersonaSummary; size: number }) {
 
 /** Horizontal role pills: the picked role starts the mode / new session. */
 function RolePills({ roles, activeRoleId, onPick, testId }: { roles: PersonaSummary[]; activeRoleId: string; onPick: (r: PersonaSummary) => void; testId?: string }) {
+  const t = useT();
   return (
-    <div className="k-launch-roles" role="radiogroup" aria-label="选择对话角色" data-testid={testId}>
+    <div className="k-launch-roles" role="radiogroup" aria-label={t('launchpad.chooseRole')} data-testid={testId}>
       {roles.map((r) => {
         const on = r.role_id === activeRoleId;
         return (
@@ -85,7 +86,11 @@ function RolePills({ roles, activeRoleId, onPick, testId }: { roles: PersonaSumm
 
 /** Screen 01 · 8-grid mode launchpad (new session). */
 export function Launchpad() {
-  const [info, setInfo] = useState<ModeMeta | null>(null);
+  const locale = useLocale();
+  const t = useT();
+  const [infoId, setInfoId] = useState<ModeId | null>(null);
+  const modes = useMemo(() => getModeList(locale), [locale]);
+  const info = infoId ? modeMeta(infoId, locale) : null;
   const sessions = useStore((s) => s.sessions);
   const recent = Object.values(sessions)
     .filter((x) => (x.chatbot_id ?? 'app') === 'app')
@@ -103,25 +108,26 @@ export function Launchpad() {
   const pickRole = (r: PersonaSummary) => {
     actions.setUi({ draftRole: r.role_id });
     if (currentSessionId && sessions[currentSessionId]?.role !== r.role_id) {
-      void kesoku.setRole(currentSessionId, r.role_id).catch(() => actions.toast('切换角色失败', 'error'));
+      void kesoku.setRole(currentSessionId, r.role_id).catch(() => actions.toast(t('topbar.switchRoleFailed'), 'error'));
     }
   };
   const start = (id: ModeId) => void kesoku.startMode(id, { role: activeRoleId });
+  const defaultModelLabel = (model: string) => (model === 'gemini-4-neon' ? `Neon · ${t('thinking.low')}` : model);
   return (
     <div className="k-launchpad">
       <div className="k-launch-head">
-        <h1>想做点什么？</h1>
-        <span className="k-launch-hint">点选模式开始 · 长按查看说明与记忆策略 · 或直接在下方打字</span>
+        <h1>{t('launchpad.heading')}</h1>
+        <span className="k-launch-hint">{t('launchpad.hint')}</span>
       </div>
       {roleList.length > 0 && (
-        <section className="k-launch-rolebar" aria-label="对话角色">
-          <span className="k-launch-rolebar-label">{currentSessionId ? '对话角色' : '选择对话角色'}</span>
+        <section className="k-launch-rolebar" aria-label={t('launchpad.roleBarAria')}>
+          <span className="k-launch-rolebar-label">{currentSessionId ? t('launchpad.roleLabel') : t('launchpad.chooseRole')}</span>
           <RolePills roles={roleList} activeRoleId={activeRoleId} onPick={pickRole} testId="launchpad-role-picker" />
         </section>
       )}
       <div className="k-mode-grid">
-        {MODE_LIST.map((m) => (
-          <ModeTile key={m.id} m={m} onOpen={() => start(m.id)} onInfo={() => setInfo(m)} />
+        {modes.map((m) => (
+          <ModeTile key={m.id} m={m} onOpen={() => start(m.id)} onInfo={() => setInfoId(m.id)} />
         ))}
       </div>
       {recent.length > 0 && (
@@ -129,14 +135,16 @@ export function Launchpad() {
           {recent.map((s) => (
             <button key={s.session_id} type="button" className="k-resume-row" onClick={() => void kesoku.openSession(s.session_id)}>
               <span className="k-resume-title">
-                <UiIcon name="refresh" size={14} /> {s.title || '未命名会话'}
+                <UiIcon name="refresh" size={14} /> {s.title || t('launchpad.untitledSession')}
               </span>
-              <span className="k-resume-meta">{new Date(s.updated_at * 1000).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+              <span className="k-resume-meta">
+                {formatLocaleDateTime(s.updated_at * 1000, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }, locale)}
+              </span>
             </button>
           ))}
         </div>
       )}
-      <Sheet open={!!info} onClose={() => setInfo(null)} title={
+      <Sheet open={!!info} onClose={() => setInfoId(null)} title={
           info ? (
             <span className="k-ico-label">
               <ModeIcon mode={info.id} size={22} /> {info.title}
@@ -149,17 +157,17 @@ export function Launchpad() {
           <div className="k-mode-info">
             <p className="k-mode-info-sub">{info.subtitle}</p>
             <div className="k-kv">
-              <span>默认模型</span>
-              <b>{info.defaultModel ? MODEL_LABEL[info.defaultModel] ?? info.defaultModel : '跟随顶栏模型胶囊'}</b>
+              <span>{t('launchpad.defaultModel')}</span>
+              <b>{info.defaultModel ? defaultModelLabel(info.defaultModel) : t('launchpad.followTopbarModel')}</b>
             </div>
             {roleList.length > 0 && (
               <div className="k-kv k-kv-col">
-                <span>对话角色</span>
+                <span>{t('launchpad.roleLabel')}</span>
                 <RolePills roles={roleList} activeRoleId={activeRoleId} onPick={pickRole} />
               </div>
             )}
             <div className="k-kv k-kv-col">
-              <span>当前模式记忆</span>
+              <span>{t('launchpad.currentModeMemory')}</span>
               <PolicySegmented modeId={info.id as ModeId} value={policy} />
             </div>
             <button
@@ -167,11 +175,11 @@ export function Launchpad() {
               className="k-btn k-btn-primary k-btn-block"
               onClick={() => {
                 const id = info.id as ModeId;
-                setInfo(null);
+                setInfoId(null);
                 start(id);
               }}
             >
-              使用「{activeRoleName}」进入{info.title}
+              {t('launchpad.enterModeWithRole', { role: activeRoleName, mode: info.title })}
             </button>
           </div>
         )}

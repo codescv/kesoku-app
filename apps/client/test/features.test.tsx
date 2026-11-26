@@ -64,7 +64,7 @@ describe('Settings · 各模式记忆策略', () => {
   it('policy summary lists deviations', () => {
     const d = Object.fromEntries(MODE_IDS.map((m) => [m, m === 'chat' ? 'full' : 'confirm_only']));
     expect(policySummary(d, d)).toContain('默认：日常聊天[自动]');
-    expect(policySummary({ ...d, galgame: 'isolated', jp_classroom: 'full' }, d)).toBe('约会 Galgame[忽略] · 日语小课堂[自动]');
+    expect(policySummary({ ...d, galgame: 'isolated', jp_classroom: 'full' }, d)).toBe('恋爱物语[忽略] · 日语小课堂[自动]');
   });
 });
 
@@ -128,7 +128,7 @@ describe('Launchpad & Composer', () => {
     expect(tiles).toHaveLength(8);
     expect(screen.getByLabelText('宝可梦助手').textContent).toContain('朱紫 / Z-A');
     expect(screen.getByLabelText('日常聊天').textContent).toContain('自动');
-    expect(screen.getByLabelText('约会 Galgame').textContent).toContain('确认');
+    expect(screen.getByLabelText('恋爱物语').textContent).toContain('确认');
     expect(document.querySelector('[role="tablist"].k-bottom-tabs, nav.k-tabbar')).toBeNull();
   });
 

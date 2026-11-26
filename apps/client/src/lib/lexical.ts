@@ -1,4 +1,5 @@
 import type { EngineToClientPayload, LexToken } from '@kesoku/protocol';
+import { t } from '@kesoku/ui';
 import { kesoku } from './client';
 import { actions } from './store';
 import { cacheSentenceLex } from '../features/segments/BilingualCard';
@@ -20,7 +21,7 @@ export async function explainLexical(sessionId: string, text: string, token: str
     const md = typeof r.explanation_markdown === 'string' ? r.explanation_markdown : typeof rawTok === 'string' ? rawTok : '';
     return { surface: token, note: md };
   } catch {
-    actions.toast('精讲暂不可用', 'error');
+    actions.toast(t('lexical.unavailable'), 'error');
     return null;
   }
 }

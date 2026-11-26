@@ -1,0 +1,7 @@
+/* Kesoku App Shortcuts phrases (Simplified Chinese) */
+"Open Translator in ${applicationName}" = "用${applicationName}打开通用翻译";
+"${applicationName} Translator" = "${applicationName}通用翻译";
+"Open Travel Assistant in ${applicationName}" = "用${applicationName}打开旅游助手";
+"${applicationName} Travel Assistant" = "${applicationName}旅游助手";
+"Open Pokémon Assistant in ${applicationName}" = "用${applicationName}打开宝可梦助手";
+"${applicationName} Pokémon Assistant" = "${applicationName}宝可梦助手";

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Segmented, UiIcon } from '@kesoku/ui';
+import { Segmented, UiIcon, t as tGlobal, useT } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
 import { actions, useStore } from '../../lib/store';
 import { Markdown } from '../segments/Markdown';
@@ -17,16 +17,16 @@ const HR_LINE_RE = /^ {0,3}---+\s*$/;
 const HTML_COMMENT_ONLY_RE = /^<!--[\s\S]*?-->$/;
 const PINNED_HEADER_RE = /^###\s+📌(?:\s+(.*))?$/u;
 const TIMESTAMP_HEADER_RE =
-  /^###\s+((?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}:\d{2})(?:[T\s]+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[A-Za-z+-][\w:]*)?)?(?:\s+.*)?|便签)\s*$/u;
+  /^###\s+((?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}:\d{2})(?:[T\s]+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[A-Za-z+-][\w:]*)?)?(?:\s+.*)?|便签|Note|メモ)\s*$/u;
 
 function parseHeaderLine(line: string): { pinned: boolean; timestamp: string } | null {
   const pm = PINNED_HEADER_RE.exec(line.trim());
   if (pm) {
-    return { pinned: true, timestamp: (pm[1] ?? '').trim() || '便签' };
+    return { pinned: true, timestamp: (pm[1] ?? '').trim() || tGlobal('notes.defaultLabel') };
   }
   const tm = TIMESTAMP_HEADER_RE.exec(line.trim());
   if (tm) {
-    return { pinned: false, timestamp: (tm[1] ?? '').trim() || '便签' };
+    return { pinned: false, timestamp: (tm[1] ?? '').trim() || tGlobal('notes.defaultLabel') };
   }
   return null;
 }
@@ -104,7 +104,7 @@ export function parseStickyNotes(raw: string): StickyNoteItem[] {
     }
     return {
       id: `note-${idx}`,
-      timestamp: '便签',
+      timestamp: tGlobal('notes.defaultLabel'),
       pinned: false,
       body: blockLines.join('\n'),
     };
@@ -114,10 +114,11 @@ export function parseStickyNotes(raw: string): StickyNoteItem[] {
 /** Serialize sticky note items back into clean, human- & Agent-readable Markdown for `$AWD/notes.md`. */
 export function serializeStickyNotes(items: StickyNoteItem[]): string {
   if (!items.length) return '';
+  const fallback = tGlobal('notes.defaultLabel');
   return (
     items
       .map((item) => {
-        const ts = (item.timestamp || '便签').trim() || '便签';
+        const ts = (item.timestamp || fallback).trim() || fallback;
         const head = item.pinned ? `### 📌 ${ts}` : `### ${ts}`;
         const body = item.body.replace(/\r\n?/g, '\n').trim();
         return body ? `${head}\n${body}` : head;
@@ -151,8 +152,9 @@ export type NotesScope = 'session' | 'global';
 
 /** Desktop Inspector tab strip (记忆库 | 便签) shown at the top of the embedded panel. */
 function NotesInspectorTabs() {
+  const t = useT();
   return (
-    <div className="k-inspector-tabs" role="tablist" aria-label="检视器切换">
+    <div className="k-inspector-tabs" role="tablist" aria-label={t('memory.inspectorTabsAria')}>
       <button
         type="button"
         role="tab"
@@ -162,7 +164,7 @@ function NotesInspectorTabs() {
         onClick={() => actions.setUi({ inspector: { kind: 'memory' } })}
       >
         <UiIcon name="brain" size={15} />
-        <span>记忆库</span>
+        <span>{t('session.memory')}</span>
       </button>
       <button
         type="button"
@@ -173,7 +175,7 @@ function NotesInspectorTabs() {
         onClick={() => actions.setUi({ inspector: { kind: 'notes' } })}
       >
         <UiIcon name="note" size={15} />
-        <span>便签</span>
+        <span>{t('session.notes')}</span>
       </button>
     </div>
   );
@@ -184,18 +186,19 @@ function NotesInspectorTabs() {
  * session's pinned notes (`session.notes.*`) and the global scratchpad (`$AWD/notes.md`, default).
  */
 export function NotesPanel({ embedded, onClose }: { embedded?: boolean; onClose?: () => void }) {
+  const t = useT();
   const currentSessionId = useStore((s) => s.currentSessionId);
   const [scope, setScope] = useState<NotesScope>('global');
   const switcher = currentSessionId ? (
     <div className="k-notes-scope" data-testid="notes-scope-switcher">
       <Segmented
-        ariaLabel="便签范围"
+        ariaLabel={t('notes.scopeAria')}
         size="sm"
         value={scope}
         onChange={setScope}
         options={[
-          { value: 'session', label: '当前会话置顶' },
-          { value: 'global', label: '全局便签' },
+          { value: 'session', label: t('notes.scopeSession') },
+          { value: 'global', label: t('notes.scopeGlobal') },
         ]}
       />
     </div>
@@ -209,13 +212,13 @@ export function NotesPanel({ embedded, onClose }: { embedded?: boolean; onClose?
       <header className="k-notes-head">
         <div className="k-notes-title-row">
           {!embedded && onClose && (
-            <button type="button" className="k-icon-btn" aria-label="返回" onClick={onClose}>
+            <button type="button" className="k-icon-btn" aria-label={t('common.back')} onClick={onClose}>
               <UiIcon name="arrow-left" size={20} />
             </button>
           )}
           <h2 className="k-notes-title">
             <UiIcon name="pin" size={embedded ? 18 : 20} />
-            <span>当前会话置顶</span>
+            <span>{t('notes.scopeSession')}</span>
           </h2>
         </div>
       </header>
@@ -228,6 +231,7 @@ export function NotesPanel({ embedded, onClose }: { embedded?: boolean; onClose?
 }
 
 function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boolean; onClose?: () => void; scopeSwitcher?: ReactNode }) {
+  const t = useT();
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [items, setItems] = useState<StickyNoteItem[]>([]);
   const [rawContent, setRawContent] = useState('');
@@ -274,7 +278,7 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
         setRawDraft('');
         setItems([]);
       } else {
-        setLoadError('读取 notes.md 失败，请检查引擎连接后重试');
+        setLoadError(tGlobal('notes.readFailed'));
       }
     } finally {
       setLoading(false);
@@ -302,7 +306,7 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
         flashSaved();
         return true;
       } catch {
-        actions.toast('保存便签失败', 'error');
+        actions.toast(tGlobal('notes.saveFailed'), 'error');
         return false;
       } finally {
         setSaving(false);
@@ -345,7 +349,7 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
           setEditingId(null);
           setEditingBody('');
         }
-        actions.toast('已删除便签');
+        actions.toast(tGlobal('notes.deleted'));
       }
     },
     [editingId, items, persistNotes],
@@ -355,7 +359,7 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
     async (id: string) => {
       const trimmed = editingBody.trim();
       if (!trimmed) {
-        actions.toast('便签内容不能为空', 'error');
+        actions.toast(tGlobal('notes.emptyError'), 'error');
         return;
       }
       const nextItems = items.map((it) => (it.id === id ? { ...it, body: trimmed } : it));
@@ -363,7 +367,7 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
       if (ok) {
         setEditingId(null);
         setEditingBody('');
-        actions.toast('已保存便签');
+        actions.toast(tGlobal('notes.savedNote'));
       }
     },
     [editingBody, items, persistNotes],
@@ -374,9 +378,9 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(body);
       }
-      actions.toast('已复制到剪贴板');
+      actions.toast(tGlobal('common.copiedClipboard'));
     } catch {
-      actions.toast('复制失败', 'error');
+      actions.toast(tGlobal('common.copyFailed'), 'error');
     }
   }, []);
 
@@ -384,7 +388,7 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
     if (saving) return;
     const parsed = sortStickyNotes(parseStickyNotes(rawDraft));
     const ok = await persistNotes(parsed, rawDraft);
-    if (ok) actions.toast('已保存 notes.md');
+    if (ok) actions.toast(tGlobal('notes.savedFile'));
   }, [persistNotes, rawDraft, saving]);
 
   const handleSwitchMode = useCallback(
@@ -412,44 +416,44 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
       <header className="k-notes-head">
         <div className="k-notes-title-row">
           {!embedded && onClose && (
-            <button type="button" className="k-icon-btn" aria-label="返回" onClick={onClose}>
+            <button type="button" className="k-icon-btn" aria-label={t('common.back')} onClick={onClose}>
               <UiIcon name="arrow-left" size={20} />
             </button>
           )}
           <h2 className="k-notes-title">
             <UiIcon name="note" size={embedded ? 18 : 20} />
-            <span>简易便签</span>
+            <span>{t('notes.title')}</span>
           </h2>
-          <span className="k-pill k-pill-sm k-pill-neutral k-notes-badge">notes.md · Agent 目录</span>
+          <span className="k-pill k-pill-sm k-pill-neutral k-notes-badge">{t('notes.badge')}</span>
           {savedFlash && (
             <span className="k-notes-saved" role="status">
-              <UiIcon name="check" size={13} /> 已保存
+              <UiIcon name="check" size={13} /> {t('common.saved')}
             </span>
           )}
         </div>
 
         <div className="k-notes-controls">
           <Segmented
-            ariaLabel="便签视图"
+            ariaLabel={t('notes.viewAria')}
             size="sm"
             value={viewMode}
             onChange={handleSwitchMode}
             options={[
-              { value: 'cards', label: '便签卡片' },
-              { value: 'raw', label: 'Markdown 源码' },
+              { value: 'cards', label: t('notes.viewCards') },
+              { value: 'raw', label: t('notes.viewRaw') },
             ]}
           />
           <button
             type="button"
             className="k-btn k-btn-sm k-btn-ghost k-notes-refresh"
-            aria-label="刷新"
-            title="刷新"
+            aria-label={t('common.refresh')}
+            title={t('common.refresh')}
             data-testid="notes-refresh-btn"
             disabled={loading || saving}
             onClick={() => void loadNotes()}
           >
             <UiIcon name="refresh" size={16} />
-            {!embedded && <span>刷新</span>}
+            {!embedded && <span>{t('common.refresh')}</span>}
           </button>
         </div>
       </header>
@@ -460,7 +464,7 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
         <div className="k-notes-error" role="alert">
           <span>{loadError}</span>
           <button type="button" className="k-btn k-btn-sm k-btn-ghost" onClick={() => void loadNotes()}>
-            重试
+            {t('common.retry')}
           </button>
         </div>
       )}
@@ -478,13 +482,13 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
                   void handleSaveRaw();
                 }
               }}
-              placeholder="# 简易便签 (notes.md)&#10;&#10;可直接自由编写 Markdown 内容，Agent 也可在 $AWD/notes.md 中直接读写..."
-              aria-label="notes.md Markdown 源码"
+              placeholder={t('notes.rawPlaceholder')}
+              aria-label={t('notes.rawAria')}
               spellCheck={false}
               disabled={loading || saving}
             />
             <div className="k-notes-raw-foot">
-              <span className="k-notes-hint">{rawDirty ? '有未保存的更改' : '保存在 $AWD/notes.md · Agent 可直接读写'}</span>
+              <span className="k-notes-hint">{rawDirty ? t('notes.unsavedChanges') : t('notes.savedInWorkspace')}</span>
               <button
                 type="button"
                 className="k-btn k-btn-sm k-btn-primary"
@@ -492,13 +496,13 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
                 disabled={saving || loading}
                 onClick={() => void handleSaveRaw()}
               >
-                <UiIcon name="save" size={15} /> 保存 (Ctrl+S)
+                <UiIcon name="save" size={15} /> {t('notes.saveShortcut')}
               </button>
             </div>
           </section>
         ) : (
           <>
-            <section className="k-notes-composer" aria-label="新建便签">
+            <section className="k-notes-composer" aria-label={t('notes.newNoteAria')}>
               <textarea
                 className="k-notes-input"
                 rows={embedded ? 3 : 3}
@@ -510,8 +514,8 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
                     void handleAddNote();
                   }
                 }}
-                placeholder="随手记点临时信息（支持 Markdown，Ctrl+Enter 添加，保存在 Agent 目录 notes.md）..."
-                aria-label="新便签内容"
+                placeholder={t('notes.composerPlaceholder')}
+                aria-label={t('notes.composerInputAria')}
                 disabled={saving}
               />
               <div className="k-notes-composer-bar">
@@ -522,9 +526,9 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
                   data-testid="notes-pin-toggle"
                   onClick={() => setComposerPinned((v) => !v)}
                 >
-                  📌 置顶
+                  {t('notes.pinToggle')}
                 </button>
-                <span className="k-notes-hint">保存在 $AWD/notes.md · Agent 可直接读写</span>
+                <span className="k-notes-hint">{t('notes.savedInWorkspace')}</span>
                 <button
                   type="button"
                   className="k-btn k-btn-sm k-btn-primary"
@@ -532,7 +536,7 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
                   disabled={!composerText.trim() || saving}
                   onClick={() => void handleAddNote()}
                 >
-                  + 添加便签
+                  {t('notes.addBtn')}
                 </button>
               </div>
             </section>
@@ -545,23 +549,23 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
                   className="k-notes-search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="搜索便签..."
-                  aria-label="搜索便签"
+                  placeholder={t('notes.searchPlaceholder')}
+                  aria-label={t('notes.searchAria')}
                 />
               </div>
             )}
 
             {loading ? (
-              <div className="k-empty">正在读取便签…</div>
+              <div className="k-empty">{t('notes.loading')}</div>
             ) : items.length === 0 ? (
               <div className="k-notes-empty" data-testid="notes-empty">
                 <div className="k-notes-empty-icon">
                   <UiIcon name="note" size={38} />
                 </div>
-                <p>还没有临时便签 — 在上方输入内容即可保存在 Agent 目录的 notes.md 中</p>
+                <p>{t('notes.empty')}</p>
               </div>
             ) : filteredItems.length === 0 ? (
-              <div className="k-empty">没有匹配的便签</div>
+              <div className="k-empty">{t('notes.noMatch')}</div>
             ) : (
               <div className={'k-notes-list' + (!embedded ? ' k-notes-grid' : '')} role="list">
                 {filteredItems.map((item) => {
@@ -576,7 +580,7 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
                       <div className="k-note-head">
                         <span className="k-note-meta">
                           {item.pinned && (
-                            <span className="k-note-pin-badge" title="已置顶">
+                            <span className="k-note-pin-badge" title={t('notes.pinnedTitle')}>
                               📌
                             </span>
                           )}
@@ -586,8 +590,8 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
                           <button
                             type="button"
                             className={'k-note-act' + (item.pinned ? ' is-on' : '')}
-                            aria-label={item.pinned ? '取消置顶' : '置顶'}
-                            title={item.pinned ? '取消置顶' : '置顶'}
+                            aria-label={item.pinned ? t('notes.unpin') : t('notes.pin')}
+                            title={item.pinned ? t('notes.unpin') : t('notes.pin')}
                             disabled={saving}
                             onClick={() => void handleTogglePin(item.id)}
                           >
@@ -596,8 +600,8 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
                           <button
                             type="button"
                             className={'k-note-act' + (isEditing ? ' is-on' : '')}
-                            aria-label="编辑"
-                            title="编辑"
+                            aria-label={t('common.edit')}
+                            title={t('common.edit')}
                             disabled={saving}
                             onClick={() => {
                               if (isEditing) {
@@ -614,8 +618,8 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
                           <button
                             type="button"
                             className="k-note-act"
-                            aria-label="复制"
-                            title="复制"
+                            aria-label={t('common.copy')}
+                            title={t('common.copy')}
                             onClick={() => void handleCopy(item.body)}
                           >
                             <UiIcon name="copy" size={15} />
@@ -623,8 +627,8 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
                           <button
                             type="button"
                             className="k-note-act is-danger"
-                            aria-label="删除"
-                            title="删除"
+                            aria-label={t('common.delete')}
+                            title={t('common.delete')}
                             disabled={saving}
                             onClick={() => void handleDelete(item.id)}
                           >
@@ -650,7 +654,7 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
                                   setEditingBody('');
                                 }
                               }}
-                              aria-label="编辑便签内容"
+                              aria-label={t('notes.editContentAria')}
                               autoFocus
                             />
                             <div className="k-note-edit-actions">
@@ -663,7 +667,7 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
                                   setEditingBody('');
                                 }}
                               >
-                                取消
+                                {t('common.cancel')}
                               </button>
                               <button
                                 type="button"
@@ -672,14 +676,14 @@ function GlobalNotesPanel({ embedded, onClose, scopeSwitcher }: { embedded?: boo
                                 disabled={!editingBody.trim() || saving}
                                 onClick={() => void handleSaveCardEdit(item.id)}
                               >
-                                保存
+                                {t('common.save')}
                               </button>
                             </div>
                           </div>
                         ) : item.body.trim() ? (
                           <Markdown text={item.body} />
                         ) : (
-                          <span className="k-note-blank">（空白便签）</span>
+                          <span className="k-note-blank">{t('notes.blankCard')}</span>
                         )}
                       </div>
                     </article>

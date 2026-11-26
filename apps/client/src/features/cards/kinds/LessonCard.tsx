@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useT } from '@kesoku/ui';
 import type { CardContext, CardProps } from '../types';
 import { CardShell, Ja, LineVoice, toLine, type LineLike } from '../parts';
 import { arr, isObj, obj, pick, strList, type Dict } from '../util';
@@ -35,6 +36,7 @@ function Step({ n, title, children, tone }: { n: string; title: ReactNode; child
 
 /** Structured 4-step lesson card (Screen 05): ①例句 ②语法点 ③📘 vs 🔥 ④常见误区. */
 export function LessonCard({ data, ctx }: CardProps<Dict>) {
+  const t = useT();
   const d = obj(data);
   const title = pick(d, 'title', 'pattern', 'point');
   const examples = lines(d.examples ?? d.example);
@@ -56,20 +58,20 @@ export function LessonCard({ data, ctx }: CardProps<Dict>) {
       tone="mode"
       head={
         <>
-          <span className="kc-title">📘 {title || '讲义'}</span>
-          {lessonTag && <span className="kc-badge kc-badge-mode">{/^\d+$/.test(lessonTag) ? `第${lessonTag}课` : lessonTag}</span>}
+          <span className="kc-title">📘 {title || t('card.lessonFallback')}</span>
+          {lessonTag && <span className="kc-badge kc-badge-mode">{/^\d+$/.test(lessonTag) ? t('hud.lessonNo', { no: lessonTag }) : lessonTag}</span>}
         </>
       }
     >
       {examples.length > 0 && (
-        <Step n="①" title="例句">
+        <Step n="①" title={t('card.stepExamples')}>
           {examples.map((l, i) => (
             <LineRow key={i} line={l} ctx={ctx} />
           ))}
         </Step>
       )}
       {(gPoint || gExplain || rules.length > 0) && (
-        <Step n="②" title="语法点">
+        <Step n="②" title={t('card.stepGrammar')}>
           {gPoint && (
             <div className="kc-gram-point" lang="ja">
               {gPoint}
@@ -88,17 +90,17 @@ export function LessonCard({ data, ctx }: CardProps<Dict>) {
         </Step>
       )}
       {(textbook.length > 0 || native.length > 0) && (
-        <Step n="③" title="课本 vs 地道">
+        <Step n="③" title={t('card.stepCompare')}>
           <div className="kc-dual">
             <div className="kc-dual-col is-textbook">
-              <div className="kc-dual-head">📘 课本标准</div>
+              <div className="kc-dual-head">{t('card.textbookHead')}</div>
               {textbook.map((l, i) => (
                 <LineRow key={i} line={l} ctx={ctx} />
               ))}
             </div>
             <div className="kc-dual-col is-native">
               <div className="kc-dual-head">
-                🔥 真人地道
+                {t('card.nativeHead')}
                 {scenes.map((s) => (
                   <span key={s} className="kc-badge kc-badge-warn">
                     {s}
@@ -113,7 +115,7 @@ export function LessonCard({ data, ctx }: CardProps<Dict>) {
         </Step>
       )}
       {pitfalls.length > 0 && (
-        <Step n="④" title="常见误区" tone="danger">
+        <Step n="④" title={t('card.stepPitfalls')} tone="danger">
           {pitfalls.map((p, i) => (
             <div key={i} className="kc-pitfall">
               {p.wrong && (
