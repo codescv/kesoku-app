@@ -23,7 +23,7 @@ import { fallbackRoleId } from '../features/persona/model';
 import { workoutSync } from '../features/workout/sync';
 
 const SEQ_TYPES = new Set<string>(SEQ_EVENT_TYPES);
-export const APP_VERSION = '0.1.33';
+export const APP_VERSION = '0.1.34';
 
 type Payload = Record<string, unknown>;
 
