@@ -653,7 +653,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
                 className={'k-foot-btn' + (screen === 'memory' ? ' is-active' : '')}
                 data-testid="sidebar-memory-btn"
                 aria-current={screen === 'memory' ? 'page' : undefined}
-                onClick={() => (actions.setUi({ screen: 'memory', drawerOpen: false }), go())}
+                onClick={() => (actions.setUi({ screen: 'memory', toolReturnScreen: 'chat', drawerOpen: false }), go())}
               >
                 <UiIcon name="brain" size={18} />
                 <span>{t('session.memory')}</span>
@@ -676,7 +676,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
               className={'k-foot-btn' + (screen === 'studio' ? ' is-active' : '')}
               data-testid="sidebar-studio-btn"
               aria-current={screen === 'studio' ? 'page' : undefined}
-              onClick={() => (actions.setUi({ screen: 'studio', drawerOpen: false }), go())}
+              onClick={() => (actions.setUi({ screen: 'studio', toolReturnScreen: 'chat', drawerOpen: false }), go())}
             >
               <Avatar src={activeAvatarSrc} name={activePersona?.display_name ?? roleFallbackName(activeRole)} size={22} ai={activePersona?.avatar_ai} /> {t('session.studio')}
             </button>
@@ -685,7 +685,7 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
               className={'k-foot-btn' + (screen === 'settings' ? ' is-active' : '')}
               data-testid="sidebar-settings-btn"
               aria-current={screen === 'settings' ? 'page' : undefined}
-              onClick={() => (actions.setUi({ screen: 'settings', drawerOpen: false }), go())}
+              onClick={() => (actions.setUi({ screen: 'settings', toolReturnScreen: 'chat', drawerOpen: false }), go())}
             >
               <UiIcon name="sliders" size={20} /> {t('session.settings')}
             </button>

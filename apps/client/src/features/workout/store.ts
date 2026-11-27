@@ -1,10 +1,9 @@
 import { create } from 'zustand';
 import {
-  getWorkoutDoc,
+  db,
   kvGet,
   kvSet,
   listWorkoutDocs,
-  putWorkoutDoc,
   workoutDocId,
   type WorkoutDocRow,
 } from '../../lib/db';
@@ -36,7 +35,8 @@ import {
   type WeightBasis,
   type WorkoutSession,
 } from './types';
-import { deriveTemplateStats, parseCatalogJson, parseMonthlyLogJson } from './merge';
+import { deriveTemplateStats, mergeCatalog, mergeMonthlyLog, parseCatalogJson, parseMonthlyLogJson } from './merge';
+import { broadcastWorkoutEvent } from './channel';
 
 export type WorkoutSyncStatus = 'idle' | 'syncing' | 'synced' | 'offline' | 'local_only' | 'error' | 'corrupt';
 
@@ -60,6 +60,8 @@ export interface WorkoutStoreState {
   deviceId: string;
   catalog: ExerciseCatalogFile;
   logs: Record<string, MonthlyWorkoutLogFile>;
+  /** Remote sha256 that the in-memory copy of each docKey is actually based on. */
+  baseShaByDocKey: Record<string, string | null>;
   expandedExerciseId: string | null;
   focusedSetByExercise: Record<string, number>;
   editingHistorySessionId: string | null;
@@ -95,17 +97,6 @@ function emitDirty(docKey: string, opts?: { writeRecent?: boolean }): void {
   }
 }
 
-let broadcastChannel: BroadcastChannel | null = null;
-function notifyPeerTabs(ownerKey: string, docKey: string): void {
-  if (typeof BroadcastChannel === 'undefined') return;
-  try {
-    broadcastChannel ??= new BroadcastChannel('kesoku-workout');
-    broadcastChannel.postMessage({ type: 'doc-updated', ownerKey, docKey, ts: Date.now() });
-  } catch {
-    /* ignore */
-  }
-}
-
 export function initialWorkoutState(): WorkoutStoreState {
   return {
     hydrated: false,
@@ -113,6 +104,7 @@ export function initialWorkoutState(): WorkoutStoreState {
     deviceId: '',
     catalog: emptyCatalog(),
     logs: {},
+    baseShaByDocKey: {},
     expandedExerciseId: null,
     focusedSetByExercise: {},
     editingHistorySessionId: null,
@@ -150,7 +142,6 @@ export function allSessionsFromLogs(logs: Record<string, MonthlyWorkoutLogFile>)
 }
 
 export function selectActiveSession(s: WorkoutStoreState, now = Date.now()): WorkoutSession | null {
-  // Reference clockTick so subscribers recompute when clockTick advances
   void s.clockTick;
   let best: WorkoutSession | null = null;
   for (const file of Object.values(s.logs)) {
@@ -199,40 +190,106 @@ export function getFocusedSetIndex(s: WorkoutStoreState, ex: ExerciseEntry): num
   return defaultFocusIndex(ex.sets);
 }
 
-// ───────────────────────── Dexie persistence ─────────────────────────
+// ───────────────────────── Dexie persistence (transactional & serialized) ─────────────────────────
 
-async function persistDocToDb(
+let persistQueue: Promise<void> = Promise.resolve();
+
+/** Await all queued Dexie workout document writes (used by sync before flushing & in tests). */
+export function waitForPendingPersists(): Promise<void> {
+  return persistQueue;
+}
+
+function persistDocToDb(
   ownerKey: string,
   docKey: string,
   payload: ExerciseCatalogFile | MonthlyWorkoutLogFile,
   opts: { dirty?: 0 | 1; writeRecent?: boolean } = {},
 ): Promise<void> {
-  const dirty = opts.dirty ?? 1;
-  const content = JSON.stringify(payload);
-  const existing = await getWorkoutDoc(ownerKey, docKey).catch(() => undefined);
-  const row: WorkoutDocRow = {
-    id: workoutDocId(ownerKey, docKey),
-    ownerKey,
-    docKey,
-    content,
-    dirty,
-    remoteSha256: existing?.remoteSha256 ?? null,
-    needsReadBeforeWrite: existing?.needsReadBeforeWrite ?? false,
-    corruptRemote: existing?.corruptRemote ?? false,
-    updatedAt: payload.updatedAt || Date.now(),
+  const run = async () => {
+    const dirty = opts.dirty ?? 1;
+    const knownBaseSha = get().baseShaByDocKey[docKey] ?? null;
+    let finalPayload: ExerciseCatalogFile | MonthlyWorkoutLogFile = payload;
+    let finalBaseSha: string | null = knownBaseSha;
+
+    await db
+      .transaction('rw', db.workout_docs, async () => {
+        const id = workoutDocId(ownerKey, docKey);
+        const existing = await db.workout_docs.get(id);
+        const needsReadBeforeWrite = existing?.needsReadBeforeWrite ?? false;
+
+        if (existing) {
+          // Never silently inherit an unknown remoteSha256 without first merging existing Dexie content
+          if (existing.remoteSha256 !== knownBaseSha) {
+            if (docKey === 'catalog') {
+              const p = parseCatalogJson(existing.content);
+              if (p.ok) finalPayload = mergeCatalog(payload as ExerciseCatalogFile, p.data);
+            } else if (docKey.startsWith('log:')) {
+              const month = docKey.slice(4);
+              const p = parseMonthlyLogJson(existing.content, month);
+              if (p.ok) finalPayload = mergeMonthlyLog(payload as MonthlyWorkoutLogFile, p.data);
+            }
+            finalBaseSha = existing.remoteSha256;
+          }
+        }
+
+        const row: WorkoutDocRow = {
+          id,
+          ownerKey,
+          docKey,
+          content: JSON.stringify(finalPayload),
+          dirty,
+          remoteSha256: finalBaseSha,
+          needsReadBeforeWrite,
+          corruptRemote: existing?.corruptRemote ?? false,
+          updatedAt: finalPayload.updatedAt || Date.now(),
+        };
+        await db.workout_docs.put(row);
+      })
+      .catch(() => {});
+
+    // If we merged in unknown Dexie updates, reflect them functionally into memory too
+    if (finalPayload !== payload) {
+      set((prev) => {
+        if (prev.ownerKey !== ownerKey) return {};
+        if (docKey === 'catalog') {
+          return {
+            catalog: mergeCatalog(prev.catalog, finalPayload as ExerciseCatalogFile),
+            baseShaByDocKey: { ...prev.baseShaByDocKey, [docKey]: finalBaseSha },
+          };
+        }
+        if (docKey.startsWith('log:')) {
+          const month = docKey.slice(4);
+          const cur = prev.logs[month];
+          const merged = cur
+            ? mergeMonthlyLog(cur, finalPayload as MonthlyWorkoutLogFile)
+            : (finalPayload as MonthlyWorkoutLogFile);
+          return {
+            logs: { ...prev.logs, [month]: merged },
+            baseShaByDocKey: { ...prev.baseShaByDocKey, [docKey]: finalBaseSha },
+          };
+        }
+        return {};
+      });
+    }
+
+    broadcastWorkoutEvent({ type: 'doc-updated', ownerKey, docKey, ts: Date.now() });
+    if (dirty === 1) emitDirty(docKey, { writeRecent: opts.writeRecent });
   };
-  await putWorkoutDoc(row).catch(() => {});
-  notifyPeerTabs(ownerKey, docKey);
-  if (dirty === 1) emitDirty(docKey, { writeRecent: opts.writeRecent });
+
+  persistQueue = persistQueue.then(run, run);
+  return persistQueue;
 }
 
+/** Full owner switch load (resets UI state because we switched workspace owner or cold-booted). */
 export async function loadOwnerIntoStore(ownerKey: string): Promise<void> {
   const rows = await listWorkoutDocs(ownerKey).catch(() => []);
   let catalog = emptyCatalog();
   const logs: Record<string, MonthlyWorkoutLogFile> = {};
   const corruptDocs: Record<string, CorruptDocNotice> = {};
+  const baseShaByDocKey: Record<string, string | null> = {};
 
   for (const row of rows) {
+    baseShaByDocKey[row.docKey] = row.remoteSha256;
     if (row.corruptRemote) {
       corruptDocs[row.docKey] = {
         docKey: row.docKey,
@@ -254,10 +311,56 @@ export async function loadOwnerIntoStore(ownerKey: string): Promise<void> {
     ownerKey,
     catalog,
     logs,
+    baseShaByDocKey,
     corruptDocs,
     expandedExerciseId: null,
     focusedSetByExercise: {},
     undoDeleted: null,
+  });
+}
+
+/**
+ * Peer-tab / background Dexie reload: merges catalog & logs functionally into Zustand
+ * WITHOUT resetting local UI state (`expandedExerciseId`, `focusedSetByExercise`, `undoDeleted`).
+ */
+export async function mergeOwnerFromDbIntoStore(ownerKey: string): Promise<void> {
+  const rows = await listWorkoutDocs(ownerKey).catch(() => []);
+  set((prev) => {
+    if (prev.ownerKey !== ownerKey) return {};
+    let nextCatalog = prev.catalog;
+    const nextLogs = { ...prev.logs };
+    const nextBaseSha = { ...prev.baseShaByDocKey };
+    const nextCorrupt = { ...prev.corruptDocs };
+
+    for (const row of rows) {
+      nextBaseSha[row.docKey] = row.remoteSha256;
+      if (row.corruptRemote) {
+        nextCorrupt[row.docKey] = {
+          docKey: row.docKey,
+          path: docKeyToPath(row.docKey),
+          error: 'remote parse error',
+        };
+      } else {
+        delete nextCorrupt[row.docKey];
+      }
+      if (row.docKey === 'catalog') {
+        const parsed = parseCatalogJson(row.content);
+        if (parsed.ok) nextCatalog = mergeCatalog(nextCatalog, parsed.data);
+      } else if (row.docKey.startsWith('log:')) {
+        const month = row.docKey.slice(4);
+        const parsed = parseMonthlyLogJson(row.content, month);
+        if (parsed.ok) {
+          nextLogs[month] = nextLogs[month] ? mergeMonthlyLog(nextLogs[month]!, parsed.data) : parsed.data;
+        }
+      }
+    }
+
+    return {
+      catalog: nextCatalog,
+      logs: nextLogs,
+      baseShaByDocKey: nextBaseSha,
+      corruptDocs: nextCorrupt,
+    };
   });
 }
 
@@ -269,6 +372,16 @@ function canMutateTarget(s: WorkoutStoreState): boolean {
   return true;
 }
 
+function findLastDoneTimestamp(sess: WorkoutSession): number | null {
+  let latest = 0;
+  for (const ex of sess.exercises) {
+    for (const st of ex.sets) {
+      if (typeof st.doneAt === 'number' && st.doneAt > latest) latest = st.doneAt;
+    }
+  }
+  return latest > 0 ? latest : null;
+}
+
 function mutateTargetSession(
   updater: (session: WorkoutSession, now: number) => WorkoutSession | null,
   opts?: { writeRecent?: boolean; extraPatch?: Partial<WorkoutStoreState> },
@@ -278,27 +391,51 @@ function mutateTargetSession(
   const target = selectTargetSession(s);
   if (!target) return null;
   const month = monthFromDate(target.date);
-  const file = s.logs[month] ?? emptyMonthlyLog(month);
   const now = Date.now();
   const updated = updater(target, now);
   if (!updated) return null;
-  const stamped: WorkoutSession = { ...updated, updatedAt: now, deviceId: s.deviceId || updated.deviceId };
-  const nextSessions = file.sessions.map((x) => (x.id === stamped.id ? stamped : x));
-  if (!nextSessions.some((x) => x.id === stamped.id)) nextSessions.unshift(stamped);
-  const nextFile: MonthlyWorkoutLogFile = {
-    schemaVersion: 1,
-    month,
-    updatedAt: now,
-    sessions: nextSessions,
-  };
-  set((prev) => ({
-    logs: { ...prev.logs, [month]: nextFile },
-    ...(opts?.extraPatch ?? {}),
-  }));
-  void persistDocToDb(s.ownerKey, monthToDocKey(month), nextFile, {
-    dirty: 1,
-    writeRecent: opts?.writeRecent ?? Boolean(s.editingHistorySessionId),
+
+  // P2 fix: editing an expired (>3h idle) `in_progress` history session explicitly archives it as `completed`
+  // so bumping `updatedAt` never resurrects an old stale session as an active live workout.
+  let finalized: WorkoutSession = updated;
+  const isExpiredHistoricalInProgress =
+    s.editingHistorySessionId !== null &&
+    target.status === 'in_progress' &&
+    !isSessionActive(target, now);
+  if (isExpiredHistoricalInProgress) {
+    finalized = {
+      ...updated,
+      status: 'completed',
+      finishedAt: updated.finishedAt ?? findLastDoneTimestamp(target) ?? target.updatedAt,
+    };
+  }
+
+  const stamped: WorkoutSession = { ...finalized, updatedAt: now, deviceId: s.deviceId || finalized.deviceId };
+  let persistedFile: MonthlyWorkoutLogFile | null = null;
+
+  set((prev) => {
+    const file = prev.logs[month] ?? emptyMonthlyLog(month);
+    const nextSessions = file.sessions.map((x) => (x.id === stamped.id ? stamped : x));
+    if (!nextSessions.some((x) => x.id === stamped.id)) nextSessions.unshift(stamped);
+    const nextFile: MonthlyWorkoutLogFile = {
+      schemaVersion: 1,
+      month,
+      updatedAt: now,
+      sessions: nextSessions,
+    };
+    persistedFile = nextFile;
+    return {
+      logs: { ...prev.logs, [month]: nextFile },
+      ...(opts?.extraPatch ?? {}),
+    };
   });
+
+  if (persistedFile) {
+    void persistDocToDb(s.ownerKey, monthToDocKey(month), persistedFile, {
+      dirty: 1,
+      writeRecent: opts?.writeRecent ?? Boolean(s.editingHistorySessionId),
+    });
+  }
   return stamped;
 }
 
@@ -320,7 +457,9 @@ export const workoutActions = {
       deviceId = newDeviceId();
       await kvSet('workout_device_id', deviceId).catch(() => {});
     }
-    const restTargetSec = await kvGet<number>('workout_rest_target_sec', DEFAULT_REST_TARGET_SEC).catch(() => DEFAULT_REST_TARGET_SEC);
+    const restTargetSec = await kvGet<number>('workout_rest_target_sec', DEFAULT_REST_TARGET_SEC).catch(
+      () => DEFAULT_REST_TARGET_SEC,
+    );
     set({ deviceId, restTargetSec });
     await loadOwnerIntoStore(ownerKey || LOCAL_ONLY_OWNER);
     set({ hydrated: true });
@@ -364,22 +503,25 @@ export const workoutActions = {
       deviceId: s.deviceId || undefined,
       updatedAt: now,
     };
-    const file = s.logs[month] ?? emptyMonthlyLog(month);
-    const nextFile: MonthlyWorkoutLogFile = {
-      schemaVersion: 1,
-      month,
-      updatedAt: now,
-      sessions: [session, ...file.sessions],
-    };
-    set((prev) => ({
-      logs: { ...prev.logs, [month]: nextFile },
-      editingHistorySessionId: null,
-      editingHistoryReadOnly: true,
-      expandedExerciseId: null,
-      focusedSetByExercise: {},
-      restStartedAt: null,
-      restVibrated: false,
-    }));
+    let nextFile!: MonthlyWorkoutLogFile;
+    set((prev) => {
+      const file = prev.logs[month] ?? emptyMonthlyLog(month);
+      nextFile = {
+        schemaVersion: 1,
+        month,
+        updatedAt: now,
+        sessions: [session, ...file.sessions],
+      };
+      return {
+        logs: { ...prev.logs, [month]: nextFile },
+        editingHistorySessionId: null,
+        editingHistoryReadOnly: true,
+        expandedExerciseId: null,
+        focusedSetByExercise: {},
+        restStartedAt: null,
+        restVibrated: false,
+      };
+    });
     void persistDocToDb(s.ownerKey, monthToDocKey(month), nextFile, { dirty: 1 });
     return session;
   },
@@ -418,23 +560,26 @@ export const workoutActions = {
       deviceId: s.deviceId || undefined,
       updatedAt: now,
     };
-    const file = s.logs[month] ?? emptyMonthlyLog(month);
-    const nextFile: MonthlyWorkoutLogFile = {
-      schemaVersion: 1,
-      month,
-      updatedAt: now,
-      sessions: [session, ...file.sessions],
-    };
     const firstId = clonedExercises[0]?.id ?? null;
-    set((prev) => ({
-      logs: { ...prev.logs, [month]: nextFile },
-      editingHistorySessionId: null,
-      editingHistoryReadOnly: true,
-      expandedExerciseId: firstId,
-      focusedSetByExercise: firstId ? { [firstId]: 0 } : {},
-      restStartedAt: null,
-      restVibrated: false,
-    }));
+    let nextFile!: MonthlyWorkoutLogFile;
+    set((prev) => {
+      const file = prev.logs[month] ?? emptyMonthlyLog(month);
+      nextFile = {
+        schemaVersion: 1,
+        month,
+        updatedAt: now,
+        sessions: [session, ...file.sessions],
+      };
+      return {
+        logs: { ...prev.logs, [month]: nextFile },
+        editingHistorySessionId: null,
+        editingHistoryReadOnly: true,
+        expandedExerciseId: firstId,
+        focusedSetByExercise: firstId ? { [firstId]: 0 } : {},
+        restStartedAt: null,
+        restVibrated: false,
+      };
+    });
     void persistDocToDb(s.ownerKey, monthToDocKey(month), nextFile, { dirty: 1 });
     return session;
   },
@@ -505,21 +650,29 @@ export const workoutActions = {
         createdAt: now,
         updatedAt: now,
       };
-      const nextCatalog: ExerciseCatalogFile = {
-        schemaVersion: 1,
-        updatedAt: now,
-        templates: [...s.catalog.templates, template].sort((a, b) => a.id.localeCompare(b.id)),
-      };
-      set({ catalog: nextCatalog });
+      let nextCatalog!: ExerciseCatalogFile;
+      set((prev) => {
+        nextCatalog = {
+          schemaVersion: 1,
+          updatedAt: now,
+          templates: [...prev.catalog.templates.filter((t) => t.id !== id), template!].sort((a, b) =>
+            a.id.localeCompare(b.id),
+          ),
+        };
+        return { catalog: nextCatalog };
+      });
       void persistDocToDb(s.ownerKey, 'catalog', nextCatalog, { dirty: 1 });
     } else if (template.archived) {
       template = { ...template, archived: false, updatedAt: now };
-      const nextCatalog: ExerciseCatalogFile = {
-        schemaVersion: 1,
-        updatedAt: now,
-        templates: s.catalog.templates.map((t) => (t.id === id ? template! : t)),
-      };
-      set({ catalog: nextCatalog });
+      let nextCatalog!: ExerciseCatalogFile;
+      set((prev) => {
+        nextCatalog = {
+          schemaVersion: 1,
+          updatedAt: now,
+          templates: prev.catalog.templates.map((t) => (t.id === id ? template! : t)),
+        };
+        return { catalog: nextCatalog };
+      });
       void persistDocToDb(s.ownerKey, 'catalog', nextCatalog, { dirty: 1 });
     }
 
@@ -615,12 +768,17 @@ export const workoutActions = {
       const tpl = cur.catalog.templates.find((t) => t.id === upd.id);
       if (tpl && tpl.weightBasis !== upd.basis) {
         const now = Date.now();
-        const nextCatalog: ExerciseCatalogFile = {
-          schemaVersion: 1,
-          updatedAt: now,
-          templates: cur.catalog.templates.map((t) => (t.id === upd.id ? { ...t, weightBasis: upd.basis, updatedAt: now } : t)),
-        };
-        set({ catalog: nextCatalog });
+        let nextCatalog!: ExerciseCatalogFile;
+        set((prev) => {
+          nextCatalog = {
+            schemaVersion: 1,
+            updatedAt: now,
+            templates: prev.catalog.templates.map((t) =>
+              t.id === upd.id ? { ...t, weightBasis: upd.basis, updatedAt: now } : t,
+            ),
+          };
+          return { catalog: nextCatalog };
+        });
         void persistDocToDb(cur.ownerKey, 'catalog', nextCatalog, { dirty: 1 });
       }
     }
@@ -666,7 +824,6 @@ export const workoutActions = {
         };
         const nextSets = [...ex.sets, added];
         const curFocus = getFocusedSetIndex(s, ex);
-        // If all previous sets were done, focus the newly added set
         if (ex.sets.every((st) => st.done)) {
           nextFocusMap = { ...s.focusedSetByExercise, [exerciseId]: nextSets.length - 1 };
         } else if (curFocus >= nextSets.length) {
@@ -675,7 +832,6 @@ export const workoutActions = {
         return { ...sess, exercises: sess.exercises.map((e, i) => (i === idx ? { ...ex, sets: nextSets } : e)) };
       } else {
         if (ex.sets.length <= 1) return null;
-        // Remove the last undone set so completed sets are never silently lost
         let removeIdx = -1;
         for (let j = ex.sets.length - 1; j >= 0; j--) {
           if (!ex.sets[j]!.done) {
@@ -694,7 +850,7 @@ export const workoutActions = {
     if (nextFocusMap) set({ focusedSetByExercise: nextFocusMap });
   },
 
-  /** Single-set checkmark: marks focused set done, starts rest timer (active workout), advances focus or collapses if all done. */
+  /** Single-set checkmark: marks focused UNDONE set done, starts rest timer (active workout), advances focus or collapses if all done. */
   completeFocusedSet(exerciseId: string): { allDone: boolean } {
     const s = get();
     let allDone = false;
@@ -705,7 +861,11 @@ export const workoutActions = {
       const ex = sess.exercises[idx]!;
       const focusIdx = getFocusedSetIndex(s, ex);
       const targetSet = ex.sets[focusIdx];
-      if (!targetSet) return null;
+      // P2 fix: if targetSet is already done, never overwrite doneAt or restart rest timer
+      if (!targetSet || targetSet.done) {
+        allDone = ex.sets.every((st) => st.done);
+        return null;
+      }
       const nextSets = ex.sets.map((st, j) => (j === focusIdx ? { ...st, done: true, doneAt: now } : st));
       let nextFocus = nextSets.findIndex((st, j) => j > focusIdx && !st.done);
       if (nextFocus < 0) nextFocus = nextSets.findIndex((st) => !st.done);
@@ -740,13 +900,14 @@ export const workoutActions = {
       });
       return;
     }
-    // Uncheck done set and focus it
     mutateTargetSession(
       (sess) => {
         const idx = sess.exercises.findIndex((e) => e.id === exerciseId);
         if (idx < 0) return null;
         const curEx = sess.exercises[idx]!;
-        const nextSets = curEx.sets.map((item, j) => (j === setIndex ? { ...item, done: false, doneAt: undefined } : item));
+        const nextSets = curEx.sets.map((item, j) =>
+          j === setIndex ? { ...item, done: false, doneAt: undefined } : item,
+        );
         return { ...sess, exercises: sess.exercises.map((e, i) => (i === idx ? { ...curEx, sets: nextSets } : e)) };
       },
       {
@@ -772,18 +933,40 @@ export const workoutActions = {
     );
   },
 
-  /** Apply edited sets from `<NumericPadSheet mode="reps-seq">`. Never starts rest timer. */
-  applyRepsSeqResult(exerciseId: string, nextSets: SetEntry[], completeAll: boolean) {
+  /**
+   * Apply edited sets from `<NumericPadSheet mode="reps-seq">`.
+   * P2 fix: merges edited reps/new sets functionally against the latest store `ex.sets` (preserving
+   * already-done sets & any weight/field updates merged while the pad was open). Never starts rest timer.
+   */
+  applyRepsSeqResult(exerciseId: string, editedSets: SetEntry[], completeAll: boolean) {
     const s = get();
+    let finalLen = editedSets.length;
     mutateTargetSession(
       (sess, now) => {
         const idx = sess.exercises.findIndex((e) => e.id === exerciseId);
         if (idx < 0) return null;
         const ex = sess.exercises[idx]!;
-        const finalSets = completeAll
-          ? nextSets.map((st) => (st.done ? st : { ...st, done: true, doneAt: now }))
-          : nextSets;
-        return { ...sess, exercises: sess.exercises.map((e, i) => (i === idx ? { ...ex, sets: finalSets } : e)) };
+        const liveById = new Map(ex.sets.map((st) => [st.id, st]));
+
+        const mergedSets: SetEntry[] = editedSets.map((ed) => {
+          const live = liveById.get(ed.id);
+          if (live) {
+            // Preserve live done state & latest weightKg while applying reps from pad
+            if (live.done) return live;
+            return {
+              ...live,
+              reps: ed.reps,
+              ...(completeAll ? { done: true, doneAt: now } : {}),
+            };
+          }
+          // Newly appended set from pad
+          return {
+            ...ed,
+            ...(completeAll && !ed.done ? { done: true, doneAt: now } : {}),
+          };
+        });
+        finalLen = mergedSets.length;
+        return { ...sess, exercises: sess.exercises.map((e, i) => (i === idx ? { ...ex, sets: mergedSets } : e)) };
       },
       {
         extraPatch: completeAll
@@ -791,10 +974,7 @@ export const workoutActions = {
           : {
               focusedSetByExercise: {
                 ...s.focusedSetByExercise,
-                [exerciseId]: Math.min(
-                  getFocusedSetIndex(s, selectTargetSession(s)?.exercises.find((e) => e.id === exerciseId) ?? { id: exerciseId, templateId: '', name: '', equipment: 'other', weightBasis: 'total', sets: nextSets }),
-                  Math.max(0, nextSets.length - 1),
-                ),
+                [exerciseId]: Math.min(s.focusedSetByExercise[exerciseId] ?? 0, Math.max(0, finalLen - 1)),
               },
             },
       },
@@ -838,21 +1018,27 @@ export const workoutActions = {
       return;
     }
     const now = Date.now();
-    const exercises = [...sess.exercises];
-    exercises.splice(Math.min(u.index, exercises.length), 0, u.exercise);
-    const updated: WorkoutSession = { ...sess, exercises, updatedAt: now, deviceId: s.deviceId || sess.deviceId };
-    const nextFile: MonthlyWorkoutLogFile = {
-      schemaVersion: 1,
-      month: u.month,
-      updatedAt: now,
-      sessions: file.sessions.map((x) => (x.id === updated.id ? updated : x)),
-    };
-    set((prev) => ({
-      logs: { ...prev.logs, [u.month]: nextFile },
-      undoDeleted: null,
-      expandedExerciseId: u.exercise.id,
-    }));
-    void persistDocToDb(s.ownerKey, monthToDocKey(u.month), nextFile, { dirty: 1 });
+    let nextFile: MonthlyWorkoutLogFile | null = null;
+    set((prev) => {
+      const curFile = prev.logs[u.month];
+      const curSess = curFile?.sessions.find((x) => x.id === u.sessionId && !x.deletedAt);
+      if (!curFile || !curSess) return { undoDeleted: null };
+      const exercises = [...curSess.exercises];
+      exercises.splice(Math.min(u.index, exercises.length), 0, u.exercise);
+      const updated: WorkoutSession = { ...curSess, exercises, updatedAt: now, deviceId: prev.deviceId || curSess.deviceId };
+      nextFile = {
+        schemaVersion: 1,
+        month: u.month,
+        updatedAt: now,
+        sessions: curFile.sessions.map((x) => (x.id === updated.id ? updated : x)),
+      };
+      return {
+        logs: { ...prev.logs, [u.month]: nextFile },
+        undoDeleted: null,
+        expandedExerciseId: u.exercise.id,
+      };
+    });
+    if (nextFile) void persistDocToDb(s.ownerKey, monthToDocKey(u.month), nextFile, { dirty: 1 });
   },
 
   /** Explicitly finish and archive the active session (writes `completed`, triggers `RECENT.md` update). */
@@ -862,7 +1048,6 @@ export const workoutActions = {
     const active = selectActiveSession(s);
     if (!active) return null;
     const month = monthFromDate(active.date);
-    const file = s.logs[month] ?? emptyMonthlyLog(month);
     const now = Date.now();
     const completed: WorkoutSession = {
       ...active,
@@ -873,20 +1058,24 @@ export const workoutActions = {
       updatedAt: now,
       deviceId: s.deviceId || active.deviceId,
     };
-    const nextFile: MonthlyWorkoutLogFile = {
-      schemaVersion: 1,
-      month,
-      updatedAt: now,
-      sessions: file.sessions.map((x) => (x.id === completed.id ? completed : x)),
-    };
-    set((prev) => ({
-      logs: { ...prev.logs, [month]: nextFile },
-      expandedExerciseId: null,
-      focusedSetByExercise: {},
-      restStartedAt: null,
-      restVibrated: false,
-      undoDeleted: null,
-    }));
+    let nextFile!: MonthlyWorkoutLogFile;
+    set((prev) => {
+      const file = prev.logs[month] ?? emptyMonthlyLog(month);
+      nextFile = {
+        schemaVersion: 1,
+        month,
+        updatedAt: now,
+        sessions: file.sessions.map((x) => (x.id === completed.id ? completed : x)),
+      };
+      return {
+        logs: { ...prev.logs, [month]: nextFile },
+        expandedExerciseId: null,
+        focusedSetByExercise: {},
+        restStartedAt: null,
+        restVibrated: false,
+        undoDeleted: null,
+      };
+    });
     void persistDocToDb(s.ownerKey, monthToDocKey(month), nextFile, { dirty: 1, writeRecent: true });
     return completed;
   },
@@ -897,25 +1086,34 @@ export const workoutActions = {
     const found = findSessionById(s.logs, sessionId);
     if (!found) return;
     const now = Date.now();
-    const updated: WorkoutSession = {
-      ...found.session,
-      ...(patch.title !== undefined ? { title: patch.title.trim() || undefined } : {}),
-      ...(patch.note !== undefined ? { note: patch.note.trim() || undefined } : {}),
-      updatedAt: now,
-      deviceId: s.deviceId || found.session.deviceId,
-    };
-    const file = s.logs[found.month]!;
-    const nextFile: MonthlyWorkoutLogFile = {
-      schemaVersion: 1,
-      month: found.month,
-      updatedAt: now,
-      sessions: file.sessions.map((x) => (x.id === updated.id ? updated : x)),
-    };
-    set((prev) => ({ logs: { ...prev.logs, [found.month]: nextFile } }));
-    void persistDocToDb(s.ownerKey, monthToDocKey(found.month), nextFile, {
-      dirty: 1,
-      writeRecent: updated.status === 'completed',
+    let nextFile: MonthlyWorkoutLogFile | null = null;
+    let isCompleted = false;
+    set((prev) => {
+      const curFound = findSessionById(prev.logs, sessionId);
+      if (!curFound) return {};
+      const updated: WorkoutSession = {
+        ...curFound.session,
+        ...(patch.title !== undefined ? { title: patch.title.trim() || undefined } : {}),
+        ...(patch.note !== undefined ? { note: patch.note.trim() || undefined } : {}),
+        updatedAt: now,
+        deviceId: prev.deviceId || curFound.session.deviceId,
+      };
+      isCompleted = updated.status === 'completed';
+      const file = prev.logs[curFound.month]!;
+      nextFile = {
+        schemaVersion: 1,
+        month: curFound.month,
+        updatedAt: now,
+        sessions: file.sessions.map((x) => (x.id === updated.id ? updated : x)),
+      };
+      return { logs: { ...prev.logs, [curFound.month]: nextFile } };
     });
+    if (nextFile) {
+      void persistDocToDb(s.ownerKey, monthToDocKey(found.month), nextFile, {
+        dirty: 1,
+        writeRecent: isCompleted,
+      });
+    }
   },
 
   deleteSession(sessionId: string) {
@@ -924,25 +1122,32 @@ export const workoutActions = {
     const found = findSessionById(s.logs, sessionId);
     if (!found) return;
     const now = Date.now();
-    const tombstoned: WorkoutSession = {
-      ...found.session,
-      deletedAt: now,
-      updatedAt: now,
-      deviceId: s.deviceId || found.session.deviceId,
-    };
-    const file = s.logs[found.month]!;
-    const nextFile: MonthlyWorkoutLogFile = {
-      schemaVersion: 1,
-      month: found.month,
-      updatedAt: now,
-      sessions: file.sessions.map((x) => (x.id === tombstoned.id ? tombstoned : x)),
-    };
-    set((prev) => ({
-      logs: { ...prev.logs, [found.month]: nextFile },
-      editingHistorySessionId: prev.editingHistorySessionId === sessionId ? null : prev.editingHistorySessionId,
-      expandedExerciseId: null,
-    }));
-    void persistDocToDb(s.ownerKey, monthToDocKey(found.month), nextFile, { dirty: 1, writeRecent: true });
+    let nextFile: MonthlyWorkoutLogFile | null = null;
+    set((prev) => {
+      const curFound = findSessionById(prev.logs, sessionId);
+      if (!curFound) return {};
+      const tombstoned: WorkoutSession = {
+        ...curFound.session,
+        deletedAt: now,
+        updatedAt: now,
+        deviceId: prev.deviceId || curFound.session.deviceId,
+      };
+      const file = prev.logs[curFound.month]!;
+      nextFile = {
+        schemaVersion: 1,
+        month: curFound.month,
+        updatedAt: now,
+        sessions: file.sessions.map((x) => (x.id === tombstoned.id ? tombstoned : x)),
+      };
+      return {
+        logs: { ...prev.logs, [curFound.month]: nextFile },
+        editingHistorySessionId: prev.editingHistorySessionId === sessionId ? null : prev.editingHistorySessionId,
+        expandedExerciseId: null,
+      };
+    });
+    if (nextFile) {
+      void persistDocToDb(s.ownerKey, monthToDocKey(found.month), nextFile, { dirty: 1, writeRecent: true });
+    }
   },
 
   openHistorySession(sessionId: string, readOnly = true) {

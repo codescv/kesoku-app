@@ -225,7 +225,7 @@ export function ThumbActionDock({
                 onCollapseDone();
               }}
             >
-              {tr('workout.allDoneCollapse')}
+              <span className="k-wk-cta-label">{tr('workout.allDoneCollapse')}</span>
             </button>
           ) : doneCount === 0 ? (
             <>
@@ -238,7 +238,7 @@ export function ThumbActionDock({
                   onCompleteAll();
                 }}
               >
-                {tr('workout.completeAll', { n: sets.length })}
+                <span className="k-wk-cta-label">{tr('workout.completeAll', { n: sets.length })}</span>
               </button>
               <button
                 type="button"
@@ -249,7 +249,7 @@ export function ThumbActionDock({
                   onCompleteSet();
                 }}
               >
-                {tr('workout.completeSet', { n: safeFocus + 1 })}
+                <span className="k-wk-cta-label">{tr('workout.completeSet', { n: safeFocus + 1 })}</span>
               </button>
             </>
           ) : (
@@ -262,7 +262,7 @@ export function ThumbActionDock({
                 onCompleteSet();
               }}
             >
-              {tr('workout.completeSet', { n: safeFocus + 1 })}
+              <span className="k-wk-cta-label">{tr('workout.completeSet', { n: safeFocus + 1 })}</span>
             </button>
           )}
         </div>

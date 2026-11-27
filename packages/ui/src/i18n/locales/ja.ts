@@ -973,7 +973,7 @@ export const ja = {
   'workout.cloneAria': '「{title}」の種目を複製',
   'workout.noWorkoutsYet': 'トレーニング記録がまだありません。上のボタンから始めましょう。',
   'workout.addExercise': '種目を追加',
-  'workout.setsUnit': 'セット',
+  'workout.setsUnit': '組',
   'workout.repsUnit': '回',
   'workout.kgUnit': 'kg',
   'workout.kgPerHand': 'kg·片手',

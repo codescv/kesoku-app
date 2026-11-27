@@ -94,8 +94,12 @@ export function WorkoutPanel({ onClose }: { onClose: () => void }) {
       if (!useWorkoutStore.getState().hydrated) {
         await workoutActions.hydrate();
       }
-      await workoutSync.acquireTabLock();
       if (!alive) return;
+      await workoutSync.acquireTabLock();
+      if (!alive) {
+        workoutSync.releaseTabLock();
+        return;
+      }
       if (useStore.getState().conn.status === 'online' && useStore.getState().conn.engineOnline) {
         void workoutSync.probeAndSync();
       }

@@ -98,7 +98,9 @@ async function restoreLocal() {
   await workoutActions.hydrate().catch(() => {});
   const lastScreen = await kvGet<Screen>('last_screen', 'chat').catch(() => 'chat' as Screen);
   if (RESTORABLE_SCREENS.has(lastScreen) && lastScreen !== 'chat') {
-    const toolReturnScreen = lastScreen === 'workout' || lastScreen === 'notes' || lastScreen === 'files' ? 'tools' : 'chat';
+    const fallbackReturn = lastScreen === 'workout' || lastScreen === 'notes' || lastScreen === 'files' ? 'tools' : 'chat';
+    const savedReturn = await kvGet<'chat' | 'tools'>('last_tool_return_screen', fallbackReturn).catch(() => fallbackReturn);
+    const toolReturnScreen = savedReturn === 'tools' || savedReturn === 'chat' ? savedReturn : fallbackReturn;
     actions.setUi({ screen: lastScreen, toolReturnScreen });
   }
   const info = await getAuthInfo();
@@ -153,6 +155,9 @@ export function App() {
         }
         if (s.ui.screen !== prev.ui.screen) {
           void kvSet('last_screen', s.ui.screen).catch(() => {});
+        }
+        if (s.ui.toolReturnScreen !== prev.ui.toolReturnScreen) {
+          void kvSet('last_tool_return_screen', s.ui.toolReturnScreen).catch(() => {});
         }
       }),
     [],

@@ -1,6 +1,7 @@
 import type { EngineToClientPayload } from '@kesoku/protocol';
 import { kesoku } from '../../lib/client';
 import {
+  db,
   deleteWorkoutDocsByOwner,
   getWorkoutDoc,
   kvGet,
@@ -8,15 +9,23 @@ import {
   listAllDirtyWorkoutDocs,
   listDirtyWorkoutDocs,
   listWorkoutDocs,
-  putWorkoutDoc,
   workoutDocId,
   type WorkoutDocRow,
 } from '../../lib/db';
 import { useStore } from '../../lib/store';
 import { RpcError } from '../../lib/ws';
+import { broadcastWorkoutEvent, onWorkoutPeerEvent } from './channel';
 import { generateRecentMarkdown } from './format';
 import { mergeCatalog, mergeMonthlyLog, parseCatalogJson, parseMonthlyLogJson } from './merge';
-import { allSessionsFromLogs, loadOwnerIntoStore, onWorkoutDirty, useWorkoutStore, workoutActions } from './store';
+import {
+  allSessionsFromLogs,
+  loadOwnerIntoStore,
+  mergeOwnerFromDbIntoStore,
+  onWorkoutDirty,
+  useWorkoutStore,
+  waitForPendingPersists,
+  workoutActions,
+} from './store';
 import {
   LOCAL_ONLY_OWNER,
   MONTH_LOG_FILE_RE,
@@ -32,6 +41,7 @@ type WriteResult = EngineToClientPayload<'workspace.write.result'>;
 type ReadResult = EngineToClientPayload<'workspace.read.result'>;
 type ListResult = EngineToClientPayload<'workspace.list.result'>;
 
+const WRITER_LOCK_NAME = 'kesoku-workout-writer';
 const MAX_CAS_RETRIES = 3;
 const FLUSH_DEBOUNCE_MS = 600;
 
@@ -61,10 +71,18 @@ function getRecentMonths(count = 3, now = Date.now()): string[] {
 class WorkoutSyncEngine {
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private syncing = false;
+  private flushRequested = false;
+  private probeRequested = false;
   private pendingWriteRecent = false;
+
+  // Single-writer Web Lock lifecycle (leak-free under StrictMode & rapid mount/unmount)
+  private lockWantHeld = false;
+  private lockHeld = false;
+  private lockGeneration = 0;
   private lockRelease: (() => void) | null = null;
-  private lockAcquired = false;
-  private channel: BroadcastChannel | null = null;
+  private standbyAbort: AbortController | null = null;
+
+  private unsubPeer: (() => void) | null = null;
   private unsubDirty: (() => void) | null = null;
 
   constructor() {
@@ -72,76 +90,158 @@ class WorkoutSyncEngine {
       if (opts?.writeRecent) this.pendingWriteRecent = true;
       this.scheduleFlush();
     });
+    this.ensurePeerSubscription();
   }
 
-  /** Acquire Web single-writer lock (`navigator.locks`) and subscribe to peer BroadcastChannel updates. */
-  async acquireTabLock(): Promise<boolean> {
-    if (this.lockAcquired) return true;
-
-    if (typeof BroadcastChannel !== 'undefined' && !this.channel) {
-      try {
-        this.channel = new BroadcastChannel('kesoku-workout');
-        this.channel.onmessage = (ev) => {
-          const data = ev.data as { type?: string; ownerKey?: string } | null;
-          if (data?.type === 'doc-updated') {
-            const curOwner = useWorkoutStore.getState().ownerKey;
-            if (!data.ownerKey || data.ownerKey === curOwner) {
-              void loadOwnerIntoStore(curOwner);
-            }
-          }
-        };
-      } catch {
-        /* ignore */
+  private ensurePeerSubscription(): void {
+    if (this.unsubPeer) return;
+    this.unsubPeer = onWorkoutPeerEvent((ev) => {
+      if (ev.type === 'doc-updated') {
+        const curOwner = useWorkoutStore.getState().ownerKey;
+        if (!ev.ownerKey || ev.ownerKey === curOwner) {
+          // Merge Dexie docs into Zustand functionally WITHOUT resetting UI state
+          void mergeOwnerFromDbIntoStore(curOwner);
+        }
+      } else if (ev.type === 'writer-released') {
+        if (this.lockWantHeld && !this.lockHeld) {
+          void this.acquireTabLock();
+        }
       }
-    }
+    });
+  }
+
+  /**
+   * Acquire Web single-writer lock (`navigator.locks`) safely across StrictMode / rapid unmount.
+   * If `releaseTabLock()` is called before the lock resolves, the callback exits immediately (no leak).
+   */
+  async acquireTabLock(): Promise<boolean> {
+    this.ensurePeerSubscription();
+    this.lockWantHeld = true;
+    if (this.lockHeld) return true;
 
     const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
     if (!locks?.request) {
-      this.lockAcquired = true;
+      this.lockHeld = true;
       useWorkoutStore.setState({ isReadOnlyTab: false });
       return true;
     }
 
+    const myGen = ++this.lockGeneration;
+    this.standbyAbort?.abort();
+    this.standbyAbort = null;
+
     return new Promise<boolean>((resolve) => {
       let settled = false;
+      const finish = (granted: boolean) => {
+        if (!settled) {
+          settled = true;
+          resolve(granted);
+        }
+      };
+
       void locks
-        .request('kesoku-workout-writer', { ifAvailable: true }, (lock) => {
-          if (!lock) {
-            useWorkoutStore.setState({ isReadOnlyTab: true });
-            if (!settled) {
-              settled = true;
-              resolve(false);
-            }
+        .request(WRITER_LOCK_NAME, { ifAvailable: true }, (lock) => {
+          // Released or superseded before lock callback executed -> release immediately (zero leak)
+          if (!this.lockWantHeld || myGen !== this.lockGeneration) {
+            finish(false);
             return;
           }
-          this.lockAcquired = true;
-          useWorkoutStore.setState({ isReadOnlyTab: false });
-          if (!settled) {
-            settled = true;
-            resolve(true);
+          if (!lock) {
+            useWorkoutStore.setState({ isReadOnlyTab: true });
+            finish(false);
+            this.queueStandbyPromotion(myGen);
+            return;
           }
+          this.lockHeld = true;
+          useWorkoutStore.setState({ isReadOnlyTab: false });
+          finish(true);
           return new Promise<void>((release) => {
             this.lockRelease = release;
           });
         })
         .catch(() => {
-          if (!settled) {
-            settled = true;
-            this.lockAcquired = true;
-            useWorkoutStore.setState({ isReadOnlyTab: false });
-            resolve(true);
+          if (!this.lockWantHeld || myGen !== this.lockGeneration) {
+            finish(false);
+            return;
           }
+          this.lockHeld = true;
+          useWorkoutStore.setState({ isReadOnlyTab: false });
+          finish(true);
         });
     });
   }
 
+  /** Read-only tab queues an abortable request to auto-promote once the active writer exits. */
+  private queueStandbyPromotion(myGen: number): void {
+    const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+    if (!locks?.request || typeof AbortController === 'undefined') return;
+    this.standbyAbort?.abort();
+    const ac = new AbortController();
+    this.standbyAbort = ac;
+
+    void locks
+      .request(WRITER_LOCK_NAME, { signal: ac.signal }, (lock) => {
+        if (!lock || !this.lockWantHeld || myGen !== this.lockGeneration) return;
+        this.lockHeld = true;
+        useWorkoutStore.setState({ isReadOnlyTab: false });
+        void mergeOwnerFromDbIntoStore(useWorkoutStore.getState().ownerKey);
+        return new Promise<void>((release) => {
+          this.lockRelease = release;
+        });
+      })
+      .catch(() => {
+        /* expected AbortError when unmounted or manually promoted */
+      });
+  }
+
   releaseTabLock(): void {
-    this.lockRelease?.();
-    this.lockRelease = null;
-    this.lockAcquired = false;
-    if (this.channel) {
-      this.channel.close();
-      this.channel = null;
+    const hadLock = this.lockHeld;
+    this.lockWantHeld = false;
+    this.lockGeneration += 1;
+    this.standbyAbort?.abort();
+    this.standbyAbort = null;
+    if (this.lockRelease) {
+      const rel = this.lockRelease;
+      this.lockRelease = null;
+      this.lockHeld = false;
+      rel();
+    } else {
+      this.lockHeld = false;
+    }
+    if (hadLock) {
+      broadcastWorkoutEvent({ type: 'writer-released', ts: Date.now() });
+    }
+  }
+
+  /**
+   * Run a remote sync action exclusively under the single-writer lock.
+   * - If this tab already holds `WRITER_LOCK_NAME`, run directly.
+   * - Otherwise (e.g. background `engine.status` or `visibilitychange` while WorkoutPanel is closed),
+   *   attempt an `ifAvailable: true` lock so background tabs NEVER race with an active writer tab.
+   */
+  private async runWithWriterOwnership(fn: () => Promise<void>): Promise<void> {
+    if (this.lockHeld) {
+      await fn();
+      return;
+    }
+    const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+    if (!locks?.request) {
+      await fn();
+      return;
+    }
+    let acquired = false;
+    try {
+      await locks.request(WRITER_LOCK_NAME, { ifAvailable: true }, async (lock) => {
+        if (!lock) return;
+        acquired = true;
+        await fn();
+      });
+    } catch {
+      /* fallback below only if locks API itself threw unexpectedly */
+    }
+    if (!acquired) {
+      // Another tab holds the active writer lock -> stay passive and mirror Dexie into memory
+      await mergeOwnerFromDbIntoStore(useWorkoutStore.getState().ownerKey);
     }
   }
 
@@ -171,7 +271,7 @@ class WorkoutSyncEngine {
   /** Pre-write capability probe (`workspace.list('', { noQueue: true })`) + ownerKey check + sync. */
   async probeAndSync(): Promise<void> {
     if (useWorkoutStore.getState().isReadOnlyTab) {
-      await loadOwnerIntoStore(useWorkoutStore.getState().ownerKey);
+      await mergeOwnerFromDbIntoStore(useWorkoutStore.getState().ownerKey);
       return;
     }
     if (!isOnlineAndEngineReady()) {
@@ -181,64 +281,73 @@ class WorkoutSyncEngine {
       }
       return;
     }
-    if (this.syncing) return;
+    if (this.syncing) {
+      this.probeRequested = true;
+      return;
+    }
     this.syncing = true;
     useWorkoutStore.setState({ syncStatus: 'syncing' });
 
     try {
-      const root = await kesoku.rpc<ListResult>('workspace.list', { rel_path: '' }, { noQueue: true });
-      const wsId = typeof root.workspace_id === 'string' && root.workspace_id.trim() ? root.workspace_id.trim() : null;
-      const hasCas = root.workspace_cas === true;
+      await this.runWithWriterOwnership(async () => {
+        await waitForPendingPersists();
+        const root = await kesoku.rpc<ListResult>('workspace.list', { rel_path: '' }, { noQueue: true });
+        const wsId = typeof root.workspace_id === 'string' && root.workspace_id.trim() ? root.workspace_id.trim() : null;
+        const hasCas = root.workspace_cas === true;
 
-      // Legacy engine: enter local-only mode, NEVER write anything to $AWD
-      if (!wsId || !hasCas) {
-        useWorkoutStore.setState({
-          engineLegacy: true,
-          syncStatus: 'local_only',
-        });
-        return;
-      }
-
-      useWorkoutStore.setState({ engineLegacy: false });
-      const prevOwner = await kvGet<string>('workout_owner_key', LOCAL_ONLY_OWNER).catch(() => LOCAL_ONLY_OWNER);
-
-      if (prevOwner === LOCAL_ONLY_OWNER) {
-        const localDocs = await listWorkoutDocs(LOCAL_ONLY_OWNER).catch(() => []);
-        const localSessionCount = countSessionsInRows(localDocs);
-        const hasLocalTemplates = countTemplatesInRows(localDocs) > 0;
-        if (localSessionCount > 0 || hasLocalTemplates) {
-          // Engine upgraded from legacy/offline -> real workspace_id: ask user once to merge instead of freezing
+        // Legacy engine: enter local-only mode on `__local_only__` owner, NEVER write anything to $AWD
+        if (!wsId || !hasCas) {
+          if (useWorkoutStore.getState().ownerKey !== LOCAL_ONLY_OWNER) {
+            await loadOwnerIntoStore(LOCAL_ONLY_OWNER);
+          }
           useWorkoutStore.setState({
-            pendingUpgradeMerge: { targetOwnerKey: wsId, localSessionCount },
+            engineLegacy: true,
             syncStatus: 'local_only',
           });
           return;
         }
-        await kvSet('workout_owner_key', wsId).catch(() => {});
-        await loadOwnerIntoStore(wsId);
-      } else if (prevOwner !== wsId) {
-        // Genuine workspace switch: freeze previous owner's dirty docs, NEVER push across workspaces
-        const oldDirty = await listDirtyWorkoutDocs(prevOwner).catch(() => []);
-        await kvSet('workout_owner_key', wsId).catch(() => {});
-        await loadOwnerIntoStore(wsId);
-        if (oldDirty.length > 0) {
-          useWorkoutStore.setState({
-            frozenWorkspaceNotice: { oldOwnerKey: prevOwner, newOwnerKey: wsId, dirtyCount: oldDirty.length },
-          });
+
+        useWorkoutStore.setState({ engineLegacy: false });
+        const prevOwner = await kvGet<string>('workout_owner_key', LOCAL_ONLY_OWNER).catch(() => LOCAL_ONLY_OWNER);
+
+        if (prevOwner === LOCAL_ONLY_OWNER) {
+          const localDocs = await listWorkoutDocs(LOCAL_ONLY_OWNER).catch(() => []);
+          const localSessionCount = countSessionsInRows(localDocs);
+          const hasLocalTemplates = countTemplatesInRows(localDocs) > 0;
+          if (localSessionCount > 0 || hasLocalTemplates) {
+            // Engine upgraded from legacy/offline -> real workspace_id: ask user once to merge instead of freezing
+            useWorkoutStore.setState({
+              pendingUpgradeMerge: { targetOwnerKey: wsId, localSessionCount },
+              syncStatus: 'local_only',
+            });
+            return;
+          }
+          await kvSet('workout_owner_key', wsId).catch(() => {});
+          await loadOwnerIntoStore(wsId);
+        } else if (prevOwner !== wsId) {
+          // Genuine workspace switch: freeze previous owner's dirty docs, NEVER push across workspaces
+          const oldDirty = await listDirtyWorkoutDocs(prevOwner).catch(() => []);
+          await kvSet('workout_owner_key', wsId).catch(() => {});
+          await loadOwnerIntoStore(wsId);
+          if (oldDirty.length > 0) {
+            useWorkoutStore.setState({
+              frozenWorkspaceNotice: { oldOwnerKey: prevOwner, newOwnerKey: wsId, dirtyCount: oldDirty.length },
+            });
+          }
+        } else if (useWorkoutStore.getState().ownerKey !== wsId) {
+          await loadOwnerIntoStore(wsId);
         }
-      } else if (useWorkoutStore.getState().ownerKey !== wsId) {
-        await loadOwnerIntoStore(wsId);
-      }
 
-      await this.pullRemoteInternal(wsId);
-      await this.flushDirtyInternal(wsId);
-      if (this.pendingWriteRecent) {
-        this.pendingWriteRecent = false;
-        await this.writeRecentMarkdownInternal(wsId);
-      }
+        await this.pullRemoteInternal(wsId);
+        await this.flushDirtyInternal(wsId);
+        if (this.pendingWriteRecent) {
+          this.pendingWriteRecent = false;
+          await this.writeRecentMarkdownInternal(wsId);
+        }
 
-      const hasCorrupt = Object.keys(useWorkoutStore.getState().corruptDocs).length > 0;
-      useWorkoutStore.setState({ syncStatus: hasCorrupt ? 'corrupt' : 'synced' });
+        const hasCorrupt = Object.keys(useWorkoutStore.getState().corruptDocs).length > 0;
+        useWorkoutStore.setState({ syncStatus: hasCorrupt ? 'corrupt' : 'synced' });
+      });
     } catch (err) {
       if (err instanceof RpcError && err.code === 'OFFLINE') {
         useWorkoutStore.setState({ syncStatus: 'offline' });
@@ -248,6 +357,18 @@ class WorkoutSyncEngine {
       }
     } finally {
       this.syncing = false;
+      this.drainPendingSyncRequests();
+    }
+  }
+
+  private drainPendingSyncRequests(): void {
+    if (this.probeRequested) {
+      this.probeRequested = false;
+      this.flushRequested = false;
+      void this.probeAndSync();
+    } else if (this.flushRequested) {
+      this.flushRequested = false;
+      void this.flushIfReady();
     }
   }
 
@@ -257,33 +378,36 @@ class WorkoutSyncEngine {
     if (!pending) return;
     const targetOwner = pending.targetOwnerKey;
     const localDocs = await listWorkoutDocs(LOCAL_ONLY_OWNER).catch(() => []);
-    for (const row of localDocs) {
-      const existingTarget = await getWorkoutDoc(targetOwner, row.docKey).catch(() => undefined);
-      let mergedContent = row.content;
-      if (existingTarget) {
-        if (row.docKey === 'catalog') {
-          const a = parseCatalogJson(row.content);
-          const b = parseCatalogJson(existingTarget.content);
-          if (a.ok && b.ok) mergedContent = JSON.stringify(mergeCatalog(a.data, b.data));
-        } else if (row.docKey.startsWith('log:')) {
-          const month = row.docKey.slice(4);
-          const a = parseMonthlyLogJson(row.content, month);
-          const b = parseMonthlyLogJson(existingTarget.content, month);
-          if (a.ok && b.ok) mergedContent = JSON.stringify(mergeMonthlyLog(a.data, b.data));
+    await db.transaction('rw', db.workout_docs, async () => {
+      for (const row of localDocs) {
+        const targetId = workoutDocId(targetOwner, row.docKey);
+        const existingTarget = await db.workout_docs.get(targetId);
+        let mergedContent = row.content;
+        if (existingTarget) {
+          if (row.docKey === 'catalog') {
+            const a = parseCatalogJson(row.content);
+            const b = parseCatalogJson(existingTarget.content);
+            if (a.ok && b.ok) mergedContent = JSON.stringify(mergeCatalog(a.data, b.data));
+          } else if (row.docKey.startsWith('log:')) {
+            const month = row.docKey.slice(4);
+            const a = parseMonthlyLogJson(row.content, month);
+            const b = parseMonthlyLogJson(existingTarget.content, month);
+            if (a.ok && b.ok) mergedContent = JSON.stringify(mergeMonthlyLog(a.data, b.data));
+          }
         }
+        await db.workout_docs.put({
+          id: targetId,
+          ownerKey: targetOwner,
+          docKey: row.docKey,
+          content: mergedContent,
+          dirty: 1,
+          remoteSha256: existingTarget?.remoteSha256 ?? null,
+          needsReadBeforeWrite: true,
+          corruptRemote: false,
+          updatedAt: Date.now(),
+        });
       }
-      await putWorkoutDoc({
-        id: workoutDocId(targetOwner, row.docKey),
-        ownerKey: targetOwner,
-        docKey: row.docKey,
-        content: mergedContent,
-        dirty: 1,
-        remoteSha256: existingTarget?.remoteSha256 ?? null,
-        needsReadBeforeWrite: true,
-        corruptRemote: false,
-        updatedAt: Date.now(),
-      });
-    }
+    });
     await deleteWorkoutDocsByOwner(LOCAL_ONLY_OWNER).catch(() => {});
     await kvSet('workout_owner_key', targetOwner).catch(() => {});
     useWorkoutStore.setState({ pendingUpgradeMerge: null });
@@ -318,17 +442,22 @@ class WorkoutSyncEngine {
       if (st.syncStatus !== 'corrupt') useWorkoutStore.setState({ syncStatus: 'offline' });
       return;
     }
-    if (this.syncing) return;
+    if (this.syncing) {
+      this.flushRequested = true;
+      return;
+    }
     this.syncing = true;
     useWorkoutStore.setState({ syncStatus: 'syncing' });
     try {
-      await this.flushDirtyInternal(st.ownerKey);
-      if (this.pendingWriteRecent) {
-        this.pendingWriteRecent = false;
-        await this.writeRecentMarkdownInternal(st.ownerKey);
-      }
-      const hasCorrupt = Object.keys(useWorkoutStore.getState().corruptDocs).length > 0;
-      useWorkoutStore.setState({ syncStatus: hasCorrupt ? 'corrupt' : 'synced' });
+      await this.runWithWriterOwnership(async () => {
+        await this.flushDirtyInternal(st.ownerKey);
+        if (this.pendingWriteRecent) {
+          this.pendingWriteRecent = false;
+          await this.writeRecentMarkdownInternal(st.ownerKey);
+        }
+        const hasCorrupt = Object.keys(useWorkoutStore.getState().corruptDocs).length > 0;
+        useWorkoutStore.setState({ syncStatus: hasCorrupt ? 'corrupt' : 'synced' });
+      });
     } catch (err) {
       if (err instanceof RpcError && err.code === 'OFFLINE') {
         useWorkoutStore.setState({ syncStatus: 'offline' });
@@ -338,6 +467,7 @@ class WorkoutSyncEngine {
       }
     } finally {
       this.syncing = false;
+      this.drainPendingSyncRequests();
     }
   }
 
@@ -364,7 +494,7 @@ class WorkoutSyncEngine {
     }
   }
 
-  /** Pull one document from engine, validate, merge with local if present, and save to Dexie + Zustand. */
+  /** Pull one document from engine, validate, merge transactionally with Dexie + functionally with Zustand, and broadcast. */
   async pullSingleDoc(
     ownerKey: string,
     docKey: string,
@@ -375,15 +505,21 @@ class WorkoutSyncEngine {
       readRes = await kesoku.rpc<ReadResult>('workspace.read', { rel_path: path }, { noQueue: true });
     } catch (err) {
       if (isNotFoundError(err)) {
-        // Remote file does not exist yet: expected_sha256 for next write is null
-        const existing = await getWorkoutDoc(ownerKey, docKey).catch(() => undefined);
-        if (existing) {
-          await putWorkoutDoc({
-            ...existing,
-            remoteSha256: null,
-            needsReadBeforeWrite: false,
-            corruptRemote: false,
-          });
+        await db.transaction('rw', db.workout_docs, async () => {
+          const existing = await db.workout_docs.get(workoutDocId(ownerKey, docKey));
+          if (existing) {
+            await db.workout_docs.put({
+              ...existing,
+              remoteSha256: null,
+              needsReadBeforeWrite: false,
+              corruptRemote: false,
+            });
+          }
+        });
+        if (useWorkoutStore.getState().ownerKey === ownerKey) {
+          useWorkoutStore.setState((prev) => ({
+            baseShaByDocKey: { ...prev.baseShaByDocKey, [docKey]: null },
+          }));
         }
         return { ok: true, remoteSha256: null };
       }
@@ -404,31 +540,39 @@ class WorkoutSyncEngine {
         await this.markCorruptDoc(ownerKey, docKey, path, parsed.error);
         return { ok: false, reason: 'corrupt' };
       }
-      const existing = await getWorkoutDoc(ownerKey, docKey).catch(() => undefined);
       let merged: ExerciseCatalogFile = parsed.data;
-      let dirty: 0 | 1 = 0;
-      if (existing) {
-        const localParsed = parseCatalogJson(existing.content);
-        if (localParsed.ok) {
-          merged = mergeCatalog(localParsed.data, parsed.data);
-          dirty = JSON.stringify(merged) === JSON.stringify(parsed.data) ? 0 : 1;
+      await db.transaction('rw', db.workout_docs, async () => {
+        const id = workoutDocId(ownerKey, docKey);
+        const existing = await db.workout_docs.get(id);
+        let dirty: 0 | 1 = 0;
+        if (existing) {
+          const localParsed = parseCatalogJson(existing.content);
+          if (localParsed.ok) {
+            merged = mergeCatalog(localParsed.data, parsed.data);
+            dirty = JSON.stringify(merged) === JSON.stringify(parsed.data) ? 0 : 1;
+          }
         }
-      }
-      await putWorkoutDoc({
-        id: workoutDocId(ownerKey, docKey),
-        ownerKey,
-        docKey,
-        content: JSON.stringify(merged),
-        dirty,
-        remoteSha256: remoteSha,
-        needsReadBeforeWrite: false,
-        corruptRemote: false,
-        updatedAt: merged.updatedAt || Date.now(),
+        await db.workout_docs.put({
+          id,
+          ownerKey,
+          docKey,
+          content: JSON.stringify(merged),
+          dirty,
+          remoteSha256: remoteSha,
+          needsReadBeforeWrite: false,
+          corruptRemote: false,
+          updatedAt: merged.updatedAt || Date.now(),
+        });
       });
       this.clearCorruptDoc(docKey);
-      if (useWorkoutStore.getState().ownerKey === ownerKey) {
-        useWorkoutStore.setState({ catalog: merged });
-      }
+      useWorkoutStore.setState((prev) => {
+        if (prev.ownerKey !== ownerKey) return {};
+        return {
+          catalog: mergeCatalog(prev.catalog, merged),
+          baseShaByDocKey: { ...prev.baseShaByDocKey, [docKey]: remoteSha },
+        };
+      });
+      broadcastWorkoutEvent({ type: 'doc-updated', ownerKey, docKey, ts: Date.now() });
       return { ok: true, remoteSha256: remoteSha };
     }
 
@@ -439,31 +583,40 @@ class WorkoutSyncEngine {
         await this.markCorruptDoc(ownerKey, docKey, path, parsed.error);
         return { ok: false, reason: 'corrupt' };
       }
-      const existing = await getWorkoutDoc(ownerKey, docKey).catch(() => undefined);
       let merged: MonthlyWorkoutLogFile = parsed.data;
-      let dirty: 0 | 1 = 0;
-      if (existing) {
-        const localParsed = parseMonthlyLogJson(existing.content, month);
-        if (localParsed.ok) {
-          merged = mergeMonthlyLog(localParsed.data, parsed.data);
-          dirty = JSON.stringify(merged) === JSON.stringify(parsed.data) ? 0 : 1;
+      await db.transaction('rw', db.workout_docs, async () => {
+        const id = workoutDocId(ownerKey, docKey);
+        const existing = await db.workout_docs.get(id);
+        let dirty: 0 | 1 = 0;
+        if (existing) {
+          const localParsed = parseMonthlyLogJson(existing.content, month);
+          if (localParsed.ok) {
+            merged = mergeMonthlyLog(localParsed.data, parsed.data);
+            dirty = JSON.stringify(merged) === JSON.stringify(parsed.data) ? 0 : 1;
+          }
         }
-      }
-      await putWorkoutDoc({
-        id: workoutDocId(ownerKey, docKey),
-        ownerKey,
-        docKey,
-        content: JSON.stringify(merged),
-        dirty,
-        remoteSha256: remoteSha,
-        needsReadBeforeWrite: false,
-        corruptRemote: false,
-        updatedAt: merged.updatedAt || Date.now(),
+        await db.workout_docs.put({
+          id,
+          ownerKey,
+          docKey,
+          content: JSON.stringify(merged),
+          dirty,
+          remoteSha256: remoteSha,
+          needsReadBeforeWrite: false,
+          corruptRemote: false,
+          updatedAt: merged.updatedAt || Date.now(),
+        });
       });
       this.clearCorruptDoc(docKey);
-      if (useWorkoutStore.getState().ownerKey === ownerKey) {
-        useWorkoutStore.setState((prev) => ({ logs: { ...prev.logs, [month]: merged } }));
-      }
+      useWorkoutStore.setState((prev) => {
+        if (prev.ownerKey !== ownerKey) return {};
+        const cur = prev.logs[month];
+        return {
+          logs: { ...prev.logs, [month]: cur ? mergeMonthlyLog(cur, merged) : merged },
+          baseShaByDocKey: { ...prev.baseShaByDocKey, [docKey]: remoteSha },
+        };
+      });
+      broadcastWorkoutEvent({ type: 'doc-updated', ownerKey, docKey, ts: Date.now() });
       return { ok: true, remoteSha256: remoteSha };
     }
 
@@ -471,23 +624,26 @@ class WorkoutSyncEngine {
   }
 
   private async markCorruptDoc(ownerKey: string, docKey: string, path: string, error: string): Promise<void> {
-    const existing = await getWorkoutDoc(ownerKey, docKey).catch(() => undefined);
-    if (existing) {
-      await putWorkoutDoc({ ...existing, corruptRemote: true });
-    } else {
-      const fallback = docKey === 'catalog' ? emptyCatalog() : emptyMonthlyLog(docKey.slice(4));
-      await putWorkoutDoc({
-        id: workoutDocId(ownerKey, docKey),
-        ownerKey,
-        docKey,
-        content: JSON.stringify(fallback),
-        dirty: 0,
-        remoteSha256: null,
-        needsReadBeforeWrite: true,
-        corruptRemote: true,
-        updatedAt: Date.now(),
-      });
-    }
+    await db.transaction('rw', db.workout_docs, async () => {
+      const id = workoutDocId(ownerKey, docKey);
+      const existing = await db.workout_docs.get(id);
+      if (existing) {
+        await db.workout_docs.put({ ...existing, corruptRemote: true });
+      } else {
+        const fallback = docKey === 'catalog' ? emptyCatalog() : emptyMonthlyLog(docKey.slice(4));
+        await db.workout_docs.put({
+          id,
+          ownerKey,
+          docKey,
+          content: JSON.stringify(fallback),
+          dirty: 0,
+          remoteSha256: null,
+          needsReadBeforeWrite: true,
+          corruptRemote: true,
+          updatedAt: Date.now(),
+        });
+      }
+    });
     useWorkoutStore.setState((prev) => ({
       syncStatus: 'corrupt',
       corruptDocs: { ...prev.corruptDocs, [docKey]: { docKey, path, error } },
@@ -524,16 +680,23 @@ class WorkoutSyncEngine {
         { noQueue: true },
       );
       if (isWriteConflict(res)) return false;
-      await putWorkoutDoc({
-        ...localRow,
-        dirty: 0,
-        remoteSha256: typeof res.sha256 === 'string' ? res.sha256 : null,
-        needsReadBeforeWrite: false,
-        corruptRemote: false,
+      const newSha = typeof res.sha256 === 'string' ? res.sha256 : null;
+      await db.transaction('rw', db.workout_docs, async () => {
+        const latest = await db.workout_docs.get(localRow.id);
+        const unchanged = !latest || (latest.content === localRow.content && latest.updatedAt === localRow.updatedAt);
+        await db.workout_docs.put({
+          ...(latest ?? localRow),
+          dirty: unchanged ? 0 : 1,
+          remoteSha256: newSha,
+          needsReadBeforeWrite: false,
+          corruptRemote: false,
+        });
       });
       this.clearCorruptDoc(docKey);
-      const hasCorrupt = Object.keys(useWorkoutStore.getState().corruptDocs).length > 0;
-      useWorkoutStore.setState({ syncStatus: hasCorrupt ? 'corrupt' : 'synced' });
+      useWorkoutStore.setState((prev) => ({
+        baseShaByDocKey: { ...prev.baseShaByDocKey, [docKey]: newSha },
+        syncStatus: Object.keys(prev.corruptDocs).length > 0 ? 'corrupt' : 'synced',
+      }));
       return true;
     } catch {
       return false;
@@ -541,6 +704,7 @@ class WorkoutSyncEngine {
   }
 
   private async flushDirtyInternal(ownerKey: string): Promise<void> {
+    await waitForPendingPersists();
     const dirtyRows = await listDirtyWorkoutDocs(ownerKey).catch(() => []);
     for (const row of dirtyRows) {
       if (row.corruptRemote) continue;
@@ -564,6 +728,7 @@ class WorkoutSyncEngine {
 
     for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt++) {
       const contentToWrite = row.content;
+      const writtenUpdatedAt = row.updatedAt;
       try {
         const res = await kesoku.rpc<WriteResult>(
           'workspace.write',
@@ -586,23 +751,35 @@ class WorkoutSyncEngine {
         }
 
         const newSha = typeof res.sha256 === 'string' && res.sha256 ? res.sha256 : null;
-        // Re-check latest Dexie row in case the user edited again while RPC was in flight
-        const latest = await getWorkoutDoc(ownerKey, docKey).catch(() => undefined);
-        const unchanged = !latest || latest.content === contentToWrite;
-        await putWorkoutDoc({
-          ...(latest ?? row),
-          remoteSha256: newSha,
-          dirty: unchanged ? 0 : 1,
-          needsReadBeforeWrite: false,
-          corruptRemote: false,
+        let stillDirty = false;
+        await db.transaction('rw', db.workout_docs, async () => {
+          const latest = await db.workout_docs.get(workoutDocId(ownerKey, docKey));
+          const unchanged =
+            !latest || (latest.content === contentToWrite && latest.updatedAt === writtenUpdatedAt);
+          stillDirty = !unchanged;
+          await db.workout_docs.put({
+            ...(latest ?? row!),
+            remoteSha256: newSha,
+            dirty: unchanged ? 0 : 1,
+            needsReadBeforeWrite: false,
+            corruptRemote: false,
+          });
         });
+        useWorkoutStore.setState((prev) =>
+          prev.ownerKey === ownerKey
+            ? { baseShaByDocKey: { ...prev.baseShaByDocKey, [docKey]: newSha } }
+            : {},
+        );
+        if (stillDirty) this.flushRequested = true;
         return;
       } catch (err) {
         if (err instanceof RpcError && (err.code === 'TIMEOUT' || err.code === 'OFFLINE')) {
-          const latest = await getWorkoutDoc(ownerKey, docKey).catch(() => undefined);
-          if (latest) {
-            await putWorkoutDoc({ ...latest, dirty: 1, needsReadBeforeWrite: true });
-          }
+          await db.transaction('rw', db.workout_docs, async () => {
+            const latest = await db.workout_docs.get(workoutDocId(ownerKey, docKey));
+            if (latest) {
+              await db.workout_docs.put({ ...latest, dirty: 1, needsReadBeforeWrite: true });
+            }
+          });
         }
         throw err;
       }
@@ -615,7 +792,6 @@ class WorkoutSyncEngine {
   ): Promise<{ ok: true } | { ok: false; reason: 'offline' | 'legacy' | 'corrupt' | 'truncated' | 'error' }> {
     const st = useWorkoutStore.getState();
     if (st.engineLegacy || st.ownerKey === LOCAL_ONLY_OWNER) {
-      // In local-only mode, there is no remote to conflict with
       return { ok: true };
     }
     if (!isOnlineAndEngineReady()) return { ok: false, reason: 'offline' };
@@ -677,7 +853,11 @@ class WorkoutSyncEngine {
   dispose(): void {
     if (this.flushTimer) clearTimeout(this.flushTimer);
     this.flushTimer = null;
+    this.flushRequested = false;
+    this.probeRequested = false;
     this.releaseTabLock();
+    this.unsubPeer?.();
+    this.unsubPeer = null;
     this.unsubDirty?.();
     this.unsubDirty = null;
   }
