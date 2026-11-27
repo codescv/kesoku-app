@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChoiceItem, QuestionSegment } from '@kesoku/protocol';
 import { UiIcon, useT } from '@kesoku/ui';
 import type { CardContext } from '../cards/types';
+import { buildMediaAliases, invalidateCachedImage } from '../../lib/mediaCache';
 import { actions, useStore } from '../../lib/store';
 import { overlays } from '../session/overlays';
 import { renderInline } from './Markdown';
@@ -65,8 +66,11 @@ function usePortraitUrl(avatar: string, ctx: CardContext) {
     retried.current = true;
     const entry = useStore.getState().media[refKey];
     if (entry?.url) actions.setMedia(refKey, { ...entry, url: undefined });
+    const aliases = buildMediaAliases({ ref: avatar, sessionId: ctx.sessionId });
     setLocal(null);
-    setAttempt((n) => n + 1);
+    void invalidateCachedImage(aliases).finally(() => {
+      setAttempt((n) => n + 1);
+    });
   }
 
   return { url: failed ? null : url, failed, onImgError };

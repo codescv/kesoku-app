@@ -19,6 +19,13 @@ export interface GlossaryEntry {
   related?: string[];
 }
 
+export interface ResolveMediaOptions {
+  mime?: string;
+  kind?: 'image' | 'audio' | 'file';
+  avatarRev?: number;
+  forceRefresh?: boolean;
+}
+
 /** Everything a card / mode stage may do — provided by the client core. */
 export interface CardContext {
   sessionId: string;
@@ -27,7 +34,7 @@ export interface CardContext {
   /** Send a plain user message in the current session (e.g. a choice). */
   sendText: (text: string) => void;
   /** Resolve an image URL (placeholder → media.ready, ref → media.hydrate, object → media.refresh). */
-  resolveMedia: (ref: MediaRef) => Promise<string | null>;
+  resolveMedia: (ref: MediaRef, opts?: ResolveMediaOptions) => Promise<string | null>;
   /** Media placeholders declared by the segment (`card.media{key: placeholder_id}`). */
   media?: Record<string, string>;
   /** Open the inline Wiki Peek Sheet with a glossary entry (and sibling glossary for in-place navigation). */

@@ -14,7 +14,7 @@ export function makeCardContext(sessionId: string, messageId: string, modeId: st
     modeId,
     media,
     sendText: (text) => void kesoku.sendMessage(sessionId, text),
-    resolveMedia: (ref) => kesoku.resolveMedia(ref, { sessionId, messageId }),
+    resolveMedia: (ref, opts) => kesoku.resolveMedia(ref, { sessionId, messageId, ...opts }),
     openPeek: (entry, glossary) => overlays.peek(entry, glossary),
     openFullscreen: (node) => overlays.fullscreen(node),
     insertComposer: (text) => actions.setUi({ composerInsert: { text, n: Date.now() } }),

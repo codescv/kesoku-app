@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react';
 import { kesoku } from '../../lib/client';
+import { onMediaCacheClear, pruneOldAvatarRevs } from '../../lib/mediaCache';
 import { actions } from '../../lib/store';
 
 /** Last avatar_rev seen per ref — a changed rev invalidates the cached (signed) URL. */
 const seenRev = new Map<string, number>();
 const inflight = new Map<string, Promise<string | null>>();
 const failed = new Set<string>();
+
+onMediaCacheClear(() => {
+  seenRev.clear();
+  inflight.clear();
+  failed.clear();
+});
 
 const SIGNED_RE = /[?&](x-goog-signature|x-amz-signature|signature|sig)=/i;
 
@@ -27,12 +34,13 @@ function resolveAvatar(ref: string, rev: number): Promise<string | null> {
   const running = inflight.get(key);
   if (running) return running;
   if (seenRev.get(ref) !== rev) {
-    // Drop any cached URL for an older revision so `resolveMedia` hydrates again.
+    // Drop any cached URL for an older revision so `resolveMedia` hydrates again, and prune old IDB revisions.
     actions.setMedia(`ref:${ref}`, { status: 'pending' });
     seenRev.set(ref, rev);
+    void pruneOldAvatarRevs(ref, rev).catch(() => {});
   }
   const p = kesoku
-    .resolveMedia({ ref })
+    .resolveMedia({ ref }, { kind: 'image', avatarRev: rev })
     .catch(() => null)
     .then((u) => {
       inflight.delete(key);

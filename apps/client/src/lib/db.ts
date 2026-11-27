@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import type { SessionSummary } from '@kesoku/protocol';
 import type { ChatItem } from './types';
+import { purgeSessionMediaCache } from './mediaCache';
 
 export interface SessionRow {
   session_id: string;
@@ -38,8 +39,20 @@ export interface WorkoutDocRow {
   corruptRemote?: boolean;
   updatedAt: number;
 }
+export interface MediaCacheRow {
+  id: string;
+  blob: Blob;
+  mime: string;
+  bytes: number;
+  createdAt: number;
+  accessedAt: number;
+}
+export interface MediaAliasRow {
+  alias: string;
+  targetId: string;
+}
 
-/** Local snapshot cache (IndexedDB): recent sessions, messages, `last_seq` cursors, UI settings, workout docs. No auth secrets here. */
+/** Local snapshot cache (IndexedDB): recent sessions, messages, `last_seq` cursors, UI settings, workout docs, image cache. No auth secrets here. */
 export class KesokuDB extends Dexie {
   sessions!: Table<SessionRow, string>;
   messages!: Table<MessageRow, string>;
@@ -47,6 +60,8 @@ export class KesokuDB extends Dexie {
   states!: Table<StateRow, string>;
   kv!: Table<KvRow, string>;
   workout_docs!: Table<WorkoutDocRow, string>;
+  media_cache!: Table<MediaCacheRow, string>;
+  media_aliases!: Table<MediaAliasRow, string>;
 
   constructor(name = 'kesoku') {
     super(name);
@@ -64,6 +79,16 @@ export class KesokuDB extends Dexie {
       states: 'session_id',
       kv: 'key',
       workout_docs: 'id, ownerKey, [ownerKey+dirty], [ownerKey+docKey]',
+    });
+    this.version(3).stores({
+      sessions: 'session_id, updated_at',
+      messages: 'id, session_id, [session_id+ts]',
+      cursors: 'session_id',
+      states: 'session_id',
+      kv: 'key',
+      workout_docs: 'id, ownerKey, [ownerKey+dirty], [ownerKey+docKey]',
+      media_cache: 'id, accessedAt',
+      media_aliases: 'alias, targetId',
     });
   }
 }
@@ -118,6 +143,7 @@ export async function purgeSessionFromDb(sessionId: string): Promise<void> {
       await db.kv.delete('last_session');
     }
   });
+  await purgeSessionMediaCache(sessionId).catch(() => {});
 }
 
 /**
@@ -134,9 +160,10 @@ export async function reconcileSessionsInDb(
     data: d,
     updated_at: d.updated_at,
   }));
+  let staleIds: string[] = [];
   await db.transaction('rw', [db.sessions, db.messages, db.cursors, db.states, db.kv], async () => {
     const existing = await db.sessions.toArray();
-    const staleIds = existing
+    staleIds = existing
       .filter((row) => (!roleFilter || row.data?.role === roleFilter) && !keepIds.has(row.session_id))
       .map((row) => row.session_id);
     if (staleIds.length > 0) {
@@ -155,6 +182,9 @@ export async function reconcileSessionsInDb(
       await db.sessions.bulkPut(rows);
     }
   });
+  for (const id of staleIds) {
+    await purgeSessionMediaCache(id).catch(() => {});
+  }
 }
 
 // ───────────────────────── workout docs helpers ─────────────────────────

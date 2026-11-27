@@ -1,7 +1,8 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Attachment, LexToken, MemoryProposal } from '@kesoku/protocol';
 import { Avatar, ModeIcon, UiIcon, VoicePill, modeMeta, t as tGlobal, useLocale, useT, type MessageKey } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
+import { buildMediaAliases, getCachedImageUrl, peekCachedImageUrl } from '../../lib/mediaCache';
 import { actions, useStore } from '../../lib/store';
 import type { ChatItem, TurnEvent } from '../../lib/types';
 import { SegmentList, type SegmentEnv } from '../segments/SegmentRenderer';
@@ -126,8 +127,208 @@ export function isImageAttachment(a: AttachmentLike): boolean {
   return !!a.mime?.toLowerCase().startsWith('image/') || IMAGE_EXT_RE.test(a.filename || a.object || a.ref || '');
 }
 
-/** One attachment pill inside a user bubble: playable voice pill for audio, tap-to-open Photo N for images. */
-export function UserAttachmentItem({ a, index, sessionId, messageId }: { a: AttachmentLike; index: number; sessionId: string; messageId?: string }) {
+/** Rounded image thumbnail inside a user bubble with 0ms cache peek, lazy IO for old history, lightbox tap, and retry on error. */
+export function UserImageThumb({
+  a,
+  index,
+  sessionId,
+  messageId,
+  eager = true,
+}: {
+  a: AttachmentLike;
+  index: number;
+  sessionId: string;
+  messageId?: string;
+  eager?: boolean;
+}) {
+  const t = useT();
+  const canResolve = !!(a.object || a.ref || a.url);
+  const aliases = useMemo(
+    () => buildMediaAliases({ object: a.object || undefined, ref: a.ref || undefined, sessionId }),
+    [a.object, a.ref, sessionId],
+  );
+  const initialUrl = a.url || (aliases.length ? peekCachedImageUrl(aliases) : null);
+  const [url, setUrl] = useState<string | null>(initialUrl);
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [failed, setFailed] = useState(!canResolve);
+  const [inView, setInView] = useState(Boolean(eager || initialUrl || typeof IntersectionObserver === 'undefined'));
+  const [attempt, setAttempt] = useState(0);
+  const retryCountRef = useRef(0);
+  const forceNextRef = useRef(false);
+  const hostRef = useRef<HTMLButtonElement | null>(null);
+
+  // Sync reset when attachment identity changes.
+  const attachKey = `${sessionId}|${a.object ?? ''}|${a.ref ?? ''}|${a.url ?? ''}`;
+  const prevKeyRef = useRef(attachKey);
+  if (prevKeyRef.current !== attachKey) {
+    prevKeyRef.current = attachKey;
+    retryCountRef.current = 0;
+    forceNextRef.current = false;
+  }
+
+  // Even for offscreen older history items, check persistent IDB cache immediately (0 RPCs, 0 network).
+  // Also link newly learned aliases (e.g., when server echoes `ref` alongside `object`) to the existing cached blob.
+  useEffect(() => {
+    if (!aliases.length) return;
+    if (url) {
+      if (url.startsWith('blob:')) peekCachedImageUrl(aliases);
+      return;
+    }
+    let alive = true;
+    void getCachedImageUrl(aliases).then((cached) => {
+      if (alive && cached) {
+        setUrl(cached);
+        setFailed(false);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [aliases, url]);
+
+  // Lazy-load uncached offscreen older history thumbnails when scrolled near viewport.
+  useEffect(() => {
+    if (inView || url || failed || !canResolve || !hostRef.current || typeof IntersectionObserver === 'undefined') return;
+    const el = hostRef.current;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setInView(true);
+          obs.disconnect();
+        }
+      },
+      { rootMargin: '320px' },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [inView, url, failed, canResolve]);
+
+  useEffect(() => {
+    if (!canResolve) {
+      setFailed(true);
+      return;
+    }
+    if (url || failed || !inView) return;
+    const forceRefresh = forceNextRef.current;
+    forceNextRef.current = false;
+    let alive = true;
+    void kesoku
+      .resolveMedia(
+        { object: a.object || undefined, ref: a.ref || undefined, url: a.url || undefined },
+        { sessionId, messageId, mime: a.mime, kind: 'image', ...(forceRefresh ? { forceRefresh: true } : {}) },
+      )
+      .then(
+        (resolved) => {
+          if (!alive) return;
+          if (resolved) {
+            setUrl(resolved);
+            setFailed(false);
+          } else {
+            setFailed(true);
+          }
+        },
+        () => {
+          if (alive) setFailed(true);
+        },
+      );
+    return () => {
+      alive = false;
+    };
+  }, [a.object, a.ref, a.url, a.mime, sessionId, messageId, canResolve, url, failed, inView, attempt]);
+
+  const triggerForceRetry = () => {
+    forceNextRef.current = true;
+    setImgLoaded(false);
+    setUrl(null);
+    setFailed(false);
+    setInView(true);
+    setAttempt((n) => n + 1);
+  };
+
+  const handleImgError = () => {
+    if (retryCountRef.current < 1 && canResolve) {
+      retryCountRef.current += 1;
+      triggerForceRetry();
+    } else {
+      setUrl(null);
+      setFailed(true);
+    }
+  };
+
+  const ariaLabel = t('common.viewImageN', { n: index + 1 });
+
+  if (failed) {
+    return (
+      <button
+        ref={hostRef}
+        type="button"
+        className="k-user-img k-user-img-error"
+        disabled={!canResolve}
+        aria-label={ariaLabel}
+        onClick={(e) => {
+          e.stopPropagation();
+          retryCountRef.current = 0;
+          triggerForceRetry();
+        }}
+      >
+        <UiIcon name="image" size={18} />
+        <span>{t('common.retry')}</span>
+      </button>
+    );
+  }
+
+  if (!url) {
+    return (
+      <button
+        ref={hostRef}
+        type="button"
+        className="k-user-img k-user-img-loading"
+        disabled
+        aria-busy="true"
+        aria-label={ariaLabel}
+      >
+        <span className="k-user-img-skel" aria-hidden />
+      </button>
+    );
+  }
+
+  return (
+    <button
+      ref={hostRef}
+      type="button"
+      className={'k-user-img' + (imgLoaded ? ' is-loaded' : ' is-loading')}
+      aria-label={ariaLabel}
+      onClick={(e) => {
+        e.stopPropagation();
+        overlays.image(url);
+      }}
+    >
+      <img
+        src={url}
+        alt={a.filename || t('common.imageN', { n: index + 1 })}
+        decoding="async"
+        draggable={false}
+        onLoad={() => setImgLoaded(true)}
+        onError={handleImgError}
+      />
+    </button>
+  );
+}
+
+/** One attachment item inside a user bubble: playable voice pill for audio, thumbnail for images, pill for other files. */
+export function UserAttachmentItem({
+  a,
+  index,
+  sessionId,
+  messageId,
+  eager = true,
+}: {
+  a: AttachmentLike;
+  index: number;
+  sessionId: string;
+  messageId?: string;
+  eager?: boolean;
+}) {
   const t = useT();
   const resolve = () => kesoku.resolveMedia({ object: a.object || undefined, ref: a.ref || undefined, url: a.url || undefined }, { sessionId, messageId });
   if (isAudioAttachment(a)) {
@@ -141,22 +342,8 @@ export function UserAttachmentItem({ a, index, sessionId, messageId }: { a: Atta
       />
     );
   }
-  const canOpen = !!(a.object || a.ref || a.url);
   if (isImageAttachment(a)) {
-    return (
-      <button
-        type="button"
-        className="k-pill k-pill-neutral k-pill-sm"
-        disabled={!canOpen}
-        aria-label={t('common.viewImageN', { n: index + 1 })}
-        onClick={(e) => {
-          e.stopPropagation();
-          void resolve().then((url) => url && overlays.image(url), () => undefined);
-        }}
-      >
-        <UiIcon name="image" size={13} /> {t('common.imageN', { n: index + 1 })}
-      </button>
-    );
+    return <UserImageThumb a={a} index={index} sessionId={sessionId} messageId={messageId} eager={eager} />;
   }
   return (
     <span className="k-pill k-pill-neutral k-pill-sm" title={a.filename}>
@@ -165,10 +352,20 @@ export function UserAttachmentItem({ a, index, sessionId, messageId }: { a: Atta
   );
 }
 
-function UserBubble({ item, sessionId }: { item: ChatItem; sessionId: string }) {
+function UserBubble({ item, sessionId, eager = true }: { item: ChatItem; sessionId: string; eager?: boolean }) {
   const t = useT();
   const timeLabel = formatMessageTime(item.ts);
   const { quote, reply } = splitUserQuote(item.text);
+  const indexed = (item.attachments ?? []).map((a, index) => ({ a, index }));
+  const imageAtts = indexed.filter(({ a }) => isImageAttachment(a));
+  const otherAtts = indexed.filter(({ a }) => !isImageAttachment(a));
+  const imgGridClass =
+    imageAtts.length === 1
+      ? 'k-user-imgs is-single'
+      : imageAtts.length === 2 || imageAtts.length === 4
+        ? 'k-user-imgs is-grid-2'
+        : 'k-user-imgs is-grid-3';
+
   return (
     <div className={'k-row k-row-user' + (item.status === 'failed' ? ' is-failed' : '')}>
       <div className="k-bubble k-bubble-user">
@@ -177,13 +374,20 @@ function UserBubble({ item, sessionId }: { item: ChatItem; sessionId: string }) 
             {quote}
           </blockquote>
         )}
-        {item.attachments?.length ? (
-          <div className="k-attach-row">
-            {item.attachments.map((a, i) => (
-              <UserAttachmentItem key={a.object || a.ref || i} a={a} index={i} sessionId={sessionId} messageId={item.message_id} />
+        {imageAtts.length > 0 && (
+          <div className={imgGridClass} data-count={imageAtts.length}>
+            {imageAtts.map(({ a, index }) => (
+              <UserImageThumb key={a.object || a.ref || index} a={a} index={index} sessionId={sessionId} messageId={item.message_id} eager={eager} />
             ))}
           </div>
-        ) : null}
+        )}
+        {otherAtts.length > 0 && (
+          <div className="k-attach-row">
+            {otherAtts.map(({ a, index }) => (
+              <UserAttachmentItem key={a.object || a.ref || index} a={a} index={index} sessionId={sessionId} messageId={item.message_id} eager={eager} />
+            ))}
+          </div>
+        )}
         {reply && <div className="k-user-text">{reply}</div>}
         {item.status === 'sending' && <span className="k-sending" aria-label={t('msg.sendingAria')}>···</span>}
       </div>
@@ -306,7 +510,7 @@ export function MessageList({
           if (item.kind === 'user')
           return (
             <Fragment key={item.key}>
-              <UserBubble item={item} sessionId={sessionId} />
+              <UserBubble item={item} sessionId={sessionId} eager={idx >= items.length - 12} />
               {byMessage.m.get(item.key)?.map((p) => <ProposalCard key={p.proposal_id} proposal={p} />)}
             </Fragment>
           );
