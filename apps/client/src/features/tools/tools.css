@@ -1,0 +1,208 @@
+/* WeChat Mini Program style Tools Hub — blends into Warm Washi Light × Frosted Night Dark */
+.k-tools {
+  background: var(--bg);
+}
+
+.k-tools-head {
+  height: 54px;
+}
+
+.k-tools-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 18px 16px calc(28px + var(--safe-b));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.k-tools-active-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 1.5px solid var(--ok-border);
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-weight: 800;
+  font-size: 14.5px;
+  text-align: left;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-touch-callout: none;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.k-tools-active-banner:active {
+  transform: scale(0.98);
+}
+
+.k-tools-active-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.k-tools-live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 24%, transparent);
+  animation: k-tools-pulse 2s ease-in-out infinite;
+}
+
+@keyframes k-tools-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 0.72;
+  }
+}
+
+.k-tools-section {
+  background: var(--card);
+  border: 1.5px solid var(--line);
+  border-radius: 22px;
+  padding: 16px 12px 20px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.k-tools-section-title {
+  margin: 0;
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+}
+
+.k-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 8px;
+}
+
+@media (min-width: 540px) {
+  .k-tools-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 18px 12px;
+  }
+}
+
+.k-tool-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 112px;
+  padding: 10px 6px 8px;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-touch-callout: none;
+  transition: transform 0.14s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.14s ease;
+}
+
+.k-tool-tile:hover {
+  background: var(--subcard);
+}
+
+.k-tool-tile:active {
+  transform: scale(0.94);
+  background: var(--subcard);
+}
+
+.k-tool-icon-plate {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  box-shadow: 0 6px 14px rgba(20, 22, 26, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+}
+
+.k-tool-icon-plate.is-workout {
+  background: linear-gradient(145deg, #fb7145 0%, #ea580c 100%);
+}
+
+.k-tool-icon-plate.is-notes {
+  background: linear-gradient(145deg, #d97706 0%, #b45309 100%);
+}
+
+.k-tool-icon-plate.is-files {
+  background: linear-gradient(145deg, #6366f1 0%, #4338ca 100%);
+}
+
+.k-tool-live-badge-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--ok);
+  border: 2.5px solid var(--card);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok) 28%, transparent);
+  animation: k-tools-pulse 2s ease-in-out infinite;
+}
+
+.k-tool-name {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.25;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.k-tool-desc {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+  line-height: 1.25;
+  text-align: center;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.k-tool-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--ok-soft);
+  color: var(--ok);
+  border: 1px solid var(--ok-border);
+}

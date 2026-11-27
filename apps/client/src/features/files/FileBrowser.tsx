@@ -529,7 +529,7 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
               <div className="k-fb-viewer-meta">
                 <b>{openFile.name}</b>
                 <small>
-                  {openFile.rel_path} · {fmtSize(openFile.size)} · {fmtRelTime(openFile.updated_at, locale, t)}
+                  {openFile.rel_path} · {fmtSize(openFile.size ?? openFile.bytes ?? 0)} · {fmtRelTime(openFile.updated_at ?? openFile.mtime ?? 0, locale, t)}
                   {openFile.truncated ? t('files.truncated') : ''}
                 </small>
               </div>
@@ -580,7 +580,7 @@ export function FileBrowser({ onClose }: { onClose: () => void }) {
             ) : openFile.kind === 'media' ? (
               <MediaPreview file={openFile} />
             ) : (
-              <div className="k-empty">{t('files.binaryFile', { mime: openFile.mime, size: fmtSize(openFile.size) })}</div>
+              <div className="k-empty">{t('files.binaryFile', { mime: openFile.mime, size: fmtSize(openFile.size ?? openFile.bytes ?? 0) })}</div>
             )}
           </section>
         ) : (

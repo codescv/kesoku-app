@@ -587,11 +587,11 @@ describe('PersonaStudio · inline secondary screen (v0.1.27)', () => {
     expect(shell.querySelector('.k-col-right')).toBeTruthy();
     expect(shell.querySelector('.k-col-left')!.contains(studio)).toBe(false);
     expect(center.querySelector('.k-topbar')).toBeNull();
-    // The sidebar highlights the active secondary screen like 记忆库 / 便签.
+    // The sidebar highlights the active secondary screen like 记忆库 / 工具.
     const studioBtn = screen.getByTestId('sidebar-studio-btn');
     expect(studioBtn.className).toContain('is-active');
     expect(studioBtn.getAttribute('aria-current')).toBe('page');
-    expect(screen.getByTestId('sidebar-files-btn').className).not.toContain('is-active');
+    expect(screen.getByTestId('sidebar-tools-btn').className).not.toContain('is-active');
     expect(screen.getByTestId('sidebar-settings-btn').className).not.toContain('is-active');
     // 返回 closes the studio back to the chat column; side columns never unmount.
     fireEvent.click(within(studio).getByRole('button', { name: '返回' }));

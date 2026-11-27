@@ -225,17 +225,21 @@ export class KesokuSocket {
     }, LIMITS.PING_INTERVAL_MS);
   }
 
-  /** Fire-and-forget (queued while reconnecting). Returns the envelope id. */
-  send(type: string, payload: Record<string, unknown>, opts: { session_id?: string; id?: string } = {}): string {
+  /** Fire-and-forget (queued while reconnecting unless `noQueue: true`). Returns the envelope id. */
+  send(type: string, payload: Record<string, unknown>, opts: { session_id?: string; id?: string; noQueue?: boolean } = {}): string {
     const env = makeEnvelope(type, payload, { id: opts.id ?? newId('req'), session_id: opts.session_id });
     const frame = JSON.stringify(env);
     if (this.ws && this.status === 'online' && this.ws.readyState === 1) this.ws.send(frame);
+    else if (opts.noQueue) throw new RpcError('OFFLINE', 'socket offline');
     else this.queue.push(frame);
     return env.id;
   }
 
-  /** Request/response via `reply_to`. Rejects with RpcError on `error`. */
-  rpc(type: string, payload: Record<string, unknown>, opts: { session_id?: string; timeoutMs?: number } = {}): Promise<Envelope> {
+  /** Request/response via `reply_to`. Rejects with RpcError on `error` (or `OFFLINE` immediately when `noQueue: true`). */
+  rpc(type: string, payload: Record<string, unknown>, opts: { session_id?: string; timeoutMs?: number; noQueue?: boolean } = {}): Promise<Envelope> {
+    if (opts.noQueue && (!this.ws || this.status !== 'online' || this.ws.readyState !== 1)) {
+      return Promise.reject(new RpcError('OFFLINE', 'socket offline'));
+    }
     const id = newId('req');
     return new Promise<Envelope>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -243,7 +247,13 @@ export class KesokuSocket {
         reject(new RpcError('TIMEOUT', `${type} timed out`));
       }, opts.timeoutMs ?? this.opts.rpcTimeoutMs ?? 20_000);
       this.pending.set(id, { resolve, reject, timer });
-      this.send(type, payload, { session_id: opts.session_id, id });
+      try {
+        this.send(type, payload, { session_id: opts.session_id, id, noQueue: opts.noQueue });
+      } catch (err) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(err instanceof Error ? err : new RpcError('OFFLINE', String(err)));
+      }
     });
   }
 }

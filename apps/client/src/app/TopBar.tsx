@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { MODEL_CATALOG, THINKING_LEVELS, type LlmOverride, type ModeId, type ThinkingLevel } from '@kesoku/protocol';
 import { Avatar, Capsule, ModeIcon, Sheet, UiIcon, modeMeta, t, useLocale, useT } from '@kesoku/ui';
 import { kesoku } from '../lib/client';
+import { kvSet } from '../lib/db';
 import { actions, useStore } from '../lib/store';
 import { useAvatarUrl } from '../features/persona/avatar';
 import { fallbackRoleId, roleAvatarRef, roleFallbackName, sortRoles } from '../features/persona/model';
+import { selectHasActiveWorkout, useWorkoutStore } from '../features/workout/store';
 
 const MODEL_SHORT_LABEL: Record<string, string> = {
   'gemini-4-neon': 'Neon',
@@ -198,6 +200,8 @@ export function RoleModeCapsule({ sessionId, modeId, nestedTitle }: { sessionId:
 
 export function TopBar({ sessionId, modeId, nestedTitle, onMenu, showMenu }: { sessionId: string | null; modeId: ModeId; nestedTitle?: string; onMenu: () => void; showMenu: boolean }) {
   const tr = useT();
+  const screen = useStore((s) => s.ui.screen);
+  const hasActiveWorkout = useWorkoutStore(selectHasActiveWorkout);
   return (
     <header className="k-topbar" style={{ ['--mode' as string]: modeMeta(modeId).color }}>
       {showMenu ? (
@@ -210,6 +214,21 @@ export function TopBar({ sessionId, modeId, nestedTitle, onMenu, showMenu }: { s
       <div className="k-topbar-center">
         <RoleModeCapsule sessionId={sessionId} modeId={modeId} nestedTitle={nestedTitle} />
       </div>
+      {hasActiveWorkout && screen === 'chat' && (
+        <button
+          type="button"
+          className="k-icon-btn k-topbar-workout-btn"
+          data-testid="topbar-workout-btn"
+          aria-label={tr('topbar.activeWorkoutAria')}
+          onClick={() => {
+            actions.setUi({ screen: 'workout', toolReturnScreen: 'chat', drawerOpen: false });
+            void kvSet('last_screen', 'workout').catch(() => {});
+          }}
+        >
+          <UiIcon name="dumbbell" size={20} />
+          <span className="k-topbar-workout-dot" aria-hidden />
+        </button>
+      )}
       <ModelCapsule sessionId={sessionId} />
     </header>
   );

@@ -543,6 +543,39 @@ const UI_GLYPHS = {
       </>
     ),
   },
+  apps: {
+    tint: (
+      <>
+        <rect x="4" y="4" width="6.5" height="6.5" rx="1.8" />
+        <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8" />
+        <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8" />
+        <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8" />
+      </>
+    ),
+    ink: (
+      <>
+        <rect x="4" y="4" width="6.5" height="6.5" rx="1.8" />
+        <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8" />
+        <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8" />
+        <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8" />
+      </>
+    ),
+  },
+  dumbbell: {
+    tint: (
+      <>
+        <rect x="5" y="6.5" width="3.2" height="11" rx="1.3" />
+        <rect x="15.8" y="6.5" width="3.2" height="11" rx="1.3" />
+      </>
+    ),
+    ink: (
+      <>
+        <rect x="5" y="6.5" width="3.2" height="11" rx="1.3" />
+        <rect x="15.8" y="6.5" width="3.2" height="11" rx="1.3" />
+        <path d="M8.2 12h7.6M2.5 9v6M21.5 9v6M2.5 12H5M19 12h2.5" />
+      </>
+    ),
+  },
   // auth & devices
   qr: {
     tint: (

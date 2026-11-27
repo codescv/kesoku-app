@@ -20,6 +20,7 @@ import type { ChatItem } from './types';
 import type { MediaRef } from '../features/cards/types';
 import { translatorStartPrefs } from './translatorPrefs';
 import { fallbackRoleId } from '../features/persona/model';
+import { workoutSync } from '../features/workout/sync';
 
 const SEQ_TYPES = new Set<string>(SEQ_EVENT_TYPES);
 export const APP_VERSION = '0.1.33';
@@ -160,6 +161,7 @@ function onEnvelope(env: Envelope) {
     case 'engine.status': {
       const e = p as EngineToClientPayload<'engine.status'>;
       actions.setConn({ engineOnline: e.online, engineSince: e.since, latencyMs: e.latency_ms ?? getState().conn.latencyMs });
+      if (e.online) void workoutSync.onEngineOnline();
       return;
     }
     case 'error': {
@@ -216,6 +218,7 @@ async function afterConnect() {
   const cur = getState().currentSessionId;
   if (cur && !hasSessionState(cur)) void kesoku.openSession(cur, { force: true, keepUi: true }).catch(() => {});
   void kesoku.refreshAll();
+  if (getState().conn.engineOnline) void workoutSync.onEngineOnline();
 }
 
 /** True when a session's state files (incl. `game/games.json` for non-chat modes) have been hydrated. */
@@ -259,7 +262,7 @@ export const kesoku = {
     return socket;
   },
 
-  async rpc<T = Payload>(type: ClientToEngineType, payload: Payload, opts: { session_id?: string; timeoutMs?: number } = {}): Promise<T> {
+  async rpc<T = Payload>(type: ClientToEngineType, payload: Payload, opts: { session_id?: string; timeoutMs?: number; noQueue?: boolean } = {}): Promise<T> {
     if (!socket) throw new RpcError('OFFLINE', t('client.notConnected'));
     const env = await socket.rpc(type, payload, opts);
     return env.payload as T;

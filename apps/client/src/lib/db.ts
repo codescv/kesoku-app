@@ -26,14 +26,27 @@ export interface KvRow {
   key: string;
   value: unknown;
 }
+export interface WorkoutDocRow {
+  id: string; // `${ownerKey}|${docKey}`
+  ownerKey: string;
+  docKey: string; // 'catalog' | 'log:YYYY-MM'
+  content: string;
+  /** Numeric flag (0 | 1) for IndexedDB compound index `[ownerKey+dirty]` compatibility. */
+  dirty: 0 | 1;
+  remoteSha256: string | null;
+  needsReadBeforeWrite: boolean;
+  corruptRemote?: boolean;
+  updatedAt: number;
+}
 
-/** Local snapshot cache (IndexedDB): recent sessions, messages, `last_seq` cursors, UI settings. No auth secrets here. */
+/** Local snapshot cache (IndexedDB): recent sessions, messages, `last_seq` cursors, UI settings, workout docs. No auth secrets here. */
 export class KesokuDB extends Dexie {
   sessions!: Table<SessionRow, string>;
   messages!: Table<MessageRow, string>;
   cursors!: Table<CursorRow, string>;
   states!: Table<StateRow, string>;
   kv!: Table<KvRow, string>;
+  workout_docs!: Table<WorkoutDocRow, string>;
 
   constructor(name = 'kesoku') {
     super(name);
@@ -43,6 +56,14 @@ export class KesokuDB extends Dexie {
       cursors: 'session_id',
       states: 'session_id',
       kv: 'key',
+    });
+    this.version(2).stores({
+      sessions: 'session_id, updated_at',
+      messages: 'id, session_id, [session_id+ts]',
+      cursors: 'session_id',
+      states: 'session_id',
+      kv: 'key',
+      workout_docs: 'id, ownerKey, [ownerKey+dirty], [ownerKey+docKey]',
     });
   }
 }
@@ -134,4 +155,35 @@ export async function reconcileSessionsInDb(
       await db.sessions.bulkPut(rows);
     }
   });
+}
+
+// ───────────────────────── workout docs helpers ─────────────────────────
+
+export function workoutDocId(ownerKey: string, docKey: string): string {
+  return `${ownerKey}|${docKey}`;
+}
+
+export async function getWorkoutDoc(ownerKey: string, docKey: string): Promise<WorkoutDocRow | undefined> {
+  return db.workout_docs.get(workoutDocId(ownerKey, docKey));
+}
+
+export async function putWorkoutDoc(row: WorkoutDocRow): Promise<void> {
+  await db.workout_docs.put(row);
+}
+
+export async function listWorkoutDocs(ownerKey: string): Promise<WorkoutDocRow[]> {
+  return db.workout_docs.where('ownerKey').equals(ownerKey).toArray();
+}
+
+export async function listDirtyWorkoutDocs(ownerKey: string): Promise<WorkoutDocRow[]> {
+  return db.workout_docs.where('[ownerKey+dirty]').equals([ownerKey, 1]).toArray();
+}
+
+export async function listAllDirtyWorkoutDocs(): Promise<WorkoutDocRow[]> {
+  const all = await db.workout_docs.toArray();
+  return all.filter((r) => r.dirty === 1);
+}
+
+export async function deleteWorkoutDocsByOwner(ownerKey: string): Promise<void> {
+  await db.workout_docs.where('ownerKey').equals(ownerKey).delete();
 }

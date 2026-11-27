@@ -146,13 +146,13 @@ describe('TopBar (Items 1, 8, 10)', () => {
 });
 
 describe('SessionPanel (Items 1, 6, 7)', () => {
-  it('search placeholder is plain, toolbar uses icons and 文件管理 replaces Agent 目录 (band)', () => {
+  it('search placeholder is plain, toolbar uses icons and 工具 replaces standalone 文件管理/便签', () => {
     useStore.setState({ sessions: { s1: { session_id: 's1', title: '跑团夜', mode_id: 'trpg', updated_at: Date.now() / 1000, role: 'asuka' } as never } });
     render(<SessionPanel />);
     expect(document.body.textContent).not.toMatch(/FTS5|band|Agent 目录/);
-    expect(screen.getByText('文件管理')).toBeTruthy();
+    expect(screen.getByText('工具')).toBeTruthy();
     expect(document.querySelector('.k-srow [data-mode-icon="trpg"]')).toBeTruthy();
-    for (const n of ['plus', 'brain', 'folder', 'sliders']) expect(document.querySelector(`[data-ui-icon="${n}"]`)).toBeTruthy();
+    for (const n of ['plus', 'brain', 'apps', 'sliders']) expect(document.querySelector(`[data-ui-icon="${n}"]`)).toBeTruthy();
     expect(document.querySelector('.k-spanel-foot')!.textContent).not.toMatch(EMOJI);
     fireEvent.click(screen.getByTestId('all-sessions-btn'));
     const input = screen.getByRole('searchbox', { name: '搜索历史对话' }) as HTMLInputElement;

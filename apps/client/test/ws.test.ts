@@ -106,6 +106,18 @@ describe('KesokuSocket', () => {
     expect(FakeWS.all.length).toBe(before + 1);
   });
 
+  it('noQueue rejects OFFLINE immediately when offline and never queues frames', async () => {
+    const { s, ws } = await connect();
+    // Before auth.ok, socket status is authenticating (not online)
+    await expect(s.rpc('workspace.write', { path: 'a.json', content: '{}' }, { noQueue: true })).rejects.toMatchObject({
+      code: 'OFFLINE',
+    });
+    expect(() => s.send('workspace.write', { path: 'a.json', content: '{}' }, { noQueue: true })).toThrow(RpcError);
+    // After auth.ok, nothing queued from those noQueue calls should be flushed
+    ws.recv(makeEnvelope('auth.ok', { device_id: 'dev_abcdefghij', engine_online: true, server_ts: 1 }));
+    expect(ws.sent.map((f) => JSON.parse(f).type).filter((t) => t !== 'ping')).toEqual(['auth.hello']);
+  });
+
   it('relay.rotate opens a new leg while the old one drains', async () => {
     const { ws } = await connect();
     ws.recv(makeEnvelope('auth.ok', { device_id: 'dev_abcdefghij', engine_online: true, server_ts: 1 }));

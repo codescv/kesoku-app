@@ -640,6 +640,13 @@ html, body, #root { width: 100%; max-width: 100vw; overflow-x: hidden; }
 .k-spanel-foot-row .k-foot-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .k-foot-btn.is-active { background: var(--primary-soft); border-color: var(--primary-border); color: var(--primary-strong); }
 .k-foot-btn.is-active .k-icon { color: var(--primary-strong); }
+.k-sidebar-tools-dot { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+.k-topbar-workout-btn { position: relative; width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0; color: var(--ink); }
+.k-topbar-workout-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); border: 1.5px solid var(--bg); }
+.k-settings-dirty-warn { padding: 12px; border-radius: 14px; border: 1.5px solid var(--warn-border); background: var(--warn-soft); display: flex; flex-direction: column; gap: 6px; }
+.k-settings-dirty-warn b { font-size: 14.5px; color: var(--ink); }
+.k-settings-dirty-warn p { margin: 0; font-size: 13px; color: var(--ink-2); font-weight: 600; }
+.k-settings-dirty-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
 
 .k-inspector-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: 12px; background: var(--subcard, var(--bg-elev)); border: 1px solid var(--line, var(--border)); }
 .k-inspector-tab { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 0 10px; border-radius: 9px; border: 0; background: transparent; color: var(--ink-2); font-weight: 800; font-size: 13.5px; transition: background 0.14s, color 0.14s; }

@@ -52,7 +52,7 @@ export interface Settings {
   translatorForeignLangs: string[];
 }
 
-export type Screen = 'chat' | 'settings' | 'memory' | 'notes' | 'studio' | 'files';
+export type Screen = 'chat' | 'settings' | 'memory' | 'notes' | 'studio' | 'files' | 'tools' | 'workout';
 
 export interface Toast {
   id: number;
@@ -99,6 +99,8 @@ export interface KesokuState {
     launchpad: boolean;
     inspector: InspectorPanel | null;
     screen: Screen;
+    /** Destination screen when closing a tool panel (`'tools'` if opened from Tools hub, else `'chat'`). */
+    toolReturnScreen: 'chat' | 'tools';
     stageView: 'stage' | 'bubbles';
     roleFilter: string | null;
     /** Role picked for the next new session (New Session screen / Launchpad / TopBar sheet before a session exists). */
@@ -153,7 +155,7 @@ export function initialState(): KesokuState {
     avatarJobs: {},
     searchHits: [],
     settings: { ...DEFAULT_SETTINGS },
-    ui: { drawerOpen: false, launchpad: true, inspector: null, screen: 'chat', stageView: 'stage', roleFilter: null, draftRole: null, pendingMode: null, composerInsert: null, composerQuote: null, sessionNotesId: null },
+    ui: { drawerOpen: false, launchpad: true, inspector: null, screen: 'chat', toolReturnScreen: 'chat', stageView: 'stage', roleFilter: null, draftRole: null, pendingMode: null, composerInsert: null, composerQuote: null, sessionNotesId: null },
     toasts: [],
   };
 }

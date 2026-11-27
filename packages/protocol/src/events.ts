@@ -165,6 +165,8 @@ export const ClientToEngine = {
     overwrite: z.boolean().optional(),
     /** Append this chunk to an existing file (chunked uploads; ≤512 KiB raw per chunk). */
     append: z.boolean().optional(),
+    /** Optional CAS guard: `null` = must not exist; 64-char hex = must match raw disk bytes sha256; omitted = unchecked. */
+    expected_sha256: z.string().regex(/^[0-9a-f]{64}$/).nullable().optional(),
   }),
   'workspace.mkdir': z.object({ path: z.string().min(1).max(400) }),
   'workspace.delete': z.object({ path: z.string().min(1).max(400) }),
@@ -328,6 +330,8 @@ export const EngineToClient = {
     .object({
       rel_path: z.string().default(''),
       awd_name: z.string().default('band'),
+      workspace_id: z.string().optional(),
+      workspace_cas: z.boolean().optional(),
       entries: z.array(
         z
           .object({
@@ -336,6 +340,8 @@ export const EngineToClient = {
             kind: z.enum(['dir', 'file']),
             size: z.number().int().nonnegative(),
             updated_at: z.number(),
+            bytes: z.number().int().nonnegative().optional(),
+            mtime: z.number().optional(),
           })
           .passthrough(),
       ),
@@ -346,8 +352,11 @@ export const EngineToClient = {
       rel_path: z.string(),
       name: z.string(),
       kind: z.enum(['text', 'media', 'binary']),
-      size: z.number().int().nonnegative(),
-      updated_at: z.number(),
+      size: z.number().int().nonnegative().optional(),
+      updated_at: z.number().optional(),
+      bytes: z.number().int().nonnegative().optional(),
+      mtime: z.number().optional(),
+      sha256: z.string().optional(),
       mime: z.string(),
       content: z.string().optional(),
       truncated: z.boolean().optional(),
@@ -355,9 +364,29 @@ export const EngineToClient = {
       writable: z.boolean().optional(),
     })
     .passthrough(),
-  'workspace.write.result': z
-    .object({ path: z.string(), name: z.string(), size: z.number().int().nonnegative(), mtime: z.number().optional(), kind: z.string().optional() })
-    .passthrough(),
+  'workspace.write.result': z.union([
+    z
+      .object({
+        conflict: z.literal(true),
+        cas: z.boolean().optional(),
+        path: z.string(),
+        sha256: z.string().nullable().optional(),
+        mtime: z.number().nullable().optional(),
+      })
+      .passthrough(),
+    z
+      .object({
+        conflict: z.literal(false).optional(),
+        path: z.string(),
+        name: z.string(),
+        size: z.number().int().nonnegative(),
+        mtime: z.number().optional(),
+        kind: z.string().optional(),
+        sha256: z.string().optional(),
+        cas: z.boolean().optional(),
+      })
+      .passthrough(),
+  ]),
   'workspace.mkdir.result': z.object({ path: z.string(), name: z.string(), kind: z.literal('dir') }).passthrough(),
   'workspace.delete.result': z.object({ path: z.string(), deleted: z.boolean() }).passthrough(),
   'workspace.download.result': z
