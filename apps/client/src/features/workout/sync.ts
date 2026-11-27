@@ -208,6 +208,7 @@ class WorkoutSyncEngine {
     } else {
       this.lockHeld = false;
     }
+    useWorkoutStore.setState({ isReadOnlyTab: false });
     if (hadLock) {
       broadcastWorkoutEvent({ type: 'writer-released', ts: Date.now() });
     }
@@ -230,18 +231,32 @@ class WorkoutSyncEngine {
       return;
     }
     let acquired = false;
+    let fnErr: unknown;
+    let hasFnErr = false;
     try {
       await locks.request(WRITER_LOCK_NAME, { ifAvailable: true }, async (lock) => {
         if (!lock) return;
         acquired = true;
-        await fn();
+        try {
+          await fn();
+        } catch (err) {
+          fnErr = err;
+          hasFnErr = true;
+        }
       });
     } catch {
       /* fallback below only if locks API itself threw unexpectedly */
     }
+    if (hasFnErr) {
+      throw fnErr;
+    }
     if (!acquired) {
       // Another tab holds the active writer lock -> stay passive and mirror Dexie into memory
       await mergeOwnerFromDbIntoStore(useWorkoutStore.getState().ownerKey);
+      const cur = useWorkoutStore.getState();
+      if (cur.syncStatus === 'syncing') {
+        useWorkoutStore.setState({ syncStatus: cur.engineLegacy ? 'local_only' : 'synced' });
+      }
     }
   }
 
@@ -310,14 +325,17 @@ class WorkoutSyncEngine {
         useWorkoutStore.setState({ engineLegacy: false });
         const prevOwner = await kvGet<string>('workout_owner_key', LOCAL_ONLY_OWNER).catch(() => LOCAL_ONLY_OWNER);
 
+        const dismissedAt = await kvGet<number>('workout_local_merge_dismissed_at', 0).catch(() => 0);
+        const localDocs = await listWorkoutDocs(LOCAL_ONLY_OWNER).catch(() => []);
+        const hasNewLocalDocs =
+          localDocs.some((row) => row.updatedAt > dismissedAt) &&
+          (countSessionsInRows(localDocs) > 0 || countTemplatesInRows(localDocs) > 0);
+
         if (prevOwner === LOCAL_ONLY_OWNER) {
-          const localDocs = await listWorkoutDocs(LOCAL_ONLY_OWNER).catch(() => []);
-          const localSessionCount = countSessionsInRows(localDocs);
-          const hasLocalTemplates = countTemplatesInRows(localDocs) > 0;
-          if (localSessionCount > 0 || hasLocalTemplates) {
+          if (hasNewLocalDocs) {
             // Engine upgraded from legacy/offline -> real workspace_id: ask user once to merge instead of freezing
             useWorkoutStore.setState({
-              pendingUpgradeMerge: { targetOwnerKey: wsId, localSessionCount },
+              pendingUpgradeMerge: { targetOwnerKey: wsId, localSessionCount: countSessionsInRows(localDocs) },
               syncStatus: 'local_only',
             });
             return;
@@ -334,6 +352,13 @@ class WorkoutSyncEngine {
               frozenWorkspaceNotice: { oldOwnerKey: prevOwner, newOwnerKey: wsId, dirtyCount: oldDirty.length },
             });
           }
+        } else if (hasNewLocalDocs) {
+          // Reconnected to upgraded engine after temporary legacy local-only edits -> offer one-time merge
+          useWorkoutStore.setState({
+            pendingUpgradeMerge: { targetOwnerKey: wsId, localSessionCount: countSessionsInRows(localDocs) },
+            syncStatus: 'local_only',
+          });
+          return;
         } else if (useWorkoutStore.getState().ownerKey !== wsId) {
           await loadOwnerIntoStore(wsId);
         }
@@ -421,6 +446,7 @@ class WorkoutSyncEngine {
     const pending = useWorkoutStore.getState().pendingUpgradeMerge;
     if (!pending) return;
     const targetOwner = pending.targetOwnerKey;
+    await kvSet('workout_local_merge_dismissed_at', Date.now()).catch(() => {});
     await kvSet('workout_owner_key', targetOwner).catch(() => {});
     useWorkoutStore.setState({ pendingUpgradeMerge: null });
     await loadOwnerIntoStore(targetOwner);
