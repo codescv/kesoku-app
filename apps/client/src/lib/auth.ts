@@ -2,6 +2,7 @@ import { t } from '@kesoku/ui';
 import { getPlatform, isNative } from '../native/platform';
 import { secureStore } from '../native/secureStore';
 import { db, kvGet, kvSet } from './db';
+import { clearMediaCache } from './mediaCache';
 
 const TOKEN_KEY = 'kesoku.device_token';
 
@@ -229,6 +230,7 @@ export async function logout(): Promise<void> {
   }
   if (isNative()) await secureStore.remove(TOKEN_KEY);
   await db.kv.delete('auth');
+  await clearMediaCache().catch(() => {});
 }
 
 export async function hasCredentials(): Promise<boolean> {

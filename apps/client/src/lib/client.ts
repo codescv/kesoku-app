@@ -13,11 +13,22 @@ import { getUiLocale, t } from '@kesoku/ui';
 import { getPlatform } from '../native/platform';
 import { getDeviceToken, wsUrl } from './auth';
 import { allCursors, db, kvSet, purgeSessionFromDb, reconcileSessionsInDb, saveMessages, setCursor } from './db';
+import {
+  buildMediaAliases,
+  clearMediaCache,
+  fetchAndCacheImage,
+  getCachedImageUrl,
+  invalidateCachedImage,
+  isImageMedia,
+  isLiveCachedBlobUrl,
+  onMediaCacheClear,
+  onMediaCacheRevoke,
+} from './mediaCache';
 import { createFrameBatcher } from '../features/stream/previewBuffer';
 import { KesokuSocket, RpcError, type SocketStatus } from './ws';
 import { actions, getState, useStore } from './store';
 import type { ChatItem } from './types';
-import type { MediaRef } from '../features/cards/types';
+import type { MediaRef, ResolveMediaOptions } from '../features/cards/types';
 import { translatorStartPrefs } from './translatorPrefs';
 import { fallbackRoleId } from '../features/persona/model';
 import { workoutSync } from '../features/workout/sync';
@@ -37,6 +48,37 @@ const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const streamBatcher = createFrameBatcher<{ sid: string; type: 'stream.delta' | 'stream.clear'; payload: Payload }>((frames) => {
   const need = actions.applyStreamBatch(frames);
   for (const sid of need) requestResync(sid);
+});
+
+// Strip revoked `blob:` URLs from the Zustand media table whenever the persistent image cache clears or evicts/revokes a blob URL.
+onMediaCacheClear(() => {
+  const cur = getState().media;
+  let changed = false;
+  const next: typeof cur = {};
+  for (const [k, entry] of Object.entries(cur)) {
+    if (entry?.url?.startsWith('blob:')) {
+      changed = true;
+      next[k] = { ...entry, url: undefined };
+    } else {
+      next[k] = entry;
+    }
+  }
+  if (changed) useStore.setState({ media: next });
+});
+
+onMediaCacheRevoke((revokedUrl) => {
+  const cur = getState().media;
+  let changed = false;
+  const next: typeof cur = {};
+  for (const [k, entry] of Object.entries(cur)) {
+    if (entry?.url === revokedUrl) {
+      changed = true;
+      next[k] = { ...entry, url: undefined };
+    } else {
+      next[k] = entry;
+    }
+  }
+  if (changed) useStore.setState({ media: next });
 });
 
 function schedulePersist(sid: string) {
@@ -187,6 +229,7 @@ function onStatus(status: SocketStatus, info?: { retryInMs?: number; deviceId?: 
     // required): drop the local marker so the next boot shows the sign-in screen instead of retrying.
     useStore.setState({ auth: 'needed', authKind: null, email: null });
     void db.kv.delete('auth').catch(() => {});
+    void clearMediaCache().catch(() => {});
   }
   if (status === 'online' && info?.deviceId) {
     useStore.setState({ auth: 'ok' });
@@ -622,52 +665,142 @@ export const kesoku = {
   },
 
   /** Resolve a media reference lazily (called on tap / when an image scrolls into view). */
-  async resolveMedia(ref: MediaRef, ctx: { sessionId?: string; messageId?: string } = {}): Promise<string | null> {
+  async resolveMedia(
+    ref: MediaRef,
+    ctx: { sessionId?: string; messageId?: string } & ResolveMediaOptions = {},
+  ): Promise<string | null> {
     const now = Date.now() / 1000;
     const s = getState();
-    const fresh = (e?: { status: string; url?: string; expires_at?: number }) => e && e.status === 'ready' && e.url && (!e.expires_at || e.expires_at - 30 > now);
+    const isImage =
+      ctx.kind === 'audio'
+        ? false
+        : ctx.kind === 'image' ||
+          ctx.avatarRev !== undefined ||
+          isImageMedia({ mime: ctx.mime, object: ref.object, ref: ref.ref, url: ref.url });
+    const baseAliases = isImage
+      ? buildMediaAliases({ object: ref.object, ref: ref.ref, sessionId: ctx.sessionId, avatarRev: ctx.avatarRev })
+      : [];
+
+    if (ctx.forceRefresh) {
+      if (baseAliases.length) await invalidateCachedImage(baseAliases);
+      for (const k of [
+        ref.placeholder_id,
+        ref.object ? `obj:${ref.object}` : undefined,
+        ref.ref ? `ref:${ref.ref}` : undefined,
+      ]) {
+        if (k && s.media[k]?.url) {
+          actions.setMedia(k, { ...s.media[k], url: undefined });
+        }
+      }
+    }
+
+    const placeholderPending = !!(ref.placeholder_id && getState().media[ref.placeholder_id]?.status === 'pending');
+    if (isImage && !ctx.forceRefresh && !placeholderPending && baseAliases.length > 0) {
+      const cached = await getCachedImageUrl(baseAliases);
+      if (cached) return cached;
+    }
+
+    const latest = getState();
+    const fresh = (e?: { status: string; url?: string; expires_at?: number }) =>
+      e &&
+      e.status === 'ready' &&
+      e.url &&
+      (!e.url.startsWith('blob:') || isLiveCachedBlobUrl(e.url)) &&
+      (!e.expires_at || e.expires_at - 30 > now);
+
+    const cacheImageIfNeeded = async (
+      url: string | null | undefined,
+      extra: { object?: string; mime?: string; kind?: string } = {},
+    ): Promise<string | null> => {
+      if (!url) return null;
+      const shouldCache =
+        ctx.kind !== 'audio' &&
+        (isImage ||
+          extra.kind === 'image' ||
+          isImageMedia({ mime: ctx.mime || extra.mime, object: ref.object || extra.object, ref: ref.ref, url }));
+      if (!shouldCache) return url;
+      const aliases = buildMediaAliases({
+        object: ref.object || extra.object,
+        ref: ref.ref,
+        sessionId: ctx.sessionId,
+        avatarRev: ctx.avatarRev,
+      });
+      if (!aliases.length) return url;
+      return fetchAndCacheImage(url, aliases, { mime: ctx.mime || extra.mime });
+    };
+
     if (ref.placeholder_id) {
-      const e = s.media[ref.placeholder_id];
+      const e = latest.media[ref.placeholder_id];
       // A durable fallback (`object` / `ref`, e.g. `pkmn/0987.webp`) means we never park on a lost placeholder.
       const hasFallback = !!(ref.object || ref.ref);
-      if (fresh(e)) return e!.url!;
+      if (!ctx.forceRefresh && fresh(e)) {
+        return cacheImageIfNeeded(e!.url!, { object: e?.object, mime: e?.mime, kind: e?.kind });
+      }
       if (e?.object) return kesoku.resolveMedia({ object: e.object, ref: ref.ref }, ctx);
       if (e?.status === 'failed' && !hasFallback) return null;
       if (e?.status === 'pending') {
         // Still generating: wait (briefly when a fallback exists), then fall back to object / ref.
         const url = await waitForMedia(ref.placeholder_id, hasFallback ? 15_000 : 240_000);
-        if (url) return url;
+        if (url) {
+          const resolved = getState().media[ref.placeholder_id];
+          return cacheImageIfNeeded(url, { object: resolved?.object, mime: resolved?.mime, kind: resolved?.kind });
+        }
       } else if (!e && !hasFallback) {
         // Unknown placeholder (e.g. its media.ready has not arrived yet) and nothing else to try.
         const url = await waitForMedia(ref.placeholder_id, 240_000);
-        if (url) return url;
+        if (url) {
+          const resolved = getState().media[ref.placeholder_id];
+          return cacheImageIfNeeded(url, { object: resolved?.object, mime: resolved?.mime, kind: resolved?.kind });
+        }
       }
       // Unknown placeholder with a fallback (after reload / store reset): go straight to object / ref below.
     }
     if (ref.object) {
-      const e = s.media[`obj:${ref.object}`];
-      if (fresh(e)) return e!.url!;
+      const e = getState().media[`obj:${ref.object}`];
+      if (!ctx.forceRefresh && fresh(e)) {
+        return cacheImageIfNeeded(e!.url!, { object: ref.object, mime: e?.mime, kind: e?.kind });
+      }
       try {
         const r = await kesoku.rpc<EngineToClientPayload<'media.refresh.ok'>>('media.refresh', { object: ref.object });
-        actions.setMedia(`obj:${ref.object}`, { status: 'ready', url: r.url, object: ref.object, expires_at: r.expires_at });
-        return r.url;
+        const finalUrl = await cacheImageIfNeeded(r.url, { object: ref.object });
+        actions.setMedia(`obj:${ref.object}`, {
+          status: 'ready',
+          url: finalUrl ?? r.url,
+          object: ref.object,
+          expires_at: finalUrl?.startsWith('blob:') ? undefined : r.expires_at,
+        });
+        return finalUrl ?? r.url;
       } catch {
         /* fall through to hydrate */
       }
     }
     if (ref.ref) {
       const key = `ref:${ref.ref}`;
-      const e = s.media[key];
-      if (fresh(e)) return e!.url!;
-      const r = await kesoku.rpc<EngineToClientPayload<'media.ready'>>('media.hydrate', {
-        ref: ref.ref,
-        ...(ctx.sessionId ? { session_id: ctx.sessionId } : {}),
-        ...(ctx.messageId ? { message_id: ctx.messageId } : {}),
-      }, { timeoutMs: 60_000 });
-      actions.setMedia(key, { status: 'ready', url: r.url, object: r.object, expires_at: r.expires_at, mime: r.mime, duration_ms: r.duration_ms });
-      return r.url ?? null;
+      const e = getState().media[key];
+      if (!ctx.forceRefresh && fresh(e)) {
+        return cacheImageIfNeeded(e!.url!, { object: e?.object, mime: e?.mime, kind: e?.kind });
+      }
+      const r = await kesoku.rpc<EngineToClientPayload<'media.ready'>>(
+        'media.hydrate',
+        {
+          ref: ref.ref,
+          ...(ctx.sessionId ? { session_id: ctx.sessionId } : {}),
+          ...(ctx.messageId ? { message_id: ctx.messageId } : {}),
+        },
+        { timeoutMs: 60_000 },
+      );
+      const finalUrl = await cacheImageIfNeeded(r.url, { object: r.object, mime: r.mime, kind: r.kind });
+      actions.setMedia(key, {
+        status: 'ready',
+        url: finalUrl ?? r.url,
+        object: r.object,
+        expires_at: finalUrl?.startsWith('blob:') ? undefined : r.expires_at,
+        mime: r.mime,
+        duration_ms: r.duration_ms,
+      });
+      return finalUrl ?? null;
     }
-    return ref.url ?? null;
+    return cacheImageIfNeeded(ref.url);
   },
 };
 

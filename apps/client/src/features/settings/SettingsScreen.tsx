@@ -26,6 +26,7 @@ import {
 } from '../../native/updater';
 import { actions, useStore, type Settings } from '../../lib/store';
 import { kvSet } from '../../lib/db';
+import { MAX_MEDIA_CACHE_BYTES, clearMediaCache, getMediaCacheStats, type MediaCacheStats } from '../../lib/mediaCache';
 import { logout } from '../../lib/auth';
 import { PolicySegmented } from '../memory/PolicySegmented';
 import { MAX_FOREIGN_LANGS, TRANSLATOR_LANGS, isNativeLang, langKey } from '@kesoku/hud';
@@ -269,6 +270,82 @@ export async function checkAndroidUpdate(currentVersion = APP_VERSION): Promise<
     latestVersion,
     downloadUrl,
   };
+}
+
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1).replace(/\.0$/, '')} KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(1).replace(/\.0$/, '')} MB`;
+  const gb = mb / 1024;
+  return `${gb.toFixed(2).replace(/\.?0+$/, '')} GB`;
+}
+
+export function ImageCacheCard() {
+  const tr = useT();
+  const [stats, setStats] = useState<MediaCacheStats>({ bytes: 0, count: 0, limitBytes: MAX_MEDIA_CACHE_BYTES });
+  const [loaded, setLoaded] = useState(false);
+  const [clearing, setClearing] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void getMediaCacheStats()
+      .then((next) => {
+        if (alive) {
+          setStats(next);
+          setLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (alive) setLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const usageText = tr(stats.count === 1 ? 'settings.imageCacheUsageOne' : 'settings.imageCacheUsage', {
+    used: formatBytes(stats.bytes),
+    limit: formatBytes(stats.limitBytes),
+    count: stats.count,
+  });
+
+  const onClear = async () => {
+    if (clearing || stats.count === 0) return;
+    setClearing(true);
+    try {
+      await clearMediaCache();
+      const next = await getMediaCacheStats().catch(() => ({ bytes: 0, count: 0, limitBytes: stats.limitBytes }));
+      setStats(next);
+      actions.toast(tr('settings.imageCacheCleared'));
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  return (
+    <section className="k-set-card" data-testid="settings-media-cache-card">
+      <h2>
+        <UiIcon name="image" size={20} /> {tr('settings.imageCacheSection')}
+      </h2>
+      <div className="k-kv k-cache-row">
+        <span className="k-cache-usage" data-testid="media-cache-usage">
+          {loaded ? usageText : tr('common.loading')}
+        </span>
+        <button
+          type="button"
+          className="k-btn k-btn-sm k-btn-ghost"
+          data-testid="clear-media-cache-btn"
+          disabled={!loaded || stats.count === 0 || clearing}
+          onClick={() => void onClear()}
+        >
+          <UiIcon name="trash" size={15} /> {clearing ? tr('settings.clearingImageCache') : tr('settings.clearImageCache')}
+        </button>
+      </div>
+    </section>
+  );
 }
 
 /** Screen 14 · Security pairing & settings */
@@ -648,6 +725,8 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
         </section>
 
         <MemoryPolicyCard />
+
+        <ImageCacheCard />
 
         <section className="k-set-card">
           <div className="k-kv is-disabled">

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { UiIcon, modeMeta, useLocale, useT } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
+import { isImageMedia, putCachedImage } from '../../lib/mediaCache';
 import { actions, useStore } from '../../lib/store';
 import { compressImage, HoldRecorder } from '../../lib/files';
 import { pickImages } from '../../native/camera';
@@ -100,7 +101,14 @@ export function Composer({ sessionId, modeId, readOnly, roleName }: { sessionId:
     try {
       const sid = sessionId ?? (await kesoku.ensureSession());
       const attachments = [];
-      for (const f of all) attachments.push(await kesoku.upload(f, 'message', sid));
+      for (const f of all) {
+        const uploaded = await kesoku.upload(f, 'message', sid);
+        attachments.push(uploaded);
+        const mime = f.type || uploaded.mime;
+        if (isImageMedia({ mime, object: uploaded.object, filename: f.name || uploaded.filename })) {
+          await putCachedImage([`obj:${uploaded.object}`], f, mime).catch(() => {});
+        }
+      }
       let msg = body;
       if (!msg && all.some((f) => f.type.startsWith('image/'))) {
         if (modeId === 'pokemon_assistant') msg = t('composer.pkmnPhotoPrompt');

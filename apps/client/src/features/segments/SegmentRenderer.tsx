@@ -7,6 +7,7 @@ import { Markdown, renderInline } from './Markdown';
 import { GenericCardSafe, getCard } from '../cards';
 import type { CardContext } from '../cards/types';
 import { actions, useStore } from '../../lib/store';
+import { buildMediaAliases, invalidateCachedImage, onMediaCacheClear, onMediaCacheRevoke } from '../../lib/mediaCache';
 import { overlays } from '../session/overlays';
 
 export interface SegmentEnv {
@@ -208,6 +209,23 @@ export function MediaImage({ seg, ctx, className, autoHydrate }: { seg: FileSegm
   }, [inView, autoHydrate]);
 
   useEffect(() => {
+    if (!url?.startsWith('blob:')) return;
+    const drop = () => {
+      setImgLoaded(false);
+      setUrl(null);
+      setState('idle');
+    };
+    const offClear = onMediaCacheClear(drop);
+    const offRevoke = onMediaCacheRevoke((revokedUrl) => {
+      if (revokedUrl === url) drop();
+    });
+    return () => {
+      offClear();
+      offRevoke();
+    };
+  }, [url]);
+
+  useEffect(() => {
     if (freshEntryUrl && !url) {
       setUrl(freshEntryUrl);
       setState('idle');
@@ -234,13 +252,16 @@ export function MediaImage({ seg, ctx, className, autoHydrate }: { seg: FileSegm
         actions.setMedia(k, { ...curMedia[k], url: undefined });
       }
     }
+    const aliases = buildMediaAliases({ object: seg.object ?? entry?.object, ref: seg.ref, sessionId: ctx.sessionId });
     setImgLoaded(false);
     setUrl(null);
     setState('loading');
-    ctx.resolveMedia({ placeholder_id: seg.placeholder_id, object: seg.object ?? entry?.object, ref: seg.ref }).then(
-      (u) => (u ? (setUrl(u), setState('idle')) : setState('failed')),
-      () => setState('failed'),
-    );
+    void invalidateCachedImage(aliases).finally(() => {
+      ctx.resolveMedia({ placeholder_id: seg.placeholder_id, object: seg.object ?? entry?.object, ref: seg.ref }, { forceRefresh: true }).then(
+        (u) => (u ? (setUrl(u), setState('idle')) : setState('failed')),
+        () => setState('failed'),
+      );
+    });
   }
 
   if (entry?.status === 'failed' || state === 'failed') {
