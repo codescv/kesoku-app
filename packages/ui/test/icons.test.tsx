@@ -98,7 +98,7 @@ describe('<UiIcon>', () => {
     const required = [
       'menu', 'search', 'plus', 'close', 'check', 'chevron-right', 'chevron-down', 'arrow-left', 'refresh', 'external', 'sliders', 'spark', 'pin',
       'camera', 'image', 'mic', 'send', 'play', 'pause', 'volume', 'sticker',
-      'brain', 'persona', 'folder', 'folder-open', 'file-text', 'file-code', 'file-image', 'file-audio', 'file-pdf', 'file', 'upload', 'download', 'edit', 'trash', 'folder-plus', 'file-plus', 'save', 'note', 'copy',
+      'brain', 'persona', 'folder', 'folder-open', 'file-text', 'file-code', 'file-image', 'file-audio', 'file-pdf', 'file', 'upload', 'download', 'edit', 'trash', 'folder-plus', 'file-plus', 'save', 'note', 'copy', 'apps', 'dumbbell',
       'qr', 'globe', 'smartphone', 'laptop', 'link', 'shield',
       'policy-full', 'policy-confirm', 'policy-isolated',
     ];

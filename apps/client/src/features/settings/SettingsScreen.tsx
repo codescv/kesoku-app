@@ -30,6 +30,8 @@ import { logout } from '../../lib/auth';
 import { PolicySegmented } from '../memory/PolicySegmented';
 import { MAX_FOREIGN_LANGS, TRANSLATOR_LANGS, isNativeLang, langKey } from '@kesoku/hud';
 import { translatorLangs } from '../../lib/translatorPrefs';
+import { workoutActions } from '../workout/store';
+import { downloadJsonFile, workoutSync } from '../workout/sync';
 
 function save(patch: Partial<Settings>) {
   actions.setSettings(patch);
@@ -281,6 +283,8 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const [showConn, setShowConn] = useState(false);
   const [pairHelp, setPairHelp] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [dirtyWorkoutCount, setDirtyWorkoutCount] = useState(0);
+  const [syncingBeforeLogout, setSyncingBeforeLogout] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [downloadingUpdate, setDownloadingUpdate] = useState(false);
   const [downloadPercent, setDownloadPercent] = useState<number | null>(null);
@@ -470,20 +474,94 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
             </ol>
           )}
           {confirmLogout ? (
+            dirtyWorkoutCount > 0 ? (
+              <div className="k-settings-dirty-warn" role="alert" data-testid="logout-dirty-workout-warn">
+                <b>{tr('settings.logoutDirtyWorkoutTitle')}</b>
+                <p>{tr('settings.logoutDirtyWorkoutBody', { count: dirtyWorkoutCount })}</p>
+                <div className="k-settings-dirty-actions">
+                  {conn.status === 'online' && conn.engineOnline && (
+                    <button
+                      type="button"
+                      className="k-btn k-btn-primary k-btn-sm"
+                      disabled={syncingBeforeLogout}
+                      data-testid="logout-sync-now-btn"
+                      onClick={async () => {
+                        setSyncingBeforeLogout(true);
+                        try {
+                          await workoutSync.probeAndSync();
+                          const rem = await workoutSync.countAllDirtyDocs();
+                          setDirtyWorkoutCount(rem);
+                        } finally {
+                          setSyncingBeforeLogout(false);
+                        }
+                      }}
+                    >
+                      {tr('settings.logoutSyncNow')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="k-btn k-btn-ghost k-btn-sm"
+                    data-testid="logout-export-backup-btn"
+                    onClick={async () => {
+                      const json = await workoutSync.exportBackupJson();
+                      downloadJsonFile(json, `kesoku-workouts-backup-${new Date().toISOString().slice(0, 10)}.json`);
+                    }}
+                  >
+                    {tr('settings.logoutExportBackup')}
+                  </button>
+                  <button
+                    type="button"
+                    className="k-btn k-btn-danger k-btn-sm"
+                    data-testid="logout-proceed-anyway-btn"
+                    onClick={async () => {
+                      await logout();
+                      kesoku.stop();
+                      workoutActions.reset();
+                      actions.reset();
+                      useStore.setState({ auth: 'needed' });
+                    }}
+                  >
+                    {tr('settings.logoutProceedAnyway')}
+                  </button>
+                  <button
+                    type="button"
+                    className="k-btn k-btn-ghost k-btn-sm"
+                    onClick={() => {
+                      setConfirmLogout(false);
+                      setDirtyWorkoutCount(0);
+                    }}
+                  >
+                    {tr('common.cancel')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="k-btn k-btn-danger k-btn-block"
+                onClick={async () => {
+                  await logout();
+                  kesoku.stop();
+                  workoutActions.reset();
+                  actions.reset();
+                  useStore.setState({ auth: 'needed' });
+                }}
+              >
+                {tr('settings.confirmLogout')}
+              </button>
+            )
+          ) : (
             <button
               type="button"
-              className="k-btn k-btn-danger k-btn-block"
+              className="k-btn k-btn-danger-ghost k-btn-block"
+              data-testid="settings-logout-btn"
               onClick={async () => {
-                await logout();
-                kesoku.stop();
-                actions.reset();
-                useStore.setState({ auth: 'needed' });
+                const dirty = await workoutSync.countAllDirtyDocs().catch(() => 0);
+                setDirtyWorkoutCount(dirty);
+                setConfirmLogout(true);
               }}
             >
-              {tr('settings.confirmLogout')}
-            </button>
-          ) : (
-            <button type="button" className="k-btn k-btn-danger-ghost k-btn-block" onClick={() => setConfirmLogout(true)}>
               {tr('settings.logout')}
             </button>
           )}

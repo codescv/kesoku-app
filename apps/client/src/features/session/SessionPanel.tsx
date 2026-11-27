@@ -10,6 +10,7 @@ import { hapticTap } from '../../native/haptics';
 import { useIsDesktop } from '../../app/useMedia';
 import { useAvatarUrl } from '../persona/avatar';
 import { fallbackRoleId, roleAvatarRef, roleFallbackName } from '../persona/model';
+import { selectHasActiveWorkout, useWorkoutStore } from '../workout/store';
 
 function channelLabel(chan: string, t: (k: MessageKey) => string): string {
   if (chan === 'wechat') return t('shell.channel.wechat');
@@ -483,6 +484,8 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
   );
   const recentList = useMemo(() => list.slice(0, RECENT_SESSIONS_LIMIT), [list]);
   const pending = Object.values(proposals).filter((p) => (p.status ?? 'pending') === 'pending').length;
+  const hasActiveWorkout = useWorkoutStore(selectHasActiveWorkout);
+  const toolsActive = screen === 'tools' || screen === 'notes' || screen === 'files' || screen === 'workout';
   const draftRole = useStore((s) => s.ui.draftRole);
   const activeRole = (current ? sessions[current]?.role : undefined) ?? draftRole ?? roleFilter ?? fallbackRoleId(personas);
   const activePersona = personas.find((p) => p.role_id === activeRole) ?? personas[0];
@@ -648,6 +651,8 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
               <button
                 type="button"
                 className={'k-foot-btn' + (screen === 'memory' ? ' is-active' : '')}
+                data-testid="sidebar-memory-btn"
+                aria-current={screen === 'memory' ? 'page' : undefined}
                 onClick={() => (actions.setUi({ screen: 'memory', drawerOpen: false }), go())}
               >
                 <UiIcon name="brain" size={18} />
@@ -656,13 +661,14 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
               </button>
               <button
                 type="button"
-                className={'k-foot-btn' + (screen === 'notes' ? ' is-active' : '')}
-                data-testid="sidebar-notes-btn"
-                aria-current={screen === 'notes' ? 'page' : undefined}
-                onClick={() => (actions.setUi({ screen: 'notes', drawerOpen: false }), go())}
+                className={'k-foot-btn' + (toolsActive ? ' is-active' : '')}
+                data-testid="sidebar-tools-btn"
+                aria-current={toolsActive ? 'page' : undefined}
+                onClick={() => (actions.setUi({ screen: 'tools', toolReturnScreen: 'chat', drawerOpen: false }), go())}
               >
-                <UiIcon name="note" size={14} />
-                <span>{t('session.notes')}</span>
+                <UiIcon name="apps" size={17} />
+                <span>{t('session.tools')}</span>
+                {hasActiveWorkout && <span className="k-sidebar-tools-dot" data-testid="sidebar-tools-active-dot" aria-hidden />}
               </button>
             </div>
             <button
@@ -673,15 +679,6 @@ export function SessionPanel({ onNavigate }: { onNavigate?: () => void }) {
               onClick={() => (actions.setUi({ screen: 'studio', drawerOpen: false }), go())}
             >
               <Avatar src={activeAvatarSrc} name={activePersona?.display_name ?? roleFallbackName(activeRole)} size={22} ai={activePersona?.avatar_ai} /> {t('session.studio')}
-            </button>
-            <button
-              type="button"
-              className={'k-foot-btn' + (screen === 'files' ? ' is-active' : '')}
-              data-testid="sidebar-files-btn"
-              aria-current={screen === 'files' ? 'page' : undefined}
-              onClick={() => (actions.setUi({ screen: 'files', drawerOpen: false }), go())}
-            >
-              <UiIcon name="folder" size={20} /> {t('session.files')}
             </button>
             <button
               type="button"

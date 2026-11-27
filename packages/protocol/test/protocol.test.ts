@@ -219,19 +219,34 @@ describe('workspace CRUD frames', () => {
     expect(ClientToEngine['workspace.write'].safeParse({ path: '' }).success).toBe(false);
     expect(ClientToEngine['workspace.write'].safeParse({ path: 'x'.repeat(401) }).success).toBe(false);
     expect(ClientToEngine['workspace.write'].safeParse({ path: 'b.bin', base64: 'AAAA', append: true }).success).toBe(true);
+    expect(ClientToEngine['workspace.write'].safeParse({ path: 'a.json', content: '{}', expected_sha256: 'a'.repeat(64) }).success).toBe(true);
+    expect(ClientToEngine['workspace.write'].safeParse({ path: 'a.json', content: '{}', expected_sha256: null }).success).toBe(true);
+    expect(ClientToEngine['workspace.write'].safeParse({ path: 'a.json', content: '{}', expected_sha256: 'not-a-sha' }).success).toBe(false);
     expect(ClientToEngine['workspace.mkdir'].safeParse({ path: 'dir' }).success).toBe(true);
     expect(ClientToEngine['workspace.delete'].safeParse({ rel_path: 'dir' }).success).toBe(false);
     expect(ClientToEngine['workspace.download'].safeParse({ path: 'a.png' }).success).toBe(true);
   });
 
-  it('parses CRUD results and the optional writable flag', () => {
+  it('parses CRUD results, CAS conflict results, workspace_id, and optional fields', () => {
     expect(EngineToClient['workspace.write.result'].safeParse({ path: 'a.md', name: 'a.md', size: 0, mtime: 1, kind: 'text' }).success).toBe(true);
+    expect(EngineToClient['workspace.write.result'].safeParse({ path: 'a.json', name: 'a.json', size: 2, sha256: 'b'.repeat(64), cas: true }).success).toBe(true);
+    expect(EngineToClient['workspace.write.result'].safeParse({ conflict: true, cas: true, path: 'a.json', sha256: 'c'.repeat(64), mtime: 123 }).success).toBe(true);
+    expect(
+      EngineToClient['workspace.list.result'].safeParse({
+        rel_path: '',
+        awd_name: 'band',
+        workspace_id: 'ws_1234',
+        workspace_cas: true,
+        entries: [{ name: 'a.json', rel_path: 'a.json', kind: 'file', size: 10, updated_at: 1, bytes: 10, mtime: 1 }],
+      }).success,
+    ).toBe(true);
     expect(EngineToClient['workspace.mkdir.result'].safeParse({ path: 'd', name: 'd', kind: 'dir' }).success).toBe(true);
     expect(EngineToClient['workspace.delete.result'].safeParse({ path: 'd', deleted: true }).success).toBe(true);
     expect(EngineToClient['workspace.download.result'].safeParse({ path: 'a', name: 'a', size: 1, mime_type: 'text/plain', base64: 'YQ==' }).success).toBe(true);
     expect(EngineToClient['workspace.download.result'].safeParse({ path: 'a', name: 'a', size: 9e5, mime_type: 'image/png', url: 'https://x/y', object: 'o', expires_at: 1 }).success).toBe(true);
-    const read = EngineToClient['workspace.read.result'].parse({ rel_path: 'a', name: 'a', kind: 'text', size: 1, updated_at: 0, mime: 'text/plain', writable: true });
+    const read = EngineToClient['workspace.read.result'].parse({ rel_path: 'a', name: 'a', kind: 'text', bytes: 1, mtime: 12, sha256: 'd'.repeat(64), mime: 'text/plain', writable: true });
     expect(read.writable).toBe(true);
+    expect(read.sha256).toBe('d'.repeat(64));
   });
 });
 

@@ -28,6 +28,8 @@ import { GalgameStage, ModePanel, PeekSheet } from '../features/modes';
 import { PersonaStudio } from '../features/persona';
 import { fallbackRoleId, roleFallbackName } from '../features/persona/model';
 import { FileBrowser } from '../features/files/FileBrowser';
+import { ToolsPanel } from '../features/tools/ToolsPanel';
+import { WorkoutPanel } from '../features/workout/WorkoutPanel';
 import { kvSet } from '../lib/db';
 import { mergeTranslatorModePrefs, translatorSettingsPatch } from '../lib/translatorPrefs';
 
@@ -724,10 +726,18 @@ export function Shell() {
     else setPanelSheet(p);
   };
 
+  const closeTool = () => {
+    const dest = ui.toolReturnScreen === 'tools' ? 'tools' : 'chat';
+    actions.setUi({ screen: dest, toolReturnScreen: 'chat' });
+    void kvSet('last_screen', dest).catch(() => {});
+  };
+
   const center = (() => {
     if (ui.screen === 'settings') return <SettingsScreen onClose={() => actions.setUi({ screen: 'chat' })} />;
-    if (ui.screen === 'files') return <FileBrowser onClose={() => actions.setUi({ screen: 'chat' })} />;
-    if (ui.screen === 'notes') return <NotesPanel onClose={() => actions.setUi({ screen: 'chat' })} />;
+    if (ui.screen === 'tools') return <ToolsPanel onClose={() => actions.setUi({ screen: 'chat', toolReturnScreen: 'chat' })} />;
+    if (ui.screen === 'workout') return <WorkoutPanel onClose={closeTool} />;
+    if (ui.screen === 'files') return <FileBrowser onClose={closeTool} />;
+    if (ui.screen === 'notes') return <NotesPanel onClose={closeTool} />;
     if (ui.screen === 'memory')
       return (
         <div className="k-screen">

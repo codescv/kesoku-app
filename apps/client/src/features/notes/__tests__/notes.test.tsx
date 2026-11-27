@@ -242,12 +242,12 @@ describe('NotesPanel interactions', () => {
     expect(useStore.getState().ui.inspector).toEqual({ kind: 'notes' });
     u2();
 
-    // Sidebar button
+    // Sidebar Tools button opens Tools hub (where Notes is housed alongside Files & Workout)
     const { unmount: u3 } = render(<SessionPanel />);
-    const sidebarBtn = screen.getByTestId('sidebar-notes-btn');
-    fireEvent.click(sidebarBtn);
-    expect(useStore.getState().ui.screen).toBe('notes');
-    expect(sidebarBtn.classList.contains('is-active')).toBe(true);
+    const toolsBtn = screen.getByTestId('sidebar-tools-btn');
+    fireEvent.click(toolsBtn);
+    expect(useStore.getState().ui.screen).toBe('tools');
+    expect(toolsBtn.classList.contains('is-active')).toBe(true);
     u3();
 
     // TopBar RoleModeCapsule no longer carries the global scratchpad entry (v0.1.27): sidebar / inspector only.
