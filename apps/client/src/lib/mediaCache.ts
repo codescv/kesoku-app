@@ -14,9 +14,13 @@ const VIDEO_EXT_RE = /\.(mp4|mov|m4v|mkv|avi|ogv)$/i;
 const REJECTED_MIME_RE = /^(text\/|audio\/|video\/|application\/(xml|xhtml\+xml|json|pdf|zip|javascript))/i;
 
 let maxCacheBytes = MAX_MEDIA_CACHE_BYTES;
+/** Monotonic generation bumped on `clearMediaCache()` / `resetMemory()` to cancel late in-flight writes. */
+let cacheEpoch = 0;
 
 /** In-memory blob: URL map keyed by canonical `media_cache.id`. */
 const idToBlobUrl = new Map<string, string>();
+/** Set of currently live (non-revoked) `blob:` URLs minted by this cache. */
+const liveBlobUrls = new Set<string>();
 /** In-memory alias -> canonical `media_cache.id` map. */
 const aliasToId = new Map<string, string>();
 /** Last IndexedDB `accessedAt` write timestamp per `media_cache.id` (for 60s throttling). */
@@ -25,6 +29,8 @@ const lastTouchAt = new Map<string, number>();
 const inflight = new Map<string, Promise<string>>();
 /** Listeners notified when `clearMediaCache()` runs (e.g., avatar / store caches). */
 const clearListeners = new Set<() => void>();
+/** Listeners notified whenever a single cached `blob:` URL is revoked (eviction, invalidate, prune, purge, clear). */
+const revokeListeners = new Set<(url: string) => void>();
 
 export interface MediaCacheStats {
   bytes: number;
@@ -37,6 +43,18 @@ export function onMediaCacheClear(cb: () => void): () => void {
   return () => {
     clearListeners.delete(cb);
   };
+}
+
+export function onMediaCacheRevoke(cb: (url: string) => void): () => void {
+  revokeListeners.add(cb);
+  return () => {
+    revokeListeners.delete(cb);
+  };
+}
+
+/** True when `url` is a live (non-revoked) `blob:` URL currently owned by the image cache. */
+export function isLiveCachedBlobUrl(url: string): boolean {
+  return liveBlobUrls.has(url);
 }
 
 function stripUrlQuery(input: string): string {
@@ -136,12 +154,15 @@ function mintBlobUrl(id: string, blob: Blob): string | null {
   if (!canMintObjectUrl()) return null;
   const url = URL.createObjectURL(blob);
   idToBlobUrl.set(id, url);
+  liveBlobUrls.add(url);
   return url;
 }
 
 function revokeId(id: string): void {
   const url = idToBlobUrl.get(id);
   if (url) {
+    liveBlobUrls.delete(url);
+    idToBlobUrl.delete(id);
     try {
       if (typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
         URL.revokeObjectURL(url);
@@ -149,7 +170,13 @@ function revokeId(id: string): void {
     } catch {
       /* ignore revoke failure */
     }
-    idToBlobUrl.delete(id);
+    for (const cb of revokeListeners) {
+      try {
+        cb(url);
+      } catch {
+        /* ignore listener error */
+      }
+    }
   }
   lastTouchAt.delete(id);
   for (const [alias, targetId] of aliasToId.entries()) {
@@ -214,8 +241,10 @@ export async function getCachedImageUrl(aliases: readonly string[]): Promise<str
   const memHit = peekCachedImageUrl(keys);
   if (memHit) return memHit;
 
+  const myEpoch = cacheEpoch;
   try {
     const aliasRows = await db.media_aliases.bulkGet(keys);
+    if (myEpoch !== cacheEpoch) return null;
     let targetId: string | undefined;
     for (const row of aliasRows) {
       if (row?.targetId) {
@@ -225,12 +254,14 @@ export async function getCachedImageUrl(aliases: readonly string[]): Promise<str
     }
     if (!targetId) {
       const directRows = await db.media_cache.bulkGet(keys);
+      if (myEpoch !== cacheEpoch) return null;
       const hit = directRows.find((r) => Boolean(r));
       if (hit) targetId = hit.id;
     }
     if (!targetId) return null;
 
     const entry = await db.media_cache.get(targetId);
+    if (myEpoch !== cacheEpoch) return null;
     if (!entry) {
       // Clean up orphaned aliases pointing to missing blob row.
       await db.media_aliases.where('targetId').equals(targetId).delete().catch(() => {});
@@ -242,7 +273,7 @@ export async function getCachedImageUrl(aliases: readonly string[]): Promise<str
 
     linkAliasesInMemory(entry.id, keys);
     const missingAliases = keys.filter((k, idx) => aliasRows[idx]?.targetId !== entry.id);
-    if (missingAliases.length) {
+    if (missingAliases.length && myEpoch === cacheEpoch) {
       void db.media_aliases.bulkPut(missingAliases.map((alias) => ({ alias, targetId: entry.id }))).catch(() => {});
     }
     touchLruThrottled(entry.id, entry.accessedAt);
@@ -269,24 +300,32 @@ async function writeCacheEntry(
   bytes: number,
   now: number,
   staleIdsToDrop: string[],
-): Promise<string[]> {
+  expectedEpoch: number,
+): Promise<{ committed: boolean; removedIds: string[] }> {
   const evictedIds: string[] = [];
+  let committed = false;
   await db.transaction('rw', [db.media_cache, db.media_aliases], async () => {
+    if (expectedEpoch !== cacheEpoch) return;
     if (staleIdsToDrop.length) {
       await db.media_cache.bulkDelete(staleIdsToDrop);
       await db.media_aliases.where('targetId').anyOf(staleIdsToDrop).delete();
     }
 
-    const existing = await db.media_cache.orderBy('accessedAt').toArray();
+    // Stream metadata only via `each` so we never hold all Blob references in memory at once.
+    const meta: Array<{ id: string; bytes: number }> = [];
     let totalBytes = 0;
-    for (const row of existing) {
-      if (row.id !== id) totalBytes += row.bytes;
-    }
+    await db.media_cache.orderBy('accessedAt').each((row) => {
+      if (row.id !== id) {
+        meta.push({ id: row.id, bytes: row.bytes });
+        totalBytes += row.bytes;
+      }
+    });
+
+    if (expectedEpoch !== cacheEpoch) return;
 
     if (totalBytes + bytes > maxCacheBytes) {
       let current = totalBytes;
-      for (const row of existing) {
-        if (row.id === id) continue;
+      for (const row of meta) {
         if (current + bytes <= maxCacheBytes) break;
         evictedIds.push(row.id);
         current -= row.bytes;
@@ -297,6 +336,8 @@ async function writeCacheEntry(
       }
     }
 
+    if (expectedEpoch !== cacheEpoch) return;
+
     await db.media_cache.put({
       id,
       blob,
@@ -306,13 +347,16 @@ async function writeCacheEntry(
       accessedAt: now,
     });
     await db.media_aliases.bulkPut(aliases.map((alias) => ({ alias, targetId: id })));
+    committed = true;
   });
-  return [...staleIdsToDrop, ...evictedIds];
+  return { committed, removedIds: [...staleIdsToDrop, ...evictedIds] };
 }
 
 async function evictAggressively(minBytesToFree: number, keepId: string): Promise<void> {
-  const existing = await db.media_cache.orderBy('accessedAt').toArray();
-  const candidates = existing.filter((r) => r.id !== keepId);
+  const candidates: Array<{ id: string; bytes: number }> = [];
+  await db.media_cache.orderBy('accessedAt').each((row) => {
+    if (row.id !== keepId) candidates.push({ id: row.id, bytes: row.bytes });
+  });
   if (!candidates.length) return;
   const totalBytes = candidates.reduce((acc, r) => acc + r.bytes, 0);
   const targetFree = Math.max(minBytesToFree, Math.ceil(totalBytes / 2));
@@ -326,10 +370,14 @@ async function evictAggressively(minBytesToFree: number, keepId: string): Promis
   await evictByTargetIds(evictIds);
 }
 
-/** Store an image Blob under one or more logical aliases with 1 GiB LRU enforcement and QuotaExceededError recovery. */
-export async function putCachedImage(aliases: readonly string[], blob: Blob, mime?: string): Promise<string | null> {
+async function putCachedImageInternal(
+  aliases: readonly string[],
+  blob: Blob,
+  mime: string | undefined,
+  expectedEpoch: number,
+): Promise<string | null> {
   const keys = normalizeAliases(aliases);
-  if (!keys.length || !blob) return null;
+  if (!keys.length || !blob || expectedEpoch !== cacheEpoch) return null;
 
   const effectiveMime = normalizeMime(mime || blob.type);
   if (!isCacheableImageMime(effectiveMime, keys)) return null;
@@ -342,6 +390,7 @@ export async function putCachedImage(aliases: readonly string[], blob: Blob, mim
   const now = Date.now();
   try {
     const existingAliasRows = await db.media_aliases.bulkGet(keys);
+    if (expectedEpoch !== cacheEpoch) return null;
     const matchedIds = normalizeAliases(existingAliasRows.map((r) => r?.targetId));
     const id = matchedIds[0] ?? keys[0];
     const staleIds = matchedIds.slice(1);
@@ -349,20 +398,35 @@ export async function putCachedImage(aliases: readonly string[], blob: Blob, mim
     // If overwriting an existing row's blob, revoke its old blob: URL before minting the new one.
     const hadOldUrl = idToBlobUrl.has(id);
 
-    let removedIds: string[];
+    let writeRes: { committed: boolean; removedIds: string[] };
     try {
-      removedIds = await writeCacheEntry(id, keys, blob, effectiveMime || 'image/octet-stream', bytes, now, staleIds);
+      writeRes = await writeCacheEntry(id, keys, blob, effectiveMime || 'image/octet-stream', bytes, now, staleIds, expectedEpoch);
     } catch (err) {
-      if (!isQuotaExceededError(err)) return null;
+      if (!isQuotaExceededError(err) || expectedEpoch !== cacheEpoch) return null;
       try {
         await evictAggressively(bytes * 2, id);
-        removedIds = await writeCacheEntry(id, keys, blob, effectiveMime || 'image/octet-stream', bytes, now, staleIds);
+        if (expectedEpoch !== cacheEpoch) return null;
+        writeRes = await writeCacheEntry(id, keys, blob, effectiveMime || 'image/octet-stream', bytes, now, staleIds, expectedEpoch);
       } catch {
         return null;
       }
     }
 
-    for (const evId of removedIds) revokeId(evId);
+    if (!writeRes.committed) return null;
+
+    // Guard against clearMediaCache() / logout racing while the IDB transaction was committing.
+    if (expectedEpoch !== cacheEpoch) {
+      await db
+        .transaction('rw', [db.media_cache, db.media_aliases], async () => {
+          await db.media_cache.delete(id);
+          await db.media_aliases.where('targetId').equals(id).delete();
+          await db.media_aliases.bulkDelete(keys);
+        })
+        .catch(() => {});
+      return null;
+    }
+
+    for (const evId of writeRes.removedIds) revokeId(evId);
     if (hadOldUrl) revokeId(id);
 
     const url = mintBlobUrl(id, blob);
@@ -373,6 +437,11 @@ export async function putCachedImage(aliases: readonly string[], blob: Blob, mim
   } catch {
     return null;
   }
+}
+
+/** Store an image Blob under one or more logical aliases with 1 GiB LRU enforcement and QuotaExceededError recovery. */
+export async function putCachedImage(aliases: readonly string[], blob: Blob, mime?: string): Promise<string | null> {
+  return putCachedImageInternal(aliases, blob, mime, cacheEpoch);
 }
 
 /**
@@ -397,10 +466,11 @@ export async function fetchAndCacheImage(
     if (running) return running;
   }
 
+  const myEpoch = cacheEpoch;
   const promise: Promise<string> = (async (): Promise<string> => {
     try {
       const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
-      if (!res || !res.ok) return url;
+      if (myEpoch !== cacheEpoch || !res || !res.ok) return url;
 
       const contentLength = Number(res.headers?.get?.('content-length') ?? '');
       if (Number.isFinite(contentLength) && contentLength > MAX_SINGLE_IMAGE_BYTES) {
@@ -417,7 +487,7 @@ export async function fetchAndCacheImage(
       }
 
       const blob = await res.blob();
-      if (!blob || blob.size <= 0 || blob.size > MAX_SINGLE_IMAGE_BYTES) {
+      if (myEpoch !== cacheEpoch || !blob || blob.size <= 0 || blob.size > MAX_SINGLE_IMAGE_BYTES) {
         return url;
       }
       const blobMime = normalizeMime(blob.type);
@@ -425,7 +495,8 @@ export async function fetchAndCacheImage(
         return url;
       }
       const finalMime = candidateMime || blobMime || 'image/octet-stream';
-      const cachedUrl = await putCachedImage(keys, blob, finalMime);
+      const cachedUrl = await putCachedImageInternal(keys, blob, finalMime, myEpoch);
+      if (myEpoch !== cacheEpoch) return url;
       return cachedUrl ?? url;
     } catch {
       return url;
@@ -536,9 +607,11 @@ export async function getMediaCacheStats(): Promise<MediaCacheStats> {
 
 /** Clear all cached images from memory and IndexedDB, revoking all minted `blob:` URLs. */
 export async function clearMediaCache(): Promise<void> {
+  cacheEpoch += 1;
   const ids = [...idToBlobUrl.keys()];
   for (const id of ids) revokeId(id);
   idToBlobUrl.clear();
+  liveBlobUrls.clear();
   aliasToId.clear();
   lastTouchAt.clear();
   inflight.clear();
@@ -562,9 +635,11 @@ export async function clearMediaCache(): Promise<void> {
 /** Test helpers (for resetting memory vs IDB, configuring LRU cap, etc.). */
 export const __mediaCacheTest = {
   resetMemory(): void {
+    cacheEpoch += 1;
     const ids = [...idToBlobUrl.keys()];
     for (const id of ids) revokeId(id);
     idToBlobUrl.clear();
+    liveBlobUrls.clear();
     aliasToId.clear();
     lastTouchAt.clear();
     inflight.clear();

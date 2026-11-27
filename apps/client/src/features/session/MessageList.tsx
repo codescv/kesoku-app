@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import type { Attachment, LexToken, MemoryProposal } from '@kesoku/protocol';
 import { Avatar, ModeIcon, UiIcon, VoicePill, modeMeta, t as tGlobal, useLocale, useT, type MessageKey } from '@kesoku/ui';
 import { kesoku } from '../../lib/client';
-import { buildMediaAliases, getCachedImageUrl, peekCachedImageUrl } from '../../lib/mediaCache';
+import { buildMediaAliases, getCachedImageUrl, onMediaCacheClear, onMediaCacheRevoke, peekCachedImageUrl } from '../../lib/mediaCache';
 import { actions, useStore } from '../../lib/store';
 import type { ChatItem, TurnEvent } from '../../lib/types';
 import { SegmentList, type SegmentEnv } from '../segments/SegmentRenderer';
@@ -147,15 +147,32 @@ export function UserImageThumb({
     () => buildMediaAliases({ object: a.object || undefined, ref: a.ref || undefined, sessionId }),
     [a.object, a.ref, sessionId],
   );
-  const initialUrl = a.url || (aliases.length ? peekCachedImageUrl(aliases) : null);
-  const [url, setUrl] = useState<string | null>(initialUrl);
+  const [url, setUrl] = useState<string | null>(() => a.url || (aliases.length ? peekCachedImageUrl(aliases) : null));
   const [imgLoaded, setImgLoaded] = useState(false);
   const [failed, setFailed] = useState(!canResolve);
-  const [inView, setInView] = useState(Boolean(eager || initialUrl || typeof IntersectionObserver === 'undefined'));
+  const [inView, setInView] = useState(() => Boolean(eager || url || typeof IntersectionObserver === 'undefined'));
   const [attempt, setAttempt] = useState(0);
   const retryCountRef = useRef(0);
   const forceNextRef = useRef(false);
   const hostRef = useRef<HTMLButtonElement | null>(null);
+
+  // Drop revoked `blob:` URLs cleanly if the image cache is cleared or evicts this entry while mounted.
+  useEffect(() => {
+    if (!url?.startsWith('blob:')) return;
+    const drop = () => {
+      setImgLoaded(false);
+      setUrl(null);
+      setAttempt((n) => n + 1);
+    };
+    const offClear = onMediaCacheClear(drop);
+    const offRevoke = onMediaCacheRevoke((revokedUrl) => {
+      if (revokedUrl === url) drop();
+    });
+    return () => {
+      offClear();
+      offRevoke();
+    };
+  }, [url]);
 
   // Sync reset when attachment identity changes.
   const attachKey = `${sessionId}|${a.object ?? ''}|${a.ref ?? ''}|${a.url ?? ''}`;

@@ -20,7 +20,9 @@ import {
   getCachedImageUrl,
   invalidateCachedImage,
   isImageMedia,
+  isLiveCachedBlobUrl,
   onMediaCacheClear,
+  onMediaCacheRevoke,
 } from './mediaCache';
 import { createFrameBatcher } from '../features/stream/previewBuffer';
 import { KesokuSocket, RpcError, type SocketStatus } from './ws';
@@ -48,13 +50,28 @@ const streamBatcher = createFrameBatcher<{ sid: string; type: 'stream.delta' | '
   for (const sid of need) requestResync(sid);
 });
 
-// Strip revoked `blob:` URLs from the Zustand media table whenever the persistent image cache is cleared.
+// Strip revoked `blob:` URLs from the Zustand media table whenever the persistent image cache clears or evicts/revokes a blob URL.
 onMediaCacheClear(() => {
   const cur = getState().media;
   let changed = false;
   const next: typeof cur = {};
   for (const [k, entry] of Object.entries(cur)) {
     if (entry?.url?.startsWith('blob:')) {
+      changed = true;
+      next[k] = { ...entry, url: undefined };
+    } else {
+      next[k] = entry;
+    }
+  }
+  if (changed) useStore.setState({ media: next });
+});
+
+onMediaCacheRevoke((revokedUrl) => {
+  const cur = getState().media;
+  let changed = false;
+  const next: typeof cur = {};
+  for (const [k, entry] of Object.entries(cur)) {
+    if (entry?.url === revokedUrl) {
       changed = true;
       next[k] = { ...entry, url: undefined };
     } else {
@@ -685,7 +702,11 @@ export const kesoku = {
 
     const latest = getState();
     const fresh = (e?: { status: string; url?: string; expires_at?: number }) =>
-      e && e.status === 'ready' && e.url && (!e.expires_at || e.expires_at - 30 > now);
+      e &&
+      e.status === 'ready' &&
+      e.url &&
+      (!e.url.startsWith('blob:') || isLiveCachedBlobUrl(e.url)) &&
+      (!e.expires_at || e.expires_at - 30 > now);
 
     const cacheImageIfNeeded = async (
       url: string | null | undefined,

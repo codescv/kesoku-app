@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { t, type MessageKey } from '@kesoku/ui';
+import { onMediaCacheClear, onMediaCacheRevoke } from '../../lib/mediaCache';
 import type { CardContext, GlossaryEntry, MediaRef } from './types';
 
 /* ------------------------------------------------------------------ */
@@ -101,11 +102,28 @@ export function cardMedia(ctx: Pick<CardContext, 'media'>, keys: string[], fallb
 export function useImageUrl(resolve: CardContext['resolveMedia'] | undefined, ref: MediaRef | null): string | null | undefined {
   const key = ref ? JSON.stringify(ref) : '';
   const [state, setState] = useState<{ key: string; url: string | null | undefined }>({ key: '', url: undefined });
+  const [reloadGen, setReloadGen] = useState(0);
   // `resolve` is recreated with the card context on every list render (streaming, state.sync…). Keep the latest in
   // a ref and re-resolve only when the media itself changes, so in-flight loads are never cancelled/reset.
   const resolveRef = useRef(resolve);
   resolveRef.current = resolve;
   const hasResolve = !!resolve;
+  useEffect(() => {
+    const curUrl = state.url;
+    if (!curUrl?.startsWith('blob:')) return;
+    const drop = () => {
+      setState({ key: '', url: undefined });
+      setReloadGen((g) => g + 1);
+    };
+    const offClear = onMediaCacheClear(drop);
+    const offRevoke = onMediaCacheRevoke((revokedUrl) => {
+      if (revokedUrl === curUrl) drop();
+    });
+    return () => {
+      offClear();
+      offRevoke();
+    };
+  }, [state.url]);
   useEffect(() => {
     const resolve = resolveRef.current;
     if (!ref || !resolve) return;
@@ -123,7 +141,7 @@ export function useImageUrl(resolve: CardContext['resolveMedia'] | undefined, re
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, hasResolve]);
+  }, [key, hasResolve, reloadGen]);
   if (!ref) return null;
   return state.key === key ? state.url : undefined;
 }

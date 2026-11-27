@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChoiceItem, QuestionSegment } from '@kesoku/protocol';
 import { UiIcon, useT } from '@kesoku/ui';
 import type { CardContext } from '../cards/types';
-import { buildMediaAliases, invalidateCachedImage } from '../../lib/mediaCache';
+import { buildMediaAliases, invalidateCachedImage, onMediaCacheClear, onMediaCacheRevoke } from '../../lib/mediaCache';
 import { actions, useStore } from '../../lib/store';
 import { overlays } from '../session/overlays';
 import { renderInline } from './Markdown';
@@ -42,6 +42,22 @@ function usePortraitUrl(avatar: string, ctx: CardContext) {
   const resolveRef = useRef(ctx.resolveMedia);
   resolveRef.current = ctx.resolveMedia;
   const url = direct ?? cached ?? local;
+
+  useEffect(() => {
+    if (!local?.startsWith('blob:')) return;
+    const drop = () => {
+      setLocal(null);
+      setAttempt((n) => n + 1);
+    };
+    const offClear = onMediaCacheClear(drop);
+    const offRevoke = onMediaCacheRevoke((revokedUrl) => {
+      if (revokedUrl === local) drop();
+    });
+    return () => {
+      offClear();
+      offRevoke();
+    };
+  }, [local]);
 
   useEffect(() => {
     if (direct || cached || failed) return;

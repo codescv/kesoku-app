@@ -7,7 +7,7 @@ import { Markdown, renderInline } from './Markdown';
 import { GenericCardSafe, getCard } from '../cards';
 import type { CardContext } from '../cards/types';
 import { actions, useStore } from '../../lib/store';
-import { buildMediaAliases, invalidateCachedImage } from '../../lib/mediaCache';
+import { buildMediaAliases, invalidateCachedImage, onMediaCacheClear, onMediaCacheRevoke } from '../../lib/mediaCache';
 import { overlays } from '../session/overlays';
 
 export interface SegmentEnv {
@@ -207,6 +207,23 @@ export function MediaImage({ seg, ctx, className, autoHydrate }: { seg: FileSegm
     obs.observe(el);
     return () => obs.disconnect();
   }, [inView, autoHydrate]);
+
+  useEffect(() => {
+    if (!url?.startsWith('blob:')) return;
+    const drop = () => {
+      setImgLoaded(false);
+      setUrl(null);
+      setState('idle');
+    };
+    const offClear = onMediaCacheClear(drop);
+    const offRevoke = onMediaCacheRevoke((revokedUrl) => {
+      if (revokedUrl === url) drop();
+    });
+    return () => {
+      offClear();
+      offRevoke();
+    };
+  }, [url]);
 
   useEffect(() => {
     if (freshEntryUrl && !url) {
