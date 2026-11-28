@@ -20,6 +20,7 @@ export function makeCardContext(sessionId: string, messageId: string, modeId: st
     insertComposer: (text) => actions.setUi({ composerInsert: { text, n: Date.now() } }),
     setModePrefs: (prefs) => kesoku.setModePrefs(sessionId, prefs, { throwOnError: true }),
     modeDefaults: useStore.getState().modeDefaults,
+    characters: useStore.getState().characters,
     setModeDefaults: (mid, prefs) => kesoku.setModeDefaults(mid, prefs),
     listCharacters: () => kesoku.listCharacters(),
     updateRoster: (patch) => kesoku.updateRoster(sessionId, patch),

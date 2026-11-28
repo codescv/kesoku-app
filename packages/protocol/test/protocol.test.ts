@@ -4,6 +4,7 @@ import {
   DEFAULT_MEMORY_POLICIES,
   EngineToClient,
   EngineToRelay,
+  LIMITS,
   MODE_IDS,
   MediaPutHeaderSchema,
   RelayToEngine,
@@ -276,6 +277,10 @@ describe('session pinned notes frames (v0.1.26)', () => {
 });
 
 describe('roster editor & mode defaults frames', () => {
+  it('mirrors the 4 KiB MODE_PREFS_MAX_BYTES limit for custom casting policies', () => {
+    expect(LIMITS.MODE_PREFS_MAX_BYTES).toBe(4096);
+  });
+
   it('validates mode.defaults.get / set requests and results', () => {
     expect(validatePayload(ClientToEngine, 'mode.defaults.get', {})?.ok).toBe(true);
     expect(validatePayload(ClientToEngine, 'mode.defaults.get', { mode_id: 'story_theater' })?.ok).toBe(true);

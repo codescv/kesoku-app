@@ -1,4 +1,5 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { RegisteredCharacter } from '@kesoku/protocol';
 import { HpBar, ProgressBar, Sheet, t as tGlobal, useLocale, useT, type MessageKey } from '@kesoku/ui';
 import { VERSION_LABELS, comboGauge, partyCombos, resolveGameVersion, trpgPhase, type HudPanel } from '@kesoku/hud';
@@ -114,26 +115,54 @@ interface RosterMemberDraft {
   transformPrompt: string;
 }
 
+const CHAR_PICKER_PAGE = 24;
+
 function RosterAvatar({
   refStr,
   name,
   ctx,
   interactive = true,
   compact = false,
+  lazy = false,
 }: {
   refStr: string;
   name: string;
   ctx: CardContext;
   interactive?: boolean;
   compact?: boolean;
+  lazy?: boolean;
 }) {
   const t = useT();
-  const ref = refStr ? toMediaRef({ ref: refStr }) : null;
+  const hostRef = useRef<HTMLSpanElement | null>(null);
+  const [inView, setInView] = useState(!lazy || typeof IntersectionObserver === 'undefined');
+
+  useEffect(() => {
+    if (!lazy || inView || typeof IntersectionObserver === 'undefined') return;
+    const el = hostRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setInView(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '80px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [lazy, inView]);
+
+  const ref = inView && refStr ? toMediaRef({ ref: refStr }) : null;
   const url = useImageUrl(ctx.resolveMedia, ref);
   const cls = 'km-roster-av' + (compact ? ' is-sm' : '');
   const inner = url ? <img src={url} alt={name} draggable={false} /> : <span aria-hidden>{name.slice(0, 1)}</span>;
   if (!interactive) {
-    return <span className={cls}>{inner}</span>;
+    return (
+      <span ref={hostRef} className={cls}>
+        {inner}
+      </span>
+    );
   }
   return (
     <button
@@ -275,6 +304,7 @@ function CastingPolicySection({
               <textarea
                 ref={customTaRef}
                 className="km-textarea"
+                data-sheet-no-drag
                 maxLength={600}
                 rows={3}
                 value={customText}
@@ -327,13 +357,16 @@ function RosterEditSheet({
   const [fusionVal, setFusionVal] = useState(false);
   const [transformPromptVal, setTransformPromptVal] = useState('');
   const [search, setSearch] = useState('');
-  const [characters, setCharacters] = useState<RegisteredCharacter[]>([]);
+  const [visibleCount, setVisibleCount] = useState(CHAR_PICKER_PAGE);
+  const [characters, setCharacters] = useState<RegisteredCharacter[]>(() => (ctx.characters?.length ? [...ctx.characters] : []));
   const [charsLoading, setCharsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const charsLoadedRef = useRef(false);
+  const charsLoadedRef = useRef(Boolean(ctx.characters?.length));
   const listCharactersRef = useRef(ctx.listCharacters);
   listCharactersRef.current = ctx.listCharacters;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!member) return;
@@ -342,7 +375,25 @@ function RosterEditSheet({
     setFusionVal(member.fusion);
     setTransformPromptVal(member.transformPrompt);
     setSearch('');
+    setVisibleCount(CHAR_PICKER_PAGE);
     setError(null);
+  }, [member]);
+
+  useEffect(() => {
+    setVisibleCount(CHAR_PICKER_PAGE);
+  }, [search]);
+
+  useEffect(() => {
+    if (!member) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        onCloseRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [member]);
 
   useEffect(() => {
@@ -358,8 +409,7 @@ function RosterEditSheet({
       })
       .catch(() => {
         if (!alive) return;
-        charsLoadedRef.current = true;
-        setCharacters([]);
+        // Keep charsLoadedRef false so transient offline/reconnect errors retry on reopen.
         setCharsLoading(false);
       });
     return () => {
@@ -377,9 +427,16 @@ function RosterEditSheet({
           (c.aliases ?? []).some((a) => a.toLowerCase().includes(q)),
       )
     : characters;
+  const visibleChars = filteredChars.slice(0, visibleCount);
+  const remainingChars = filteredChars.length - visibleChars.length;
+  const transformMissing = Boolean(member?.isTransformed && !transformPromptVal.trim());
 
   const onSave = async () => {
     if (!member || saving) return;
+    if (member.isTransformed && !transformPromptVal.trim()) {
+      setError(t('panel.rosterTransformPromptRequired'));
+      return;
+    }
     if (!ctx.updateRoster) {
       setError(t('panel.rosterSaveFailed'));
       return;
@@ -392,7 +449,7 @@ function RosterEditSheet({
         ref: refVal.trim(),
         prompt: promptVal,
         fusion: fusionVal,
-        ...(member.isTransformed ? { transform_prompt: transformPromptVal } : {}),
+        ...(member.isTransformed ? { transform_prompt: transformPromptVal.trim() } : {}),
       };
       await ctx.updateRoster(patch);
       onClose();
@@ -403,143 +460,166 @@ function RosterEditSheet({
     }
   };
 
-  return (
-    <Sheet
-      open={!!member}
-      onClose={onClose}
-      className="km-roster-sheet"
-      title={member ? t('panel.rosterEditTitle', { name: member.name }) : undefined}
-    >
-      {member && (
-        <div className="km-roster-form" data-testid="roster-edit-form">
-          <div className="km-field">
-            <label htmlFor="km-roster-ref">{t('panel.rosterRefLabel')}</label>
-            <div className="km-ref-row">
-              <input
-                id="km-roster-ref"
-                type="text"
-                className="km-input"
-                maxLength={160}
-                value={refVal}
-                onChange={(e) => setRefVal(e.target.value)}
-                placeholder={t('panel.rosterRefPlaceholder')}
-              />
-              <button
-                type="button"
-                className="km-btn km-btn-sm km-btn-ghost"
-                disabled={!refVal}
-                onClick={() => setRefVal('')}
-              >
-                {t('panel.rosterRefClear')}
-              </button>
-            </div>
-            {ctx.listCharacters && (
-              <div className="km-char-picker-wrap">
+  const sheetNode = (
+    <div className="km-roster-sheet-portal">
+      <Sheet
+        open={!!member}
+        onClose={onClose}
+        className="km-roster-sheet"
+        title={member ? t('panel.rosterEditTitle', { name: member.name }) : undefined}
+      >
+        {member && (
+          <div className="km-roster-form" data-testid="roster-edit-form">
+            <div className="km-field">
+              <label htmlFor="km-roster-ref">{t('panel.rosterRefLabel')}</label>
+              <div className="km-ref-row">
                 <input
-                  type="search"
-                  className="km-input km-input-sm"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t('panel.rosterCharSearch')}
-                  aria-label={t('panel.rosterCharSearch')}
+                  id="km-roster-ref"
+                  type="text"
+                  className="km-input"
+                  maxLength={160}
+                  value={refVal}
+                  onChange={(e) => setRefVal(e.target.value)}
+                  placeholder={t('panel.rosterRefPlaceholder')}
                 />
-                <div className="km-char-picker" data-sheet-no-drag data-testid="roster-char-picker">
-                  {charsLoading && <div className="km-char-empty">{t('panel.rosterCharLoading')}</div>}
-                  {!charsLoading && filteredChars.length === 0 && <div className="km-char-empty">{t('panel.rosterCharEmpty')}</div>}
-                  {!charsLoading &&
-                    filteredChars.map((c) => {
-                      const selected = refVal.trim().toLowerCase() === c.ref.toLowerCase();
-                      return (
-                        <button
-                          key={`${c.group ?? ''}:${c.ref}:${c.name}`}
-                          type="button"
-                          className={'km-char-item' + (selected ? ' is-selected' : '')}
-                          aria-pressed={selected}
-                          onClick={() => setRefVal(c.ref)}
-                        >
-                          <RosterAvatar refStr={c.avatar || c.ref} name={c.name} ctx={ctx} interactive={false} compact />
-                          <span className="km-char-meta">
-                            <span className="km-char-name">
-                              <b>{c.name}</b>
-                              {c.group && <span className="kc-badge kc-badge-tag">{c.group}</span>}
-                            </span>
-                            <span className="km-char-sub">
-                              <code>{c.ref}</code>
-                              {c.aliases && c.aliases.length > 0 && <span> · {c.aliases.slice(0, 3).join(' / ')}</span>}
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                </div>
+                <button
+                  type="button"
+                  className="km-btn km-btn-sm km-btn-ghost"
+                  disabled={!refVal}
+                  onClick={() => setRefVal('')}
+                >
+                  {t('panel.rosterRefClear')}
+                </button>
               </div>
-            )}
-          </div>
-
-          <label className="km-roster-check">
-            <input
-              type="checkbox"
-              checked={fusionVal}
-              onChange={(e) => setFusionVal(e.target.checked)}
-            />
-            <span className="km-roster-check-copy">
-              <b>{t('panel.rosterFusionLabel')}</b>
-              <span>{t('panel.rosterFusionHint')}</span>
-            </span>
-          </label>
-
-          <div className="km-field">
-            <div className="km-field-head">
-              <label htmlFor="km-roster-prompt">{t('panel.rosterPromptLabel')}</label>
-              <span className="km-char-count">{promptVal.length}/2000</span>
+              {ctx.listCharacters && (
+                <div className="km-char-picker-wrap">
+                  <input
+                    type="search"
+                    className="km-input km-input-sm"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={t('panel.rosterCharSearch')}
+                    aria-label={t('panel.rosterCharSearch')}
+                  />
+                  <div className="km-char-picker" data-sheet-no-drag data-testid="roster-char-picker">
+                    {charsLoading && <div className="km-char-empty">{t('panel.rosterCharLoading')}</div>}
+                    {!charsLoading && filteredChars.length === 0 && <div className="km-char-empty">{t('panel.rosterCharEmpty')}</div>}
+                    {!charsLoading &&
+                      visibleChars.map((c) => {
+                        const selected = refVal.trim().toLowerCase() === c.ref.toLowerCase();
+                        return (
+                          <button
+                            key={`${c.group ?? ''}:${c.ref}:${c.name}`}
+                            type="button"
+                            className={'km-char-item' + (selected ? ' is-selected' : '')}
+                            aria-pressed={selected}
+                            onClick={() => setRefVal(c.ref)}
+                          >
+                            <RosterAvatar refStr={c.avatar || c.ref} name={c.name} ctx={ctx} interactive={false} compact lazy />
+                            <span className="km-char-meta">
+                              <span className="km-char-name">
+                                <b>{c.name}</b>
+                                {c.group && <span className="kc-badge kc-badge-tag">{c.group}</span>}
+                              </span>
+                              <span className="km-char-sub">
+                                <code>{c.ref}</code>
+                                {c.aliases && c.aliases.length > 0 && <span> · {c.aliases.slice(0, 3).join(' / ')}</span>}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    {!charsLoading && remainingChars > 0 && (
+                      <button
+                        type="button"
+                        className="km-char-more"
+                        onClick={() => setVisibleCount((n) => n + CHAR_PICKER_PAGE)}
+                      >
+                        {t('panel.rosterCharShowMore', { remaining: remainingChars })}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            <textarea
-              id="km-roster-prompt"
-              className="km-textarea"
-              maxLength={2000}
-              rows={4}
-              value={promptVal}
-              onChange={(e) => setPromptVal(e.target.value)}
-              placeholder={t('panel.rosterPromptPlaceholder')}
-            />
-          </div>
 
-          {member.isTransformed && (
+            <label className="km-roster-check">
+              <input
+                type="checkbox"
+                checked={fusionVal}
+                onChange={(e) => setFusionVal(e.target.checked)}
+              />
+              <span className="km-roster-check-copy">
+                <b>{t('panel.rosterFusionLabel')}</b>
+                <span>{t('panel.rosterFusionHint')}</span>
+              </span>
+            </label>
+
             <div className="km-field">
               <div className="km-field-head">
-                <label htmlFor="km-roster-tf-prompt">{t('panel.rosterTransformPromptLabel')}</label>
-                <span className="km-char-count">{transformPromptVal.length}/2000</span>
+                <label htmlFor="km-roster-prompt">{t('panel.rosterPromptLabel')}</label>
+                <span className="km-char-count">{promptVal.length}/2000</span>
               </div>
               <textarea
-                id="km-roster-tf-prompt"
+                id="km-roster-prompt"
                 className="km-textarea"
+                data-sheet-no-drag
                 maxLength={2000}
-                rows={3}
-                value={transformPromptVal}
-                onChange={(e) => setTransformPromptVal(e.target.value)}
-                placeholder={t('panel.rosterTransformPromptPlaceholder')}
+                rows={4}
+                value={promptVal}
+                onChange={(e) => setPromptVal(e.target.value)}
+                placeholder={t('panel.rosterPromptPlaceholder')}
               />
             </div>
-          )}
 
-          {error && (
-            <div className="km-inline-msg is-err" role="alert">
-              {error}
+            {member.isTransformed && (
+              <div className="km-field">
+                <div className="km-field-head">
+                  <label htmlFor="km-roster-tf-prompt">{t('panel.rosterTransformPromptLabel')}</label>
+                  <span className="km-char-count">{transformPromptVal.length}/2000</span>
+                </div>
+                <textarea
+                  id="km-roster-tf-prompt"
+                  className="km-textarea"
+                  data-sheet-no-drag
+                  maxLength={2000}
+                  rows={3}
+                  value={transformPromptVal}
+                  onChange={(e) => {
+                    setTransformPromptVal(e.target.value);
+                    if (error) setError(null);
+                  }}
+                  placeholder={t('panel.rosterTransformPromptPlaceholder')}
+                />
+                {transformMissing && (
+                  <div className="km-inline-msg is-err" role="alert">
+                    {t('panel.rosterTransformPromptRequired')}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {error && (
+              <div className="km-inline-msg is-err" role="alert">
+                {error}
+              </div>
+            )}
+
+            <div className="km-roster-sheet-actions">
+              <button type="button" className="km-btn km-btn-ghost" disabled={saving} onClick={onClose}>
+                {t('common.cancel')}
+              </button>
+              <button type="button" className="km-btn km-btn-primary" disabled={saving || transformMissing} onClick={() => void onSave()}>
+                {saving ? t('common.saving') : t('common.save')}
+              </button>
             </div>
-          )}
-
-          <div className="km-roster-sheet-actions">
-            <button type="button" className="km-btn km-btn-ghost" disabled={saving} onClick={onClose}>
-              {t('common.cancel')}
-            </button>
-            <button type="button" className="km-btn km-btn-primary" disabled={saving} onClick={() => void onSave()}>
-              {saving ? t('common.saving') : t('common.save')}
-            </button>
           </div>
-        </div>
-      )}
-    </Sheet>
+        )}
+      </Sheet>
+    </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(sheetNode, document.body) : sheetNode;
 }
 
 function RosterPanel({

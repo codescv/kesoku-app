@@ -55,6 +55,8 @@ export interface CardContext {
   setModePrefs: (prefs: Record<string, unknown>) => void | Promise<void>;
   /** Per-mode default prefs from engine (`mode.defaults.get`). */
   modeDefaults?: Record<string, Record<string, unknown>>;
+  /** Cached registered characters from store (`character.list`). */
+  characters?: RegisteredCharacter[];
   /** Persist per-mode default prefs (`mode.defaults.set`). */
   setModeDefaults?: (modeId: ModeId, prefs: Record<string, unknown>) => Promise<Record<string, unknown> | void>;
   /** Fetch registered reference characters (`character.list`). */

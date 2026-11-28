@@ -819,6 +819,76 @@ describe('ModePanel', () => {
     // Stays open with inline error on failure.
     expect(screen.getByRole('alert').textContent).toContain('保存角色设定失败');
     expect(screen.getByTestId('roster-edit-form')).toBeTruthy();
+
+    // Clearing transform_prompt on a transformed member shows inline validation error and disables Save.
+    fireEvent.change(tfInput, { target: { value: '   ' } });
+    expect(screen.getByRole('alert').textContent).toContain('请填写当前变身形态设定');
+    expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(tfInput.hasAttribute('data-sheet-no-drag')).toBe(true);
+    expect(screen.getByLabelText('形象与设定').hasAttribute('data-sheet-no-drag')).toBe(true);
+  });
+
+  it('roster edit sheet portals to document.body, intercepts Escape without closing outer sheet, paginates picker, and retries failed character loads', async () => {
+    const manyChars = Array.from({ length: 40 }, (_, i) => ({
+      name: `候选角色${i + 1}`,
+      ref: `char_${String(i + 1).padStart(2, '0')}`,
+      aliases: i === 35 ? ['隐藏别名'] : [],
+      group: '测试组',
+      avatar: `characters/test/c${i + 1}.png`,
+    }));
+    const listCharacters = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(manyChars);
+    const updateRoster = vi.fn(async () => ({ session_id: 's1', key: '角色甲', member: {} }));
+    const ctx = makeCtx({ listCharacters, updateRoster });
+    const sf = { 'game/roster.json': { members: { 角色甲: { name: '角色甲', base_appearance: { prompt: '初始描述' } } } } };
+
+    // Simulate an outer sheet bubble-phase Escape listener (as on mobile panelSheet).
+    const outerEscape = vi.fn();
+    window.addEventListener('keydown', outerEscape);
+    try {
+      const { container } = render(
+        <div data-testid="outer-sheet-body">
+          <ModePanel panel="roster" stateFiles={sf} modePrefs={{}} ctx={ctx} />
+        </div>,
+      );
+
+      // 1. First open fails transiently; closing & reopening must retry listCharacters().
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: '编辑 角色甲' }));
+      });
+      expect(listCharacters).toHaveBeenCalledTimes(1);
+      // Edit sheet is portaled to document.body outside outer-sheet-body.
+      const form = screen.getByTestId('roster-edit-form');
+      expect(container.contains(form)).toBe(false);
+      expect(form.closest('.km-roster-sheet-portal')?.parentElement).toBe(document.body);
+
+      // Capture-phase Escape closes ONLY RosterEditSheet and stops propagation to outer sheet listener.
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryByTestId('roster-edit-form')).toBeNull();
+      expect(outerEscape).not.toHaveBeenCalled();
+
+      // 2. Reopen retries listCharacters(), renders only first 24 rows (avoiding 191-RPC hydration burst).
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: '编辑 角色甲' }));
+      });
+      expect(listCharacters).toHaveBeenCalledTimes(2);
+      const picker = screen.getByTestId('roster-char-picker');
+      expect(picker.querySelectorAll('.km-char-item')).toHaveLength(24);
+      expect(within(picker).getByRole('button', { name: '显示更多（还有 16 项）' })).toBeTruthy();
+
+      // Clicking "显示更多" reveals the remaining 16 items.
+      fireEvent.click(within(picker).getByRole('button', { name: '显示更多（还有 16 项）' }));
+      expect(picker.querySelectorAll('.km-char-item')).toHaveLength(40);
+
+      // Search filters across ALL 40 items (including item #36 beyond initial page).
+      fireEvent.change(screen.getByLabelText('搜索已登记参考角色…'), { target: { value: '隐藏别名' } });
+      expect(picker.querySelectorAll('.km-char-item')).toHaveLength(1);
+      expect(within(picker).getByText('候选角色36')).toBeTruthy();
+    } finally {
+      window.removeEventListener('keydown', outerEscape);
+    }
   });
 
   it('roster casting policy shows effective precedence and supports preset/custom save as default vs session-only', async () => {
@@ -869,6 +939,7 @@ describe('ModePanel', () => {
     fireEvent.click(within(card).getByRole('button', { name: '编辑策略' }));
     const ta = within(card).getByLabelText('自定义选角策略') as HTMLTextAreaElement;
     expect(ta.value).toBe('主角团由我钦定，其余随机分配');
+    expect(ta.hasAttribute('data-sheet-no-drag')).toBe(true);
     fireEvent.change(ta, { target: { value: '仅核心反派与主角弹候选卡' } });
     await act(async () => {
       fireEvent.click(within(card).getByRole('button', { name: '仅应用于本局' }));
