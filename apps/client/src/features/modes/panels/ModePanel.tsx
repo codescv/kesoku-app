@@ -1,7 +1,8 @@
-import { Component, useState, type ReactNode } from 'react';
-import { HpBar, ProgressBar, t as tGlobal, useLocale, useT, type MessageKey } from '@kesoku/ui';
+import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
+import type { RegisteredCharacter } from '@kesoku/protocol';
+import { HpBar, ProgressBar, Sheet, t as tGlobal, useLocale, useT, type MessageKey } from '@kesoku/ui';
 import { VERSION_LABELS, comboGauge, partyCombos, resolveGameVersion, trpgPhase, type HudPanel } from '@kesoku/hud';
-import type { CardContext } from '../../cards/types';
+import type { CardContext, RosterUpdatePatch } from '../../cards/types';
 import { MatchupRows, TypeBadge, matchupOf } from '../../cards/pokemon';
 import { PokemonDex } from '../../cards/kinds/PokemonDex';
 import { arr, isObj, num, obj, pick, str, strList, toMediaRef, useImageUrl, type Dict } from '../../cards/util';
@@ -12,6 +13,7 @@ export interface ModePanelProps {
   panel: ModePanelKind | string;
   stateFiles: Record<string, unknown>;
   modePrefs: Record<string, unknown>;
+  modeDefaults?: Record<string, Record<string, unknown>>;
   ctx: CardContext;
 }
 
@@ -88,51 +90,548 @@ function MistakesPanel({ stateFiles, ctx }: { stateFiles: Record<string, unknown
 
 /* ------------------------------ roster ------------------------------ */
 
-function RosterAvatar({ refStr, name, ctx }: { refStr: string; name: string; ctx: CardContext }) {
+const CASTING_PRESETS = ['ask_main', 'ask_all', 'auto_random', 'manual_only'] as const;
+type CastingPreset = (typeof CASTING_PRESETS)[number];
+
+const CASTING_PRESET_KEYS: Record<CastingPreset, MessageKey> = {
+  ask_main: 'panel.castingPreset.ask_main',
+  ask_all: 'panel.castingPreset.ask_all',
+  auto_random: 'panel.castingPreset.auto_random',
+  manual_only: 'panel.castingPreset.manual_only',
+};
+
+function isCastingPreset(v: string): v is CastingPreset {
+  return (CASTING_PRESETS as readonly string[]).includes(v);
+}
+
+interface RosterMemberDraft {
+  key: string;
+  name: string;
+  ref: string;
+  prompt: string;
+  fusion: boolean;
+  isTransformed: boolean;
+  transformPrompt: string;
+}
+
+function RosterAvatar({
+  refStr,
+  name,
+  ctx,
+  interactive = true,
+  compact = false,
+}: {
+  refStr: string;
+  name: string;
+  ctx: CardContext;
+  interactive?: boolean;
+  compact?: boolean;
+}) {
   const t = useT();
   const ref = refStr ? toMediaRef({ ref: refStr }) : null;
   const url = useImageUrl(ctx.resolveMedia, ref);
+  const cls = 'km-roster-av' + (compact ? ' is-sm' : '');
+  const inner = url ? <img src={url} alt={name} draggable={false} /> : <span aria-hidden>{name.slice(0, 1)}</span>;
+  if (!interactive) {
+    return <span className={cls}>{inner}</span>;
+  }
   return (
     <button
       type="button"
-      className="km-roster-av"
+      className={cls}
       aria-label={t('panel.rosterAvatarAria', { name })}
       onClick={() => url && ctx.openFullscreen(<img className="kc-full-img" src={url} alt={name} />)}
     >
-      {url ? <img src={url} alt={name} draggable={false} /> : <span aria-hidden>{name.slice(0, 1)}</span>}
+      {inner}
     </button>
   );
 }
 
-function RosterPanel({ stateFiles, ctx }: { stateFiles: Record<string, unknown>; ctx: CardContext }) {
+function CastingPolicySection({
+  modePrefs,
+  modeDefaults,
+  ctx,
+}: {
+  modePrefs: Record<string, unknown>;
+  modeDefaults?: Record<string, Record<string, unknown>>;
+  ctx: CardContext;
+}) {
   const t = useT();
+  const effectivePolicy =
+    str(modePrefs.casting_policy) ||
+    str(obj(modeDefaults?.story_theater).casting_policy) ||
+    'ask_main';
+  const effectiveIsPreset = isCastingPreset(effectivePolicy);
+
+  const [editing, setEditing] = useState(false);
+  const [selectedMode, setSelectedMode] = useState<CastingPreset | 'custom'>(effectiveIsPreset ? effectivePolicy : 'custom');
+  const [customText, setCustomText] = useState(effectiveIsPreset ? '' : effectivePolicy);
+  const [saving, setSaving] = useState<'default' | 'session' | null>(null);
+  const [feedback, setFeedback] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const customTaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const toggleEditor = () => {
+    if (!editing) {
+      setSelectedMode(effectiveIsPreset ? effectivePolicy : 'custom');
+      setCustomText(effectiveIsPreset ? '' : effectivePolicy);
+      setFeedback(null);
+      setEditing(true);
+    } else {
+      setEditing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (editing && selectedMode === 'custom') {
+      customTaRef.current?.focus();
+    }
+  }, [editing, selectedMode]);
+
+  const candidate = selectedMode === 'custom' ? customText.trim() : selectedMode;
+
+  const save = async (scope: 'default' | 'session') => {
+    if (saving) return;
+    if (!candidate) {
+      setFeedback({ kind: 'err', text: t('panel.castingCustomRequired') });
+      return;
+    }
+    setSaving(scope);
+    setFeedback(null);
+    try {
+      if (scope === 'default') {
+        if (ctx.setModeDefaults) {
+          await ctx.setModeDefaults('story_theater', { casting_policy: candidate });
+        }
+        await ctx.setModePrefs({ casting_policy: candidate });
+        setFeedback({ kind: 'ok', text: t('panel.castingSavedDefault') });
+      } else {
+        await ctx.setModePrefs({ casting_policy: candidate });
+        setFeedback({ kind: 'ok', text: t('panel.castingSavedSession') });
+      }
+      setEditing(false);
+    } catch {
+      setFeedback({ kind: 'err', text: t('panel.castingSaveFailed') });
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <div className="km-policy-card" data-testid="casting-policy-card">
+      <div className="km-policy-bar">
+        <div className="km-policy-summary">
+          <span className="km-policy-label">{t('panel.castingPolicyTitle')}</span>
+          {effectiveIsPreset ? (
+            <span className="kc-badge kc-badge-mode">{t(CASTING_PRESET_KEYS[effectivePolicy])}</span>
+          ) : (
+            <>
+              <span className="kc-badge kc-badge-accent">{t('panel.castingPreset.custom')}</span>
+              <span className="km-policy-snippet" title={effectivePolicy}>
+                {effectivePolicy}
+              </span>
+            </>
+          )}
+        </div>
+        <button type="button" className="km-btn km-btn-sm km-btn-ghost" onClick={toggleEditor}>
+          {editing ? t('panel.castingClose') : t('panel.castingEdit')}
+        </button>
+      </div>
+      {feedback && (
+        <div className={'km-inline-msg' + (feedback.kind === 'err' ? ' is-err' : ' is-ok')} role={feedback.kind === 'err' ? 'alert' : 'status'}>
+          {feedback.text}
+        </div>
+      )}
+      {editing && (
+        <div className="km-policy-editor" data-testid="casting-policy-editor">
+          <div className="km-policy-chips" role="group" aria-label={t('panel.castingPolicyTitle')}>
+            {CASTING_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                className={'km-chip-btn' + (selectedMode === preset ? ' is-on' : '')}
+                aria-pressed={selectedMode === preset}
+                onClick={() => {
+                  setSelectedMode(preset);
+                  setFeedback(null);
+                }}
+              >
+                {t(CASTING_PRESET_KEYS[preset])}
+              </button>
+            ))}
+            <button
+              type="button"
+              className={'km-chip-btn' + (selectedMode === 'custom' ? ' is-on' : '')}
+              aria-pressed={selectedMode === 'custom'}
+              onClick={() => {
+                setSelectedMode('custom');
+                setFeedback(null);
+              }}
+            >
+              {t('panel.castingPreset.custom')}
+            </button>
+          </div>
+          {selectedMode === 'custom' && (
+            <div className="km-field">
+              <textarea
+                ref={customTaRef}
+                className="km-textarea"
+                maxLength={600}
+                rows={3}
+                value={customText}
+                onChange={(e) => {
+                  setCustomText(e.target.value);
+                  if (feedback?.kind === 'err') setFeedback(null);
+                }}
+                placeholder={t('panel.castingCustomPlaceholder')}
+                aria-label={t('panel.castingCustomAria')}
+              />
+              <span className="km-char-count">{customText.length}/600</span>
+            </div>
+          )}
+          <div className="km-policy-actions">
+            <button
+              type="button"
+              className="km-btn km-btn-sm km-btn-primary"
+              disabled={!!saving || !candidate}
+              onClick={() => void save('default')}
+            >
+              {saving === 'default' ? t('common.saving') : t('panel.castingSaveDefault')}
+            </button>
+            <button
+              type="button"
+              className="km-btn km-btn-sm km-btn-ghost"
+              disabled={!!saving || !candidate}
+              onClick={() => void save('session')}
+            >
+              {saving === 'session' ? t('common.saving') : t('panel.castingApplySession')}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RosterEditSheet({
+  member,
+  ctx,
+  onClose,
+}: {
+  member: RosterMemberDraft | null;
+  ctx: CardContext;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const [refVal, setRefVal] = useState('');
+  const [promptVal, setPromptVal] = useState('');
+  const [fusionVal, setFusionVal] = useState(false);
+  const [transformPromptVal, setTransformPromptVal] = useState('');
+  const [search, setSearch] = useState('');
+  const [characters, setCharacters] = useState<RegisteredCharacter[]>([]);
+  const [charsLoading, setCharsLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const charsLoadedRef = useRef(false);
+  const listCharactersRef = useRef(ctx.listCharacters);
+  listCharactersRef.current = ctx.listCharacters;
+
+  useEffect(() => {
+    if (!member) return;
+    setRefVal(member.ref);
+    setPromptVal(member.prompt);
+    setFusionVal(member.fusion);
+    setTransformPromptVal(member.transformPrompt);
+    setSearch('');
+    setError(null);
+  }, [member]);
+
+  useEffect(() => {
+    if (!member || charsLoadedRef.current || !listCharactersRef.current) return;
+    let alive = true;
+    setCharsLoading(true);
+    listCharactersRef.current()
+      .then((list) => {
+        if (!alive) return;
+        charsLoadedRef.current = true;
+        setCharacters(Array.isArray(list) ? list : []);
+        setCharsLoading(false);
+      })
+      .catch(() => {
+        if (!alive) return;
+        charsLoadedRef.current = true;
+        setCharacters([]);
+        setCharsLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [member]);
+
+  const q = search.trim().toLowerCase();
+  const filteredChars = q
+    ? characters.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.ref.toLowerCase().includes(q) ||
+          (c.group ?? '').toLowerCase().includes(q) ||
+          (c.aliases ?? []).some((a) => a.toLowerCase().includes(q)),
+      )
+    : characters;
+
+  const onSave = async () => {
+    if (!member || saving) return;
+    if (!ctx.updateRoster) {
+      setError(t('panel.rosterSaveFailed'));
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const patch: RosterUpdatePatch = {
+        key: member.key,
+        ref: refVal.trim(),
+        prompt: promptVal,
+        fusion: fusionVal,
+        ...(member.isTransformed ? { transform_prompt: transformPromptVal } : {}),
+      };
+      await ctx.updateRoster(patch);
+      onClose();
+    } catch {
+      setError(t('panel.rosterSaveFailed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Sheet
+      open={!!member}
+      onClose={onClose}
+      className="km-roster-sheet"
+      title={member ? t('panel.rosterEditTitle', { name: member.name }) : undefined}
+    >
+      {member && (
+        <div className="km-roster-form" data-testid="roster-edit-form">
+          <div className="km-field">
+            <label htmlFor="km-roster-ref">{t('panel.rosterRefLabel')}</label>
+            <div className="km-ref-row">
+              <input
+                id="km-roster-ref"
+                type="text"
+                className="km-input"
+                maxLength={160}
+                value={refVal}
+                onChange={(e) => setRefVal(e.target.value)}
+                placeholder={t('panel.rosterRefPlaceholder')}
+              />
+              <button
+                type="button"
+                className="km-btn km-btn-sm km-btn-ghost"
+                disabled={!refVal}
+                onClick={() => setRefVal('')}
+              >
+                {t('panel.rosterRefClear')}
+              </button>
+            </div>
+            {ctx.listCharacters && (
+              <div className="km-char-picker-wrap">
+                <input
+                  type="search"
+                  className="km-input km-input-sm"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t('panel.rosterCharSearch')}
+                  aria-label={t('panel.rosterCharSearch')}
+                />
+                <div className="km-char-picker" data-sheet-no-drag data-testid="roster-char-picker">
+                  {charsLoading && <div className="km-char-empty">{t('panel.rosterCharLoading')}</div>}
+                  {!charsLoading && filteredChars.length === 0 && <div className="km-char-empty">{t('panel.rosterCharEmpty')}</div>}
+                  {!charsLoading &&
+                    filteredChars.map((c) => {
+                      const selected = refVal.trim().toLowerCase() === c.ref.toLowerCase();
+                      return (
+                        <button
+                          key={`${c.group ?? ''}:${c.ref}:${c.name}`}
+                          type="button"
+                          className={'km-char-item' + (selected ? ' is-selected' : '')}
+                          aria-pressed={selected}
+                          onClick={() => setRefVal(c.ref)}
+                        >
+                          <RosterAvatar refStr={c.avatar || c.ref} name={c.name} ctx={ctx} interactive={false} compact />
+                          <span className="km-char-meta">
+                            <span className="km-char-name">
+                              <b>{c.name}</b>
+                              {c.group && <span className="kc-badge kc-badge-tag">{c.group}</span>}
+                            </span>
+                            <span className="km-char-sub">
+                              <code>{c.ref}</code>
+                              {c.aliases && c.aliases.length > 0 && <span> · {c.aliases.slice(0, 3).join(' / ')}</span>}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <label className="km-roster-check">
+            <input
+              type="checkbox"
+              checked={fusionVal}
+              onChange={(e) => setFusionVal(e.target.checked)}
+            />
+            <span className="km-roster-check-copy">
+              <b>{t('panel.rosterFusionLabel')}</b>
+              <span>{t('panel.rosterFusionHint')}</span>
+            </span>
+          </label>
+
+          <div className="km-field">
+            <div className="km-field-head">
+              <label htmlFor="km-roster-prompt">{t('panel.rosterPromptLabel')}</label>
+              <span className="km-char-count">{promptVal.length}/2000</span>
+            </div>
+            <textarea
+              id="km-roster-prompt"
+              className="km-textarea"
+              maxLength={2000}
+              rows={4}
+              value={promptVal}
+              onChange={(e) => setPromptVal(e.target.value)}
+              placeholder={t('panel.rosterPromptPlaceholder')}
+            />
+          </div>
+
+          {member.isTransformed && (
+            <div className="km-field">
+              <div className="km-field-head">
+                <label htmlFor="km-roster-tf-prompt">{t('panel.rosterTransformPromptLabel')}</label>
+                <span className="km-char-count">{transformPromptVal.length}/2000</span>
+              </div>
+              <textarea
+                id="km-roster-tf-prompt"
+                className="km-textarea"
+                maxLength={2000}
+                rows={3}
+                value={transformPromptVal}
+                onChange={(e) => setTransformPromptVal(e.target.value)}
+                placeholder={t('panel.rosterTransformPromptPlaceholder')}
+              />
+            </div>
+          )}
+
+          {error && (
+            <div className="km-inline-msg is-err" role="alert">
+              {error}
+            </div>
+          )}
+
+          <div className="km-roster-sheet-actions">
+            <button type="button" className="km-btn km-btn-ghost" disabled={saving} onClick={onClose}>
+              {t('common.cancel')}
+            </button>
+            <button type="button" className="km-btn km-btn-primary" disabled={saving} onClick={() => void onSave()}>
+              {saving ? t('common.saving') : t('common.save')}
+            </button>
+          </div>
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+function RosterPanel({
+  stateFiles,
+  modePrefs,
+  modeDefaults,
+  ctx,
+}: {
+  stateFiles: Record<string, unknown>;
+  modePrefs: Record<string, unknown>;
+  modeDefaults?: Record<string, Record<string, unknown>>;
+  ctx: CardContext;
+}) {
+  const t = useT();
+  const [editing, setEditing] = useState<RosterMemberDraft | null>(null);
   const roster = file(stateFiles, 'game/roster.json');
   const members = Object.entries(obj(roster.members ?? roster.cast ?? roster.characters)).filter(([, v]) => isObj(v)) as Array<[string, Dict]>;
+  const resolvedDefaults = modeDefaults ?? ctx.modeDefaults;
+
   return (
     <Panel title={t('panel.rosterTitle')} badge={<span className="kc-badge kc-badge-mode">{members.length}</span>} className="km-roster">
+      <CastingPolicySection modePrefs={modePrefs} modeDefaults={resolvedDefaults} ctx={ctx} />
       {!members.length && <Empty>{t('panel.noRoster')}</Empty>}
       <ul className="km-list">
         {members.map(([key, m]) => {
           const name = pick(m, 'name') || key;
           const base = obj(m.base_appearance);
+          const transformedObj = obj(m.transformed_appearance);
+          const isTransformed = str(m.form_state).toLowerCase() === 'transformed';
+          const isFusion = m.fusion === true;
           const ref = pick(m, 'ref') || pick(base, 'ref') || pick(m, 'visual_ref');
           const actor = pick(m, 'actor', 'cast', 'performer', 'display_name') || (ref ? ref.split('/').filter(Boolean).pop()?.replace(/[_-]+/g, ' ') ?? '' : '');
+          const basePrompt = pick(base, 'prompt') || (!isTransformed ? pick(m, 'prompt') : '');
+          const transformPrompt = isTransformed ? pick(transformedObj, 'prompt') || pick(m, 'prompt') : '';
           const tags = [...strList(m.tags), ...strList(m.traits), ...strList(m.costume), ...strList(pick(m, 'outfit'))].slice(0, 6);
           const role = pick(m, 'role');
           return (
             <li key={key} className="km-roster-row">
               <RosterAvatar refStr={ref} name={name} ctx={ctx} />
               <div className="km-roster-main">
-                <div className="km-roster-name">
-                  <b>{name}</b>
-                  {actor && <span className="km-roster-actor">· {actor}</span>}
-                  {role && <span className="kc-badge kc-badge-warn">{role}</span>}
+                <div className="km-roster-head">
+                  <div className="km-roster-name">
+                    <b>{name}</b>
+                    {actor && <span className="km-roster-actor">· {actor}</span>}
+                    {isFusion && <span className="kc-badge kc-badge-accent">{t('panel.rosterFusionBadge')}</span>}
+                    {isTransformed && <span className="kc-badge kc-badge-accent">{t('panel.rosterTransformedBadge')}</span>}
+                    {role && <span className="kc-badge kc-badge-warn">{role}</span>}
+                  </div>
+                  <button
+                    type="button"
+                    className="km-roster-edit-btn"
+                    aria-label={`${t('panel.rosterEditBtn')} ${name}`}
+                    onClick={() =>
+                      setEditing({
+                        key,
+                        name,
+                        ref,
+                        prompt: basePrompt,
+                        fusion: isFusion,
+                        isTransformed,
+                        transformPrompt,
+                      })
+                    }
+                  >
+                    {t('panel.rosterEditBtn')}
+                  </button>
                 </div>
+                {isTransformed ? (
+                  <>
+                    {transformPrompt && (
+                      <p className="km-roster-prompt" title={transformPrompt}>
+                        {transformPrompt}
+                      </p>
+                    )}
+                    {basePrompt && (
+                      <p className="km-roster-base-note" title={basePrompt}>
+                        {t('panel.rosterBaseNote', { prompt: basePrompt })}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  basePrompt && (
+                    <p className="km-roster-prompt" title={basePrompt}>
+                      {basePrompt}
+                    </p>
+                  )
+                )}
                 {tags.length > 0 && (
                   <div className="kc-chips">
-                    {tags.map((t) => (
-                      <span key={t} className="kc-badge kc-badge-tag">
-                        {t}
+                    {tags.map((tag) => (
+                      <span key={tag} className="kc-badge kc-badge-tag">
+                        {tag}
                       </span>
                     ))}
                   </div>
@@ -142,6 +641,7 @@ function RosterPanel({ stateFiles, ctx }: { stateFiles: Record<string, unknown>;
           );
         })}
       </ul>
+      <RosterEditSheet member={editing} ctx={ctx} onClose={() => setEditing(null)} />
     </Panel>
   );
 }
@@ -864,14 +1364,14 @@ export function ModePanel(props: ModePanelProps) {
   );
 }
 
-function ModePanelInner({ panel, stateFiles, modePrefs, ctx }: ModePanelProps) {
+function ModePanelInner({ panel, stateFiles, modePrefs, modeDefaults, ctx }: ModePanelProps) {
   const sf = stateFiles ?? {};
   const prefs = modePrefs ?? {};
   switch (panel) {
     case 'mistakes':
       return <MistakesPanel stateFiles={sf} ctx={ctx} />;
     case 'roster':
-      return <RosterPanel stateFiles={sf} ctx={ctx} />;
+      return <RosterPanel stateFiles={sf} modePrefs={prefs} modeDefaults={modeDefaults} ctx={ctx} />;
     case 'party':
       return <PartyPanel stateFiles={sf} />;
     case 'dex':

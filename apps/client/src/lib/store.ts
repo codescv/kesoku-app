@@ -8,6 +8,7 @@ import {
   type MemoryProposal,
   type MessageRecord,
   type PersonaSummary,
+  type RegisteredCharacter,
   type SessionSummary,
   type UserProfile,
 } from '@kesoku/protocol';
@@ -82,6 +83,8 @@ export interface KesokuState {
   headSeq: Record<string, number>;
   stateFiles: Record<string, Record<string, unknown>>;
   modePrefs: Record<string, Record<string, unknown>>;
+  modeDefaults: Record<string, Record<string, unknown>>;
+  characters: RegisteredCharacter[];
   llmOverride: Record<string, LlmOverride | null>;
   origin: Record<string, string>;
   takenOver: Record<string, boolean>;
@@ -143,6 +146,8 @@ export function initialState(): KesokuState {
     headSeq: {},
     stateFiles: {},
     modePrefs: {},
+    modeDefaults: {},
+    characters: [],
     llmOverride: {},
     origin: {},
     takenOver: {},
@@ -587,6 +592,41 @@ export const actions = {
   },
   setModePrefs(sid: string, prefs: Record<string, unknown>) {
     set((s) => ({ modePrefs: { ...s.modePrefs, [sid]: { ...(s.modePrefs[sid] ?? {}), ...prefs } } }));
+  },
+  setModeDefaults(defaults: Record<string, Record<string, unknown>>, replace = false) {
+    set((s) => {
+      if (replace) return { modeDefaults: { ...defaults } };
+      const next = { ...s.modeDefaults };
+      for (const [modeId, prefs] of Object.entries(defaults)) {
+        next[modeId] = { ...prefs };
+      }
+      return { modeDefaults: next };
+    });
+  },
+  setModeDefaultPrefs(modeId: string, prefs: Record<string, unknown>) {
+    set((s) => ({ modeDefaults: { ...s.modeDefaults, [modeId]: { ...prefs } } }));
+  },
+  setCharacters(characters: RegisteredCharacter[]) {
+    set({ characters: [...characters] });
+  },
+  setRosterMember(sessionId: string, key: string, member: Record<string, unknown>) {
+    set((s) => {
+      const files = { ...(s.stateFiles[sessionId] ?? {}) };
+      const rawRoster = files['game/roster.json'];
+      const roster =
+        rawRoster && typeof rawRoster === 'object' && !Array.isArray(rawRoster)
+          ? { ...(rawRoster as Record<string, unknown>) }
+          : {};
+      const rawMembers = roster.members;
+      const members =
+        rawMembers && typeof rawMembers === 'object' && !Array.isArray(rawMembers)
+          ? { ...(rawMembers as Record<string, unknown>) }
+          : {};
+      members[key] = member;
+      roster.members = members;
+      files['game/roster.json'] = roster;
+      return { stateFiles: { ...s.stateFiles, [sessionId]: files } };
+    });
   },
   setLlmOverride(sid: string, o: LlmOverride | null) {
     set((s) => ({ llmOverride: { ...s.llmOverride, [sid]: o } }));

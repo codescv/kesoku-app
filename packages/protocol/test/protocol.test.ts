@@ -274,3 +274,66 @@ describe('session pinned notes frames (v0.1.26)', () => {
     }
   });
 });
+
+describe('roster editor & mode defaults frames', () => {
+  it('validates mode.defaults.get / set requests and results', () => {
+    expect(validatePayload(ClientToEngine, 'mode.defaults.get', {})?.ok).toBe(true);
+    expect(validatePayload(ClientToEngine, 'mode.defaults.get', { mode_id: 'story_theater' })?.ok).toBe(true);
+    expect(validatePayload(ClientToEngine, 'mode.defaults.get', { mode_id: 'unknown_mode' })?.ok).toBe(false);
+
+    expect(validatePayload(ClientToEngine, 'mode.defaults.set', { mode_id: 'story_theater', prefs: { casting_policy: 'ask_all' } })?.ok).toBe(true);
+    expect(validatePayload(ClientToEngine, 'mode.defaults.set', { mode_id: 'bogus', prefs: {} })?.ok).toBe(false);
+    expect(validatePayload(ClientToEngine, 'mode.defaults.set', { mode_id: 'story_theater' })?.ok).toBe(false);
+
+    expect(
+      validatePayload(EngineToClient, 'mode.defaults.get.result', {
+        defaults: { story_theater: { casting_policy: 'auto_random' } },
+      })?.ok,
+    ).toBe(true);
+    expect(
+      validatePayload(EngineToClient, 'mode.defaults.set.result', {
+        mode_id: 'story_theater',
+        prefs: { casting_policy: 'manual_only' },
+      })?.ok,
+    ).toBe(true);
+  });
+
+  it('validates character.list and roster.update requests and results', () => {
+    expect(validatePayload(ClientToEngine, 'character.list', {})?.ok).toBe(true);
+    expect(
+      validatePayload(EngineToClient, 'character.list.result', {
+        characters: [
+          { name: '林霜', ref: 'lin_shuang', aliases: ['霜儿'], group: '原创角色', avatar: 'characters/group_a/lin.png' },
+          { name: '陈默', ref: 'chen_mo' },
+        ],
+      })?.ok,
+    ).toBe(true);
+
+    expect(
+      validatePayload(ClientToEngine, 'roster.update', {
+        session_id: 's1',
+        key: '角色甲',
+        ref: 'lin_shuang',
+        prompt: '银发披肩、身披玄色披风的旅人',
+        fusion: true,
+        transform_prompt: '化作雪白灵狐的幻形姿态',
+      })?.ok,
+    ).toBe(true);
+    expect(validatePayload(ClientToEngine, 'roster.update', { session_id: 's1', key: '角色甲', ref: '' })?.ok).toBe(true);
+    expect(validatePayload(ClientToEngine, 'roster.update', { session_id: '', key: '角色甲', ref: 'x' })?.ok).toBe(false);
+    expect(validatePayload(ClientToEngine, 'roster.update', { session_id: 's1', key: '' })?.ok).toBe(false);
+    expect(validatePayload(ClientToEngine, 'roster.update', { session_id: 's1', key: 'k'.repeat(121) })?.ok).toBe(false);
+    expect(validatePayload(ClientToEngine, 'roster.update', { session_id: 's1', key: '角色甲', ref: 'r'.repeat(161) })?.ok).toBe(false);
+    expect(validatePayload(ClientToEngine, 'roster.update', { session_id: 's1', key: '角色甲', prompt: 'p'.repeat(2001) })?.ok).toBe(false);
+    expect(validatePayload(ClientToEngine, 'roster.update', { session_id: 's1', key: '角色甲', transform_prompt: 't'.repeat(2001) })?.ok).toBe(false);
+    expect(validatePayload(ClientToEngine, 'roster.update', { session_id: 's1', key: '角色甲', fusion: 'yes' })?.ok).toBe(false);
+
+    expect(
+      validatePayload(EngineToClient, 'roster.update.result', {
+        session_id: 's1',
+        key: '角色甲',
+        member: { name: '角色甲', ref: 'lin_shuang', fusion: true, base_appearance: { ref: 'lin_shuang', prompt: '描述' } },
+      })?.ok,
+    ).toBe(true);
+  });
+});

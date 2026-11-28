@@ -327,3 +327,14 @@ export const SearchHitSchema = z
   })
   .passthrough();
 export type SearchHit = z.infer<typeof SearchHitSchema>;
+
+export const RegisteredCharacterSchema = z
+  .object({
+    name: z.string(),
+    ref: z.string(),
+    aliases: z.array(z.string()).optional(),
+    group: z.string().optional(),
+    avatar: z.string().optional(),
+  })
+  .passthrough();
+export type RegisteredCharacter = z.infer<typeof RegisteredCharacterSchema>;

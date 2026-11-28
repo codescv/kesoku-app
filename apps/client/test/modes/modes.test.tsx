@@ -726,6 +726,167 @@ describe('ModePanel', () => {
     expect(container.textContent).not.toContain('金币');
   });
 
+  it('roster renders prompt descriptions, fusion/transformed badges, and edits ref/prompt/fusion via sheet & character picker', async () => {
+    const listCharacters = vi.fn(async () => [
+      { name: '林霜', ref: 'lin_shuang', aliases: ['霜儿', '雪狐'], group: '奇幻组', avatar: 'characters/fantasy/lin.png' },
+      { name: '陈默', ref: 'chen_mo', aliases: ['阿默'], group: '都市组', avatar: 'characters/city/chen.png' },
+    ]);
+    const updateRoster = vi.fn(async () => ({ session_id: 's1', key: '角色甲', member: {} }));
+    const ctx = makeCtx({ listCharacters, updateRoster });
+    const sf = {
+      'game/roster.json': {
+        members: {
+          角色甲: {
+            name: '角色甲',
+            role: '主角',
+            fusion: true,
+            base_appearance: { ref: 'chen_mo', prompt: '保留狐耳与九尾形态，借用清冷五官与银白长发' },
+            tags: ['银发', '斗篷'],
+          },
+          角色乙: {
+            name: '角色乙',
+            form_state: 'transformed',
+            base_appearance: { ref: 'lin_shuang', prompt: '青色布衣游侠' },
+            transformed_appearance: { ref: 'lin_shuang', prompt: '身披羽衣的云端白鹤形态' },
+          },
+        },
+      },
+    };
+
+    render(<ModePanel panel="roster" stateFiles={sf} modePrefs={{}} ctx={ctx} />);
+    await act(async () => {});
+
+    // Fusion badge + base prompt for 角色甲; transformed badge + transformed prompt + base note for 角色乙.
+    expect(screen.getByText('🔀 融合')).toBeTruthy();
+    expect(screen.getByText('保留狐耳与九尾形态，借用清冷五官与银白长发')).toBeTruthy();
+    expect(screen.getByText('🔮 已变身')).toBeTruthy();
+    expect(screen.getByText('身披羽衣的云端白鹤形态')).toBeTruthy();
+    expect(screen.getByText('原形态：青色布衣游侠')).toBeTruthy();
+
+    // Open edit sheet for 角色甲: lazy-loads character picker with data-sheet-no-drag.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '编辑 角色甲' }));
+    });
+    expect(listCharacters).toHaveBeenCalledTimes(1);
+    const picker = screen.getByTestId('roster-char-picker');
+    expect(picker.hasAttribute('data-sheet-no-drag')).toBe(true);
+
+    // Filter character picker by alias and pick 林霜.
+    const searchInput = screen.getByLabelText('搜索已登记参考角色…');
+    fireEvent.change(searchInput, { target: { value: '雪狐' } });
+    expect(within(picker).getByText('林霜')).toBeTruthy();
+    expect(within(picker).queryByText('陈默')).toBeNull();
+    fireEvent.click(within(picker).getByRole('button', { name: /林霜/ }));
+    expect((screen.getByLabelText('参考图绑定') as HTMLInputElement).value).toBe('lin_shuang');
+
+    // Clear ref then type custom ref, uncheck fusion, update prompt, and save.
+    fireEvent.click(screen.getByRole('button', { name: '清空' }));
+    expect((screen.getByLabelText('参考图绑定') as HTMLInputElement).value).toBe('');
+    fireEvent.change(screen.getByLabelText('参考图绑定'), { target: { value: '  lin_shuang  ' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /融合形象/ }));
+    fireEvent.change(screen.getByLabelText('形象与设定'), { target: { value: '换上深蓝礼服与银饰' } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    });
+    expect(updateRoster).toHaveBeenCalledWith({
+      key: '角色甲',
+      ref: 'lin_shuang',
+      prompt: '换上深蓝礼服与银饰',
+      fusion: false,
+    });
+    // Sheet closes on success.
+    expect(screen.queryByTestId('roster-edit-form')).toBeNull();
+
+    // Open edit sheet for transformed member 角色乙: also includes transform_prompt textarea and shows inline error on failure.
+    updateRoster.mockRejectedValueOnce(new Error('network fail'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '编辑 角色乙' }));
+    });
+    const tfInput = screen.getByLabelText('当前变身形态设定') as HTMLTextAreaElement;
+    expect(tfInput.value).toBe('身披羽衣的云端白鹤形态');
+    fireEvent.change(tfInput, { target: { value: '金翼神鸟形态' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    });
+    expect(updateRoster).toHaveBeenLastCalledWith({
+      key: '角色乙',
+      ref: 'lin_shuang',
+      prompt: '青色布衣游侠',
+      fusion: false,
+      transform_prompt: '金翼神鸟形态',
+    });
+    // Stays open with inline error on failure.
+    expect(screen.getByRole('alert').textContent).toContain('保存角色设定失败');
+    expect(screen.getByTestId('roster-edit-form')).toBeTruthy();
+  });
+
+  it('roster casting policy shows effective precedence and supports preset/custom save as default vs session-only', async () => {
+    const setModeDefaults = vi.fn(async () => ({ casting_policy: 'ask_all' }));
+    const setModePrefs = vi.fn(async () => {});
+    const ctx = makeCtx({ setModeDefaults, setModePrefs });
+    const sf = { 'game/roster.json': { members: {} } };
+
+    // Falls back to modeDefaults.story_theater.casting_policy when modePrefs omits it.
+    const { rerender } = render(
+      <ModePanel
+        panel="roster"
+        stateFiles={sf}
+        modePrefs={{}}
+        modeDefaults={{ story_theater: { casting_policy: 'auto_random' } }}
+        ctx={ctx}
+      />,
+    );
+    const card = screen.getByTestId('casting-policy-card');
+    expect(within(card).getByText('自由随机分配')).toBeTruthy();
+
+    // Open editor, choose ask_all, and click "保存并设为默认" -> calls BOTH setModeDefaults and setModePrefs.
+    fireEvent.click(within(card).getByRole('button', { name: '编辑策略' }));
+    fireEvent.click(within(card).getByRole('button', { name: '全员新角钦定' }));
+    await act(async () => {
+      fireEvent.click(within(card).getByRole('button', { name: '保存并设为默认' }));
+    });
+    expect(setModeDefaults).toHaveBeenCalledWith('story_theater', { casting_policy: 'ask_all' });
+    expect(setModePrefs).toHaveBeenCalledWith({ casting_policy: 'ask_all' });
+    expect(within(card).getByRole('status').textContent).toContain('已设为默认并应用于本局');
+
+    // Rerender with custom session override -> displays custom badge & snippet.
+    rerender(
+      <ModePanel
+        panel="roster"
+        stateFiles={sf}
+        modePrefs={{ casting_policy: '主角团由我钦定，其余随机分配' }}
+        modeDefaults={{ story_theater: { casting_policy: 'ask_all' } }}
+        ctx={ctx}
+      />,
+    );
+    expect(within(card).getByText('自定义')).toBeTruthy();
+    expect(within(card).getByText('主角团由我钦定，其余随机分配')).toBeTruthy();
+
+    // Edit custom policy and click "仅应用于本局" -> calls ONLY setModePrefs (NOT setModeDefaults).
+    setModeDefaults.mockClear();
+    setModePrefs.mockClear();
+    fireEvent.click(within(card).getByRole('button', { name: '编辑策略' }));
+    const ta = within(card).getByLabelText('自定义选角策略') as HTMLTextAreaElement;
+    expect(ta.value).toBe('主角团由我钦定，其余随机分配');
+    fireEvent.change(ta, { target: { value: '仅核心反派与主角弹候选卡' } });
+    await act(async () => {
+      fireEvent.click(within(card).getByRole('button', { name: '仅应用于本局' }));
+    });
+    expect(setModeDefaults).not.toHaveBeenCalled();
+    expect(setModePrefs).toHaveBeenCalledWith({ casting_policy: '仅核心反派与主角弹候选卡' });
+    expect(within(card).getByRole('status').textContent).toContain('已应用于本局');
+
+    // Error handling shows inline alert instead of throwing.
+    setModePrefs.mockRejectedValueOnce(new Error('rpc error'));
+    fireEvent.click(within(card).getByRole('button', { name: '编辑策略' }));
+    fireEvent.click(within(card).getByRole('button', { name: '仅手动触发' }));
+    await act(async () => {
+      fireEvent.click(within(card).getByRole('button', { name: '仅应用于本局' }));
+    });
+    expect(within(card).getByRole('alert').textContent).toContain('选角策略保存失败');
+  });
+
   it('malformed state never crashes; memory → null', () => {
     const ctx = makeCtx();
     for (const panel of ['mistakes', 'roster', 'party', 'dex', 'lesson', 'travel', 'memory', 'bogus']) {

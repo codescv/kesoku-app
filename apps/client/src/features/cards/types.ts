@@ -1,5 +1,13 @@
-import type { LexToken } from '@kesoku/protocol';
+import type { LexToken, ModeId, RegisteredCharacter } from '@kesoku/protocol';
 import type { ReactNode } from 'react';
+
+export interface RosterUpdatePatch {
+  key: string;
+  ref?: string;
+  prompt?: string;
+  fusion?: boolean;
+  transform_prompt?: string;
+}
 
 /** Reference to a media item inside a segment / card (resolved lazily, never prefetched for audio). */
 export interface MediaRef {
@@ -44,7 +52,15 @@ export interface CardContext {
   /** Lock a chip into the composer (e.g. `[问<角色名> ›]`). */
   insertComposer: (text: string) => void;
   /** Lightweight per-session mode prefs (`mode.prefs.set`, zero LLM turn). */
-  setModePrefs: (prefs: Record<string, unknown>) => void;
+  setModePrefs: (prefs: Record<string, unknown>) => void | Promise<void>;
+  /** Per-mode default prefs from engine (`mode.defaults.get`). */
+  modeDefaults?: Record<string, Record<string, unknown>>;
+  /** Persist per-mode default prefs (`mode.defaults.set`). */
+  setModeDefaults?: (modeId: ModeId, prefs: Record<string, unknown>) => Promise<Record<string, unknown> | void>;
+  /** Fetch registered reference characters (`character.list`). */
+  listCharacters?: () => Promise<RegisteredCharacter[]>;
+  /** Update a character entry in the current session's roster (`roster.update`). */
+  updateRoster?: (patch: RosterUpdatePatch) => Promise<unknown>;
   /** Native / browser TTS — only call from a user tap. */
   speak: (text: string, lang: string) => void;
   copy: (text: string) => void;

@@ -8,6 +8,7 @@ import {
   type MemoryPolicy,
   type ModeId,
   type ProposalOp,
+  type RegisteredCharacter,
 } from '@kesoku/protocol';
 import { getUiLocale, t } from '@kesoku/ui';
 import { getPlatform } from '../native/platform';
@@ -28,7 +29,7 @@ import { createFrameBatcher } from '../features/stream/previewBuffer';
 import { KesokuSocket, RpcError, type SocketStatus } from './ws';
 import { actions, getState, useStore } from './store';
 import type { ChatItem } from './types';
-import type { MediaRef, ResolveMediaOptions } from '../features/cards/types';
+import type { MediaRef, ResolveMediaOptions, RosterUpdatePatch } from '../features/cards/types';
 import { translatorStartPrefs } from './translatorPrefs';
 import { fallbackRoleId } from '../features/persona/model';
 import { workoutSync } from '../features/workout/sync';
@@ -318,12 +319,14 @@ export const kesoku = {
       kesoku.rpc<EngineToClientPayload<'persona.list.result'>>('persona.list', {}),
       kesoku.rpc<EngineToClientPayload<'user_profile.get.result'>>('user_profile.get', {}),
       kesoku.rpc<EngineToClientPayload<'memory.proposal.list.result'>>('memory.proposal.list', { status: 'pending', limit: 50 }),
+      kesoku.rpc<EngineToClientPayload<'mode.defaults.get.result'>>('mode.defaults.get', {}),
     ]);
-    const [, pol, per, prof, props] = results;
+    const [, pol, per, prof, props, mdefs] = results;
     if (pol.status === 'fulfilled') actions.setPolicies(pol.value);
     if (per.status === 'fulfilled') actions.setPersonas(per.value.roles, [], true);
     if (prof.status === 'fulfilled') actions.setProfile(prof.value);
     if (props.status === 'fulfilled') actions.setProposals(props.value.proposals);
+    if (mdefs.status === 'fulfilled' && mdefs.value?.defaults) actions.setModeDefaults(mdefs.value.defaults, true);
   },
 
   async listSessions(): Promise<void> {
@@ -547,9 +550,54 @@ export const kesoku = {
     });
   },
 
-  async setModePrefs(sessionId: string, prefs: Payload): Promise<void> {
+  async setModePrefs(sessionId: string, prefs: Payload, opts?: { throwOnError?: boolean }): Promise<void> {
+    const prev = getState().modePrefs[sessionId];
     actions.setModePrefs(sessionId, prefs);
-    await kesoku.rpc('mode.prefs.set', { session_id: sessionId, prefs: getState().modePrefs[sessionId] ?? prefs }, { session_id: sessionId }).catch(() => {});
+    try {
+      await kesoku.rpc('mode.prefs.set', { session_id: sessionId, prefs: getState().modePrefs[sessionId] ?? prefs }, { session_id: sessionId });
+    } catch (err) {
+      if (opts?.throwOnError) {
+        useStore.setState((st) => ({ modePrefs: { ...st.modePrefs, [sessionId]: prev ? { ...prev } : {} } }));
+        throw err;
+      }
+    }
+  },
+
+  async getModeDefaults(modeId?: ModeId): Promise<Record<string, Record<string, unknown>>> {
+    const res = await kesoku.rpc<EngineToClientPayload<'mode.defaults.get.result'>>(
+      'mode.defaults.get',
+      modeId ? { mode_id: modeId } : {},
+    );
+    const defaults = res?.defaults ?? {};
+    actions.setModeDefaults(defaults, !modeId);
+    return defaults;
+  },
+
+  async setModeDefaults(modeId: ModeId, prefs: Payload): Promise<Record<string, unknown>> {
+    const res = await kesoku.rpc<EngineToClientPayload<'mode.defaults.set.result'>>('mode.defaults.set', { mode_id: modeId, prefs });
+    const merged = res?.prefs ?? { ...(getState().modeDefaults[modeId] ?? {}), ...prefs };
+    actions.setModeDefaultPrefs(modeId, merged);
+    return merged;
+  },
+
+  async listCharacters(): Promise<RegisteredCharacter[]> {
+    const res = await kesoku.rpc<EngineToClientPayload<'character.list.result'>>('character.list', {});
+    const characters = Array.isArray(res?.characters) ? res.characters : [];
+    actions.setCharacters(characters);
+    return characters;
+  },
+
+  async updateRoster(sessionId: string, patch: RosterUpdatePatch): Promise<EngineToClientPayload<'roster.update.result'>> {
+    const payload: Payload = { session_id: sessionId, key: patch.key };
+    if (patch.ref !== undefined) payload.ref = patch.ref;
+    if (patch.prompt !== undefined) payload.prompt = patch.prompt;
+    if (patch.fusion !== undefined) payload.fusion = patch.fusion;
+    if (patch.transform_prompt !== undefined) payload.transform_prompt = patch.transform_prompt;
+    const res = await kesoku.rpc<EngineToClientPayload<'roster.update.result'>>('roster.update', payload, { session_id: sessionId });
+    if (res?.member && typeof res.member === 'object') {
+      actions.setRosterMember(sessionId, res.key || patch.key, res.member);
+    }
+    return res;
   },
 
   async setModel(sessionId: string | null, o: LlmOverride): Promise<void> {

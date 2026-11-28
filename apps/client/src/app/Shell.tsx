@@ -62,6 +62,7 @@ function Inspector({ panel, sessionId, modeId }: { panel: InspectorPanel; sessio
   const tr = useT();
   const stateFiles = useStore((s) => (sessionId ? s.stateFiles[sessionId] : undefined)) ?? EMPTY;
   const prefs = useStore((s) => (sessionId ? s.modePrefs[sessionId] : undefined)) ?? EMPTY;
+  const modeDefaults = useStore((s) => s.modeDefaults);
   if (panel.kind === 'notes') return <NotesPanel embedded />;
   if (panel.kind === 'memory' || panel.kind === 'persona') return <MemoryPanel embedded />;
   if (panel.kind === 'word')
@@ -80,7 +81,7 @@ function Inspector({ panel, sessionId, modeId }: { panel: InspectorPanel; sessio
       </div>
     );
   if (!sessionId) return <MemoryPanel embedded />;
-  return <ModePanel panel={panel.kind} stateFiles={stateFiles} modePrefs={prefs} ctx={makeCardContext(sessionId, '', modeId)} />;
+  return <ModePanel panel={panel.kind} stateFiles={stateFiles} modePrefs={prefs} modeDefaults={modeDefaults} ctx={makeCardContext(sessionId, '', modeId)} />;
 }
 
 const MIN_LIGHTBOX_SCALE = 1;

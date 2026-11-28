@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeEnvelope } from '@kesoku/protocol';
+import { makeEnvelope, type Envelope } from '@kesoku/protocol';
 import { actions, initialState, upsertItem, useStore } from '../src/lib/store';
 import { __test, kesoku } from '../src/lib/client';
 import type { KesokuSocket } from '../src/lib/ws';
@@ -8,7 +8,7 @@ const S = 'sess0001';
 
 function fakeSocket() {
   const sent: Array<{ type: string; payload: Record<string, unknown> }> = [];
-  const rpc = vi.fn(async (type: string, payload: Record<string, unknown>) => {
+  const rpc = vi.fn<(type: string, payload: Record<string, unknown>) => Promise<Envelope>>(async (type, payload) => {
     sent.push({ type, payload });
     return makeEnvelope(`${type}.result`, { ok: true, status: 'applied' });
   });
@@ -212,5 +212,70 @@ describe('client API', () => {
     await kesoku.resolveProposal('p1', 'dismiss');
     expect(rpc).toHaveBeenLastCalledWith('memory.proposal.resolve', { proposal_id: 'p1', action: 'dismiss' }, {});
     expect(useStore.getState().proposals.p1.status).toBe('applied');
+  });
+
+  it('getModeDefaults, setModeDefaults, listCharacters, and updateRoster sync store state', async () => {
+    const { sock, rpc } = fakeSocket();
+    __test.setSocket(sock);
+
+    rpc.mockResolvedValueOnce(makeEnvelope('mode.defaults.get.result', { defaults: { story_theater: { casting_policy: 'ask_all' } } }));
+    const defaults = await kesoku.getModeDefaults();
+    expect(rpc).toHaveBeenLastCalledWith('mode.defaults.get', {}, {});
+    expect(defaults).toEqual({ story_theater: { casting_policy: 'ask_all' } });
+    expect(useStore.getState().modeDefaults).toEqual({ story_theater: { casting_policy: 'ask_all' } });
+
+    rpc.mockResolvedValueOnce(makeEnvelope('mode.defaults.set.result', { mode_id: 'story_theater', prefs: { casting_policy: 'auto_random' } }));
+    const saved = await kesoku.setModeDefaults('story_theater', { casting_policy: 'auto_random' });
+    expect(rpc).toHaveBeenLastCalledWith('mode.defaults.set', { mode_id: 'story_theater', prefs: { casting_policy: 'auto_random' } }, {});
+    expect(saved).toEqual({ casting_policy: 'auto_random' });
+    expect(useStore.getState().modeDefaults.story_theater).toEqual({ casting_policy: 'auto_random' });
+
+    rpc.mockResolvedValueOnce(
+      makeEnvelope('character.list.result', {
+        characters: [{ name: '林霜', ref: 'lin_shuang', aliases: ['霜儿'], group: '原创', avatar: 'characters/orig/lin.png' }],
+      }),
+    );
+    const chars = await kesoku.listCharacters();
+    expect(rpc).toHaveBeenLastCalledWith('character.list', {}, {});
+    expect(chars).toHaveLength(1);
+    expect(useStore.getState().characters[0]?.ref).toBe('lin_shuang');
+
+    useStore.setState({
+      stateFiles: { [S]: { 'game/roster.json': { members: { 角色甲: { name: '角色甲', ref: '', prompt: '旧设定' } } } } },
+    });
+    const updatedMember = { name: '角色甲', ref: 'lin_shuang', fusion: true, base_appearance: { ref: 'lin_shuang', prompt: '新设定' } };
+    rpc.mockResolvedValueOnce(makeEnvelope('roster.update.result', { session_id: S, key: '角色甲', member: updatedMember }));
+    await kesoku.updateRoster(S, { key: '角色甲', ref: 'lin_shuang', prompt: '新设定', fusion: true });
+    expect(rpc).toHaveBeenLastCalledWith(
+      'roster.update',
+      { session_id: S, key: '角色甲', ref: 'lin_shuang', prompt: '新设定', fusion: true },
+      { session_id: S },
+    );
+    const roster = useStore.getState().stateFiles[S]['game/roster.json'] as { members: Record<string, unknown> };
+    expect(roster.members['角色甲']).toEqual(updatedMember);
+  });
+
+  it('refreshAll fetches mode.defaults.get and ignores failures on older engines', async () => {
+    const { sock, rpc } = fakeSocket();
+    __test.setSocket(sock);
+    rpc.mockImplementation(async (type: string) => {
+      if (type === 'session.list') return makeEnvelope('session.list.result', { sessions: [] });
+      if (type === 'memory.policy.list') return makeEnvelope('memory.policy.list.result', { policies: {}, defaults: {}, updated_at: 1 });
+      if (type === 'persona.list') return makeEnvelope('persona.list.result', { roles: [] });
+      if (type === 'user_profile.get') return makeEnvelope('user_profile.get.result', { nickname: '', bio: '', cameo_opt_in: false, avatar_rev: 0 });
+      if (type === 'memory.proposal.list') return makeEnvelope('memory.proposal.list.result', { proposals: [] });
+      if (type === 'mode.defaults.get') throw new Error('UNKNOWN_TYPE');
+      return makeEnvelope(`${type}.result`, { ok: true });
+    });
+    await expect(kesoku.refreshAll()).resolves.toBeUndefined();
+    expect(rpc).toHaveBeenCalledWith('mode.defaults.get', {}, {});
+
+    rpc.mockImplementation(async (type: string) => {
+      if (type === 'session.list') return makeEnvelope('session.list.result', { sessions: [] });
+      if (type === 'mode.defaults.get') return makeEnvelope('mode.defaults.get.result', { defaults: { story_theater: { casting_policy: 'manual_only' } } });
+      return makeEnvelope(`${type}.result`, { ok: true, roles: [], proposals: [], policies: {}, defaults: {}, updated_at: 1 });
+    });
+    await kesoku.refreshAll();
+    expect(useStore.getState().modeDefaults.story_theater).toEqual({ casting_policy: 'manual_only' });
   });
 });

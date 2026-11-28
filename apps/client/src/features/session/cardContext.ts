@@ -18,7 +18,11 @@ export function makeCardContext(sessionId: string, messageId: string, modeId: st
     openPeek: (entry, glossary) => overlays.peek(entry, glossary),
     openFullscreen: (node) => overlays.fullscreen(node),
     insertComposer: (text) => actions.setUi({ composerInsert: { text, n: Date.now() } }),
-    setModePrefs: (prefs) => void kesoku.setModePrefs(sessionId, prefs),
+    setModePrefs: (prefs) => kesoku.setModePrefs(sessionId, prefs, { throwOnError: true }),
+    modeDefaults: useStore.getState().modeDefaults,
+    setModeDefaults: (mid, prefs) => kesoku.setModeDefaults(mid, prefs),
+    listCharacters: () => kesoku.listCharacters(),
+    updateRoster: (patch) => kesoku.updateRoster(sessionId, patch),
     speak: (text, lang) => {
       // Only ever invoked from a user tap (▶ 朗读).
       if (useStore.getState().settings.ttsEngine === 'server') {
